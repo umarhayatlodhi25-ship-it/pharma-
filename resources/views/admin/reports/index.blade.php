@@ -182,6 +182,18 @@
             <p class="text-xs text-gray-500 mt-1">Comprehensive audit of discounts given, cashier authorization, discount-to-sales ratios & invoice audit.</p>
         </a>
 
+        <!-- 11. OPD Reports -->
+        <a href="/reports/opd" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-blue-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-indigo-100 text-indigo-600 p-3 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-hospital-user text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">Report #11</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-indigo-600 transition">11. OPD Reports</h3>
+            <p class="text-xs text-gray-500 mt-1">Patient visits, tokens, doctor fees and OPD collections</p>
+        </a>
+
     </div>
 </div>
 @endsection

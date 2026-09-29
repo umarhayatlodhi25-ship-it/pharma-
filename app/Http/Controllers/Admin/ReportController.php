@@ -14,6 +14,9 @@ use App\Models\Supplier;
 use App\Models\Customer;
 use App\Models\Category;
 use App\Models\User;
+use App\Models\Doctor;
+use App\Models\Patient;
+use App\Models\PatientToken;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -444,6 +447,177 @@ class ReportController extends Controller
             'discountSales', 'users', 'filter', 'userId', 'startDate', 'endDate',
             'totalDiscountGiven', 'discountedInvoicesCount', 'totalOriginalSubtotal',
             'totalFinalAmountPaid', 'avgDiscountPerInvoice', 'discountPercentageOfSales'
+        ));
+    }
+
+    /**
+     * 11. OPD Reports & All Doctors Collection Report
+     */
+    public function opd(Request $request)
+    {
+        $filter = $request->get('filter', 'today'); // today, yesterday, weekly, monthly, custom
+        $doctorId = $request->get('doctor_id');
+        $feeType = $request->get('fee_type');
+        $status = $request->get('status');
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+
+        // Resolve dates based on preset filter
+        if ($filter == 'today') {
+            $startDate = Carbon::today()->toDateString();
+            $endDate = Carbon::today()->toDateString();
+        } elseif ($filter == 'yesterday') {
+            $startDate = Carbon::yesterday()->toDateString();
+            $endDate = Carbon::yesterday()->toDateString();
+        } elseif ($filter == 'weekly') {
+            $startDate = Carbon::now()->startOfWeek()->toDateString();
+            $endDate = Carbon::now()->endOfWeek()->toDateString();
+        } elseif ($filter == 'monthly') {
+            $startDate = Carbon::now()->startOfMonth()->toDateString();
+            $endDate = Carbon::now()->endOfMonth()->toDateString();
+        } elseif ($filter == 'custom') {
+            $startDate = $startDate ?: Carbon::today()->toDateString();
+            $endDate = $endDate ?: Carbon::today()->toDateString();
+        } else {
+            $filter = 'today';
+            $startDate = Carbon::today()->toDateString();
+            $endDate = Carbon::today()->toDateString();
+        }
+
+        $allDoctors = Doctor::active()->orderBy('name')->get();
+
+        // 1. Detailed OPD Visits Query
+        $visitsQuery = PatientToken::with(['patient', 'doctor'])
+            ->whereBetween('token_date', [$startDate, $endDate]);
+
+        if (!empty($doctorId)) {
+            $visitsQuery->where('doctor_id', $doctorId);
+        }
+
+        if (!empty($feeType)) {
+            $visitsQuery->where('payment_type', $feeType);
+        }
+
+        if (!empty($status)) {
+            if ($status === 'in_consultation') {
+                $visitsQuery->whereIn('status', ['called', 'in_consultation']);
+            } else {
+                $visitsQuery->where('status', $status);
+            }
+        }
+
+        $tokens = $visitsQuery->orderBy('token_date', 'desc')->orderBy('token_number', 'asc')->get();
+
+        // 2. Summary KPI Metrics (Section 3)
+        $totalTokens = $tokens->count();
+        $totalPatients = $tokens->pluck('patient_id')->unique()->count();
+        $paidPatients = $tokens->where('payment_type', 'paid')->count();
+        $freePatients = $tokens->where('payment_type', 'free')->count();
+
+        // Financials: strictly exclude cancelled visits from collection and fee totals (Section 12)
+        $validTokens = $tokens->where('status', '!=', 'cancelled');
+        $totalDoctorFees = (float) $validTokens->sum('consultation_fee');
+        $totalCollection = (float) $validTokens->sum('charged_amount');
+        $totalFreeAmount = max(0, $totalDoctorFees - $totalCollection);
+
+        // 3. Doctor-wise Collection Report (Section 5, 6, 7, 8)
+        // If specific doctor selected, show that doctor; otherwise show All Doctors
+        $doctorsToReport = !empty($doctorId) ? Doctor::where('id', $doctorId)->get() : $allDoctors;
+
+        $doctorStatsQuery = DB::table('patient_tokens')
+            ->whereBetween('token_date', [$startDate, $endDate])
+            ->whereNotNull('doctor_id');
+
+        if (!empty($doctorId)) {
+            $doctorStatsQuery->where('doctor_id', $doctorId);
+        }
+        if (!empty($feeType)) {
+            $doctorStatsQuery->where('payment_type', $feeType);
+        }
+        if (!empty($status)) {
+            if ($status === 'in_consultation') {
+                $doctorStatsQuery->whereIn('status', ['called', 'in_consultation']);
+            } else {
+                $doctorStatsQuery->where('status', $status);
+            }
+        }
+
+        $doctorStats = $doctorStatsQuery
+            ->select([
+                'doctor_id',
+                DB::raw('COUNT(id) as total_tokens'),
+                DB::raw('COUNT(DISTINCT patient_id) as total_patients'),
+                DB::raw("COUNT(CASE WHEN payment_type = 'paid' THEN 1 END) as paid_count"),
+                DB::raw("COUNT(CASE WHEN payment_type = 'free' THEN 1 END) as free_count"),
+                DB::raw("SUM(CASE WHEN status != 'cancelled' THEN consultation_fee ELSE 0 END) as doctor_fees"),
+                DB::raw("SUM(CASE WHEN status != 'cancelled' THEN charged_amount ELSE 0 END) as collected_amount"),
+            ])
+            ->groupBy('doctor_id')
+            ->get()
+            ->keyBy('doctor_id');
+
+        $doctorReports = [];
+        $grandTotal = [
+            'total_patients' => 0,
+            'paid_patients'  => 0,
+            'free_patients'  => 0,
+            'doctor_fees'    => 0.0,
+            'collected'      => 0.0,
+            'free_amount'    => 0.0,
+            'collection_pct' => 0.0,
+        ];
+
+        foreach ($doctorsToReport as $doc) {
+            $stat = $doctorStats->get($doc->id);
+            $pCount = $stat ? intval($stat->total_patients) : 0;
+            $pPaid = $stat ? intval($stat->paid_count) : 0;
+            $pFree = $stat ? intval($stat->free_count) : 0;
+            $dFees = $stat ? floatval($stat->doctor_fees) : 0.0;
+            $dCollected = $stat ? floatval($stat->collected_amount) : 0.0;
+            $dFreeAmount = max(0, $dFees - $dCollected);
+            $dPct = $dFees > 0 ? round(($dCollected / $dFees) * 100, 1) : 0.0;
+
+            $doctorReports[] = [
+                'doctor'         => $doc,
+                'total_patients' => $pCount,
+                'paid_patients'  => $pPaid,
+                'free_patients'  => $pFree,
+                'doctor_fees'    => $dFees,
+                'collected'      => $dCollected,
+                'free_amount'    => $dFreeAmount,
+                'collection_pct' => $dPct,
+            ];
+
+            $grandTotal['total_patients'] += $pCount;
+            $grandTotal['paid_patients']  += $pPaid;
+            $grandTotal['free_patients']  += $pFree;
+            $grandTotal['doctor_fees']    += $dFees;
+            $grandTotal['collected']      += $dCollected;
+            $grandTotal['free_amount']    += $dFreeAmount;
+        }
+
+        $grandTotal['collection_pct'] = $grandTotal['doctor_fees'] > 0
+            ? round(($grandTotal['collected'] / $grandTotal['doctor_fees']) * 100, 1)
+            : 0.0;
+
+        return view('admin.reports.opd', compact(
+            'tokens',
+            'allDoctors',
+            'filter',
+            'doctorId',
+            'feeType',
+            'status',
+            'startDate',
+            'endDate',
+            'totalTokens',
+            'totalPatients',
+            'paidPatients',
+            'freePatients',
+            'totalDoctorFees',
+            'totalCollection',
+            'totalFreeAmount',
+            'doctorReports',
+            'grandTotal'
         ));
     }
 }

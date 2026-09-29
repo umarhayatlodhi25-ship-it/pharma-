@@ -131,6 +131,27 @@
                     </div>
                 </div>
 
+                <!-- HOSPITAL SECTION -->
+                <div>
+                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-3 mb-2">Hospital</p>
+                    <div class="space-y-1">
+                        <a href="/patients" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('patients*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <i class="fa-solid fa-hospital-user w-5"></i>
+                            <span>Patients</span>
+                        </a>
+
+                        <a href="/doctors" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('doctors*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <i class="fa-solid fa-user-doctor w-5"></i>
+                            <span>Doctors</span>
+                        </a>
+
+                        <a href="/opd/tokens" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ (request()->is('opd/tokens*') || request()->is('patient-tokens*')) ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <i class="fa-solid fa-ticket-simple w-5"></i>
+                            <span>OPD Tokens</span>
+                        </a>
+                    </div>
+                </div>
+
                 <!-- REPORTS SECTION -->
                 @if(!$user || $user->hasPermission('view_reports'))
                 <div>
@@ -149,6 +170,11 @@
                     <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-3 mb-2">System</p>
                     <div class="space-y-1">
                         @if(!$user || $user->isAdmin())
+                        <a href="{{ route('settings.index') }}" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('settings') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <i class="fa-solid fa-gear w-5"></i>
+                            <span>Settings</span>
+                        </a>
+
                         <a href="{{ route('admin.settings.users.index') }}" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('admin/settings/users*') || request()->is('settings/users*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-users w-5"></i>
                             <span>User Management</span>
@@ -188,6 +214,12 @@
                 </div>
 
                 <div class="flex items-center space-x-4">
+                    @if(!$user || $user->isAdmin())
+                    <a href="{{ route('settings.index') }}" class="p-2 text-slate-500 hover:text-slate-700 transition hidden sm:block" title="System Settings">
+                        <i class="fa-solid fa-gear text-lg"></i>
+                    </a>
+                    @endif
+
                     <div class="flex items-center space-x-3 border-l pl-3 sm:pl-4 border-gray-200">
                         <div class="w-8 h-8 sm:w-9 sm:h-9 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
                             {{ substr(auth()->user()->name ?? 'A', 0, 1) }}

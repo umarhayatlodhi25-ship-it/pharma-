@@ -16,6 +16,11 @@ use App\Http\Controllers\Admin\ReturnController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\UserManagementController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\PatientController;
+use App\Http\Controllers\PatientTokenController;
+use App\Http\Controllers\DoctorController;
+use App\Http\Controllers\SettingsController;
+use App\Livewire\Opd\TokenManagement;
 
 // ============================================================
 // Public Routes
@@ -102,20 +107,25 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/auth/user-role-status', [AuthController::class, 'userRoleStatus']);
 
-    // 1. ADMIN ONLY ROUTES (User Management & System Settings)
-    Route::prefix('settings')
-        ->name('admin.settings.')
-        ->middleware(['role:admin'])
-        ->group(function () {
-            Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
-            Route::get('/users/create', [UserManagementController::class, 'create'])->name('users.create');
-            Route::post('/users', [UserManagementController::class, 'store'])->name('users.store');
-            Route::get('/users/{id}/edit', [UserManagementController::class, 'edit'])->name('users.edit');
-            Route::put('/users/{id}', [UserManagementController::class, 'update'])->name('users.update');
-            Route::delete('/users/{id}', [UserManagementController::class, 'destroy'])->name('users.destroy');
-            Route::post('/users/{id}/restore', [UserManagementController::class, 'restore'])->name('users.restore');
-            Route::delete('/users/{id}/force', [UserManagementController::class, 'forceDelete'])->name('users.forceDelete');
-        });
+    // 1. ADMIN ONLY ROUTES (Centralized Settings & User Management)
+    Route::middleware(['role:admin'])->group(function () {
+        Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
+        Route::put('/settings/profile', [SettingsController::class, 'updateProfile'])->name('settings.profile.update');
+        Route::delete('/settings/profile/logo', [SettingsController::class, 'deleteLogo'])->name('settings.profile.delete-logo');
+
+        Route::prefix('settings')
+            ->name('admin.settings.')
+            ->group(function () {
+                Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
+                Route::get('/users/create', [UserManagementController::class, 'create'])->name('users.create');
+                Route::post('/users', [UserManagementController::class, 'store'])->name('users.store');
+                Route::get('/users/{id}/edit', [UserManagementController::class, 'edit'])->name('users.edit');
+                Route::put('/users/{id}', [UserManagementController::class, 'update'])->name('users.update');
+                Route::delete('/users/{id}', [UserManagementController::class, 'destroy'])->name('users.destroy');
+                Route::post('/users/{id}/restore', [UserManagementController::class, 'restore'])->name('users.restore');
+                Route::delete('/users/{id}/force', [UserManagementController::class, 'forceDelete'])->name('users.forceDelete');
+            });
+    });
 
     // 2. ADMIN & PHARMACIST ROUTES (Dashboard, Medicines, Purchases, Suppliers, Reports)
     Route::middleware(['role:admin,pharmacist'])->group(function () {
@@ -161,6 +171,7 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/best-selling', [ReportController::class, 'bestSelling'])->name('best-selling');
             Route::get('/low-stock', [ReportController::class, 'lowStock'])->name('low-stock');
             Route::get('/discounts', [ReportController::class, 'discounts'])->name('discounts');
+            Route::get('/opd', [ReportController::class, 'opd'])->name('opd');
         });
     });
 
@@ -185,6 +196,40 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/purchases', [ReturnController::class, 'storePurchaseReturn'])->name('purchase.store');
         });
     });
+
+    // ============================================================
+    // 4. HOSPITAL MODULE (Phase 1: Patient Registration)
+    // ============================================================
+    Route::get('/patients', [PatientController::class, 'index'])->name('patients.index');
+    Route::get('/patients/search', [PatientController::class, 'search'])->name('patients.search');
+    Route::get('/patients/check-duplicate', [PatientController::class, 'checkDuplicate'])->name('patients.check-duplicate');
+    Route::get('/patients/create', [PatientController::class, 'create'])->name('patients.create');
+    Route::post('/patients', [PatientController::class, 'store'])->name('patients.store');
+    Route::get('/patients/{patient}', [PatientController::class, 'show'])->name('patients.show');
+
+    // Patient Tokens (Phase 2 & Phase 3.1: Smart Token Management)
+    Route::get('/patient-tokens', [PatientTokenController::class, 'index'])->name('patient-tokens.index');
+    Route::get('/patient-tokens/create', [PatientTokenController::class, 'create'])->name('patient-tokens.create');
+    Route::post('/patient-tokens', [PatientTokenController::class, 'store'])->name('patient-tokens.store');
+    Route::post('/patient-tokens/call-next', [PatientTokenController::class, 'callNext'])->name('patient-tokens.call-next');
+    Route::post('/patient-tokens/{token}/call', [PatientTokenController::class, 'call'])->name('patient-tokens.call');
+    Route::post('/patient-tokens/{token}/complete', [PatientTokenController::class, 'complete'])->name('patient-tokens.complete');
+    Route::post('/patient-tokens/{token}/cancel', [PatientTokenController::class, 'cancel'])->name('patient-tokens.cancel');
+    Route::get('/patient-tokens/{token}/print', [PatientTokenController::class, 'printSlip'])->name('patient-tokens.print');
+    Route::get('/patient-tokens/{token}', [PatientTokenController::class, 'show'])->name('patient-tokens.show');
+
+    // Doctors (Phase 3.4: Doctor Registration & Management)
+    Route::get('/doctors', [DoctorController::class, 'index'])->name('doctors.index');
+    Route::get('/doctors/create', [DoctorController::class, 'create'])->name('doctors.create');
+    Route::post('/doctors', [DoctorController::class, 'store'])->name('doctors.store');
+    Route::get('/doctors/{doctor}', [DoctorController::class, 'show'])->name('doctors.show');
+    Route::get('/doctors/{doctor}/edit', [DoctorController::class, 'edit'])->name('doctors.edit');
+    Route::put('/doctors/{doctor}', [DoctorController::class, 'update'])->name('doctors.update');
+    Route::patch('/doctors/{doctor}/status', [DoctorController::class, 'toggleStatus'])->name('doctors.status');
+    Route::delete('/doctors/{doctor}', [DoctorController::class, 'destroy'])->name('doctors.destroy');
+
+    // OPD Tokens Management (Phase 3.2: Interactive Livewire Workflow)
+    Route::get('/opd/tokens', TokenManagement::class)->name('opd.tokens');
 });
 
 
