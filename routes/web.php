@@ -88,6 +88,74 @@ Route::get('/run-migrations-live', function () {
     }
 });
 
+Route::get('/create-roles-tables', function () {
+    try {
+        $db = \Illuminate\Support\Facades\DB::connection();
+        
+        // Create roles table
+        $db->statement("CREATE TABLE IF NOT EXISTS roles (
+            id BIGSERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            slug VARCHAR(255) NOT NULL UNIQUE,
+            created_at TIMESTAMP,
+            updated_at TIMESTAMP
+        )");
+        
+        // Create role_permissions table
+        $db->statement("CREATE TABLE IF NOT EXISTS role_permissions (
+            id BIGSERIAL PRIMARY KEY,
+            role_id BIGINT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+            feature VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP,
+            updated_at TIMESTAMP,
+            UNIQUE(role_id, feature)
+        )");
+        
+        // Seed default roles
+        $roles = [
+            ['name' => 'Admin', 'slug' => 'admin'],
+            ['name' => 'Pharmacist', 'slug' => 'pharmacist'],
+            ['name' => 'Cashier', 'slug' => 'cashier'],
+            ['name' => 'Hospital', 'slug' => 'hospital'],
+            ['name' => 'Assistant Admin', 'slug' => 'assistant_admin'],
+        ];
+        
+        $inserted = 0;
+        foreach ($roles as $role) {
+            $exists = $db->table('roles')->where('slug', $role['slug'])->exists();
+            if (!$exists) {
+                $db->table('roles')->insert(array_merge($role, [
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]));
+                $inserted++;
+            }
+        }
+        
+        // Also add to migrations table so Laravel doesn't re-run
+        $migrationName = '2026_10_01_000000_create_roles_and_permissions_tables';
+        $migExists = $db->table('migrations')->where('migration', $migrationName)->exists();
+        if (!$migExists) {
+            $batch = $db->table('migrations')->max('batch') ?? 0;
+            $db->table('migrations')->insert([
+                'migration' => $migrationName,
+                'batch' => $batch + 1,
+            ]);
+        }
+        
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Roles tables created and seeded!',
+            'roles_inserted' => $inserted,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage(),
+        ]);
+    }
+});
+
 Route::get('/cleanup-dummy', function () {
     try {
         $keepEmails = [
