@@ -119,41 +119,15 @@
                                focus:ring-blue-100
                                outline-none">
 
-                    <option value="admin"
-                        @selected(
-                            old(
-                                'role',
-                                $user->role
-                            ) === 'admin'
-                        )>
-
-                        Admin
-
+                    <option value="">
+                        Select Role
                     </option>
 
-                    <option value="pharmacist"
-                        @selected(
-                            old(
-                                'role',
-                                $user->role
-                            ) === 'pharmacist'
-                        )>
-
-                        Pharmacist
-
-                    </option>
-
-                    <option value="cashier"
-                        @selected(
-                            old(
-                                'role',
-                                $user->role
-                            ) === 'cashier'
-                        )>
-
-                        Cashier
-
-                    </option>
+                    @foreach($roles as $r)
+                        <option value="{{ $r->slug }}" @selected(old('role', $user->role) === $r->slug)>
+                            {{ $r->name }}
+                        </option>
+                    @endforeach
 
                 </select>
 

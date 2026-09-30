@@ -117,37 +117,21 @@ class User extends Authenticatable
         return in_array($this->role, array_map('trim', $roles), true);
     }
 
-    /**
-     * Check if user has specific permission.
-     */
     public function hasPermission(string $permission): bool
     {
         if ($this->isAdmin()) {
             return true;
         }
 
-        $permissionsByRole = [
-            'pharmacist' => [
-                'view_dashboard',
-                'manage_medicines',
-                'manage_purchases',
-                'manage_suppliers',
-                'view_reports',
-                'process_pos',
-                'view_sales',
-                'manage_returns',
-                'view_expiry',
-            ],
-            'cashier' => [
-                'process_pos',
-                'view_sales',
-                'manage_returns',
-                'view_expiry',
-                'manage_hold_invoices',
-            ],
-        ];
+        // Cache role permissions for the request lifecycle
+        static $rolePermissions = [];
+        
+        if (!array_key_exists($this->role, $rolePermissions)) {
+            $rolePermissions[$this->role] = \App\Models\RolePermission::whereHas('role', function ($q) {
+                $q->where('slug', $this->role);
+            })->pluck('feature')->toArray();
+        }
 
-        $rolePermissions = $permissionsByRole[$this->role] ?? [];
-        return in_array($permission, $rolePermissions, true);
+        return in_array($permission, $rolePermissions[$this->role], true);
     }
 }

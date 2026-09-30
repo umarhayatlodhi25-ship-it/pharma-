@@ -18,8 +18,8 @@ class UserManagementController extends Controller
 
     public function index(Request $request)
     {
-        // Sync remote cloud users into local database
-        \App\Services\FirebaseService::syncFirebaseUsersToLocal();
+        // Removed Firebase sync on page load for performance
+        // \App\Services\FirebaseService::syncFirebaseUsersToLocal();
 
         $status = $request->query('status', 'active');
         $perPage = $request->query('per_page', 'all');
@@ -117,7 +117,8 @@ class UserManagementController extends Controller
 
     public function create()
     {
-        return view('admin.settings.users.create');
+        $roles = \App\Models\Role::orderBy('name')->get();
+        return view('admin.settings.users.create', compact('roles'));
     }
 
 
@@ -145,11 +146,7 @@ class UserManagementController extends Controller
 
             'role' => [
                 'required',
-                Rule::in([
-                    'admin',
-                    'pharmacist',
-                    'cashier',
-                ]),
+                Rule::exists('roles', 'slug'),
             ],
 
             'password' => [
@@ -197,9 +194,11 @@ class UserManagementController extends Controller
         $user = User::withTrashed()
             ->findOrFail($id);
 
+        $roles = \App\Models\Role::orderBy('name')->get();
+
         return view(
             'admin.settings.users.edit',
-            compact('user')
+            compact('user', 'roles')
         );
     }
 
@@ -234,12 +233,7 @@ class UserManagementController extends Controller
 
             'role' => [
                 'required',
-
-                Rule::in([
-                    'admin',
-                    'pharmacist',
-                    'cashier',
-                ]),
+                Rule::exists('roles', 'slug'),
             ],
 
             'password' => [
