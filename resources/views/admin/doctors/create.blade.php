@@ -128,29 +128,102 @@
                     @enderror
                 </div>
 
-                <!-- 4. Consultation Fee -->
-                <div>
-                    <label class="block font-bold text-gray-700 mb-1.5">
-                        Consultation Fee (PKR) <span class="text-rose-500">*</span>
-                    </label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400 font-bold text-xs">
-                            PKR
+                <!-- 4. Consultation & Revenue Share Section (Configured ONCE) -->
+                <div class="sm:col-span-2 bg-gradient-to-r from-blue-50/60 to-indigo-50/50 p-5 rounded-2xl border border-blue-100 space-y-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-blue-100/80 pb-3">
+                        <div class="flex items-center space-x-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-xs">
+                                <i class="fa-solid fa-scale-balanced"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-gray-900">Consultation & Revenue Share</h3>
+                                <p class="text-[11px] text-gray-500">Configured once in Doctor Profile. Automatically applied during token generation.</p>
+                            </div>
                         </div>
-                        <input 
-                            type="number" 
-                            name="consultation_fee" 
-                            value="{{ old('consultation_fee', '500') }}" 
-                            min="0" 
-                            step="10" 
-                            required
-                            class="w-full pl-12 pr-4 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-900 font-mono font-bold focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-2xs"
-                        />
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 self-start sm:self-auto">
+                            Automatic OPD Split
+                        </span>
                     </div>
-                    <p class="text-[11px] text-gray-400 mt-1">This fee will auto-fill whenever this doctor is chosen for an OPD token.</p>
-                    @error('consultation_fee')
-                        <p class="text-rose-500 text-[11px] font-semibold mt-1">{{ $message }}</p>
-                    @enderror
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <!-- Consultation Fee -->
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-1.5">
+                                Consultation Fee (PKR) <span class="text-rose-500">*</span>
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400 font-bold text-xs">
+                                    PKR
+                                </div>
+                                <input 
+                                    type="number" 
+                                    id="docConsultationFee"
+                                    name="consultation_fee" 
+                                    value="{{ old('consultation_fee', '500') }}" 
+                                    min="0" 
+                                    step="10" 
+                                    required
+                                    oninput="recalculateRevenueSplit()"
+                                    class="w-full pl-12 pr-4 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-900 font-mono font-bold focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-2xs bg-white"
+                                />
+                            </div>
+                            <p class="text-[11px] text-gray-400 mt-1">Base consultation fee for this doctor.</p>
+                            @error('consultation_fee')
+                                <p class="text-rose-500 text-[11px] font-semibold mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <!-- Doctor Share % -->
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-1.5">
+                                Doctor Share (%) <span class="text-rose-500">*</span>
+                            </label>
+                            <div class="relative">
+                                <input 
+                                    type="number" 
+                                    id="docSharePercentage"
+                                    name="doctor_share_percentage" 
+                                    value="{{ old('doctor_share_percentage', '70') }}" 
+                                    min="0" 
+                                    max="100" 
+                                    step="0.5" 
+                                    required
+                                    oninput="recalculateRevenueSplit()"
+                                    class="w-full pr-10 pl-3.5 py-2.5 rounded-lg border border-gray-300 text-sm text-gray-900 font-mono font-bold focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-2xs bg-white"
+                                />
+                                <div class="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-gray-400 font-bold text-xs">
+                                    %
+                                </div>
+                            </div>
+                            <p class="text-[11px] text-gray-400 mt-1">Doctor's percentage share (0% - 100%).</p>
+                            @error('doctor_share_percentage')
+                                <p class="text-rose-500 text-[11px] font-semibold mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    </div>
+
+                    <!-- Live Revenue Split Preview -->
+                    <div class="bg-white p-4 rounded-xl border border-blue-100 shadow-2xs grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                        <div class="p-2.5 bg-blue-50/70 rounded-lg border border-blue-100">
+                            <span class="text-[10px] font-bold text-blue-600 uppercase block tracking-wider">Doctor Share</span>
+                            <span id="previewDocPct" class="text-base font-black font-mono text-blue-900">70%</span>
+                        </div>
+
+                        <div class="p-2.5 bg-indigo-50/70 rounded-lg border border-indigo-100">
+                            <span class="text-[10px] font-bold text-indigo-600 uppercase block tracking-wider">Hospital Share</span>
+                            <span id="previewHospPct" class="text-base font-black font-mono text-indigo-900">30% (Automatic)</span>
+                        </div>
+
+                        <div class="p-2.5 bg-emerald-50/70 rounded-lg border border-emerald-100">
+                            <span class="text-[10px] font-bold text-emerald-600 uppercase block tracking-wider">Doctor Amount</span>
+                            <span id="previewDocAmount" class="text-base font-black font-mono text-emerald-800">PKR 350</span>
+                        </div>
+
+                        <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                            <span class="text-[10px] font-bold text-slate-600 uppercase block tracking-wider">Hospital Amount</span>
+                            <span id="previewHospAmount" class="text-base font-black font-mono text-slate-800">PKR 150</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 5. Status -->
@@ -259,7 +332,32 @@
                 </button>
             </div>
         </form>
-    </div>
-
 </div>
+
+<script>
+    function recalculateRevenueSplit() {
+        const feeInput = document.getElementById('docConsultationFee');
+        const pctInput = document.getElementById('docSharePercentage');
+
+        const fee = parseFloat(feeInput?.value) || 0;
+        let docPct = parseFloat(pctInput?.value);
+
+        if (isNaN(docPct)) docPct = 70;
+        if (docPct < 0) docPct = 0;
+        if (docPct > 100) docPct = 100;
+
+        const hospPct = Math.round((100 - docPct) * 100) / 100;
+        const docAmount = Math.round(fee * (docPct / 100) * 100) / 100;
+        const hospAmount = Math.round((fee - docAmount) * 100) / 100;
+
+        document.getElementById('previewDocPct').textContent = docPct + '%';
+        document.getElementById('previewHospPct').textContent = hospPct + '% (Automatic)';
+        document.getElementById('previewDocAmount').textContent = 'PKR ' + docAmount.toLocaleString('en-US');
+        document.getElementById('previewHospAmount').textContent = 'PKR ' + hospAmount.toLocaleString('en-US');
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        recalculateRevenueSplit();
+    });
+</script>
 @endsection

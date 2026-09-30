@@ -194,6 +194,78 @@
             <p class="text-xs text-gray-500 mt-1">Patient visits, tokens, doctor fees and OPD collections</p>
         </a>
 
+        <!-- 12. Doctor Collection Report -->
+        <a href="/reports/doctor-collection" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-blue-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-blue-100 text-blue-600 p-3 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-stethoscope text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Report #12</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-blue-600 transition">12. Doctor Collection</h3>
+            <p class="text-xs text-gray-500 mt-1">Detailed patient-by-patient billing, doctor earned share on collected cash & unpaid breakdown.</p>
+        </a>
+
+        <!-- 13. All Doctors Collection -->
+        <a href="/reports/all-doctors-collection" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-blue-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-teal-100 text-teal-600 p-3 rounded-xl group-hover:bg-teal-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-users-viewfinder text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-teal-600 bg-teal-50 px-2.5 py-1 rounded-full">Report #13</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-teal-600 transition">13. All Doctors Summary</h3>
+            <p class="text-xs text-gray-500 mt-1">Comparative performance matrix of all doctors with total billed, collected, split shares and current balance.</p>
+        </a>
+
+        <!-- 14. Hospital Overall Collection -->
+        <a href="/reports/hospital-collection" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-blue-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-emerald-100 text-emerald-600 p-3 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-building-columns text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">Report #14</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-emerald-600 transition">14. Hospital Revenue</h3>
+            <p class="text-xs text-gray-500 mt-1">Executive overview: gross billing, net hospital revenue, doctor liability & actual cash in hand.</p>
+        </a>
+
+        <!-- 15. Hospital Services Report -->
+        <a href="/reports/hospital-services" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-blue-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-purple-100 text-purple-600 p-3 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-hand-holding-medical text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full">Report #15</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-purple-600 transition">15. Hospital Services</h3>
+            <p class="text-xs text-gray-500 mt-1">Per-service utilization breakdown (Sugar check, BP, Drips, Injections, Dressing, Nebulization).</p>
+        </a>
+
+        <!-- 16. Doctor Payable Report -->
+        <a href="/reports/doctor-payable" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-blue-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-amber-100 text-amber-600 p-3 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-scale-balanced text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">Report #16</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-amber-600 transition">16. Doctor Payable</h3>
+            <p class="text-xs text-gray-500 mt-1">Live doctor liabilities ledger, total earned vs settled, current balances with quick "Settle Now" actions.</p>
+        </a>
+
+        <!-- 17. Doctor Settlements History -->
+        <a href="/reports/doctor-settlements" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-blue-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-slate-100 text-slate-800 p-3 rounded-xl group-hover:bg-slate-800 group-hover:text-white transition">
+                    <i class="fa-solid fa-receipt text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-full">Report #17</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-slate-800 transition">17. Doctor Settlements</h3>
+            <p class="text-xs text-gray-500 mt-1">Disbursal history of hospital payouts to doctors with voucher numbers, references & printable vouchers.</p>
+        </a>
+
     </div>
 </div>
 @endsection

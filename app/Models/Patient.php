@@ -82,6 +82,14 @@ class Patient extends Model
     }
 
     /**
+     * Relationship: All hospital bills for this patient.
+     */
+    public function bills(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(HospitalBill::class, 'patient_id')->orderBy('bill_date', 'desc')->orderBy('id', 'desc');
+    }
+
+    /**
      * Helper: Check if the patient has an active (waiting or called) token for a specific date (defaults to today).
      */
     public function activeTokenToday(?string $date = null): ?PatientToken

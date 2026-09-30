@@ -189,9 +189,12 @@
                                 {{ $doc->phone ?: '—' }}
                             </td>
 
-                            <!-- Consultation Fee -->
-                            <td class="py-3 px-4 text-right font-mono font-bold text-emerald-700 text-sm">
-                                PKR {{ number_format($doc->consultation_fee, 0) }}
+                            <!-- Consultation Fee & Split -->
+                            <td class="py-3 px-4 text-right font-mono">
+                                <span class="font-bold text-gray-900 text-sm block">PKR {{ number_format($doc->consultation_fee, 0) }}</span>
+                                <span class="text-[10px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded inline-block mt-0.5 border border-blue-100">
+                                    {{ (float)($doc->doctor_share_percentage ?? 70) }}% / {{ (float)($doc->hospital_share_percentage ?? 30) }}%
+                                </span>
                             </td>
 
                             <!-- Status -->

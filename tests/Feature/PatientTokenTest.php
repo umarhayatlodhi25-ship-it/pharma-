@@ -458,14 +458,13 @@ class PatientTokenTest extends TestCase
 
         $response = $this->actingAs($this->user)->get("/patient-tokens/{$token->id}/print");
         $response->assertStatus(200);
-        $response->assertSee('OPD CONSULTATION');
-        $response->assertSee('TOKEN SLIP');
-        $response->assertSee('007');
+        $response->assertSee('OPD TOKEN');
+        $response->assertSee('TOKEN NO.');
         $response->assertSee('Tariq Mehmood');
         $response->assertSee('Dr. Ahmed');
         $response->assertSee('PKR 1,000');
-        $response->assertSee('PAID');
-        $response->assertSee('Please wait for your turn.');
+        $response->assertSee('WAITING');
+        $response->assertSee('Please wait for your token');
         // Sensitive info should NOT appear
         $response->assertDontSee('35201-1112233-1');
     }

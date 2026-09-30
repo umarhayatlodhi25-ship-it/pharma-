@@ -228,7 +228,8 @@
                         <th class="p-3 text-center">Free Patients</th>
                         <th class="p-3 text-right">Doctor Fees</th>
                         <th class="p-3 text-right">Collected</th>
-                        <th class="p-3 text-right">Free Amount</th>
+                        <th class="p-3 text-right">Doctor Share</th>
+                        <th class="p-3 text-right">Hospital Share</th>
                         <th class="p-3 text-center">Collection %</th>
                     </tr>
                 </thead>
@@ -247,6 +248,12 @@
                             </td>
                             <td class="p-3 text-right font-mono font-bold text-emerald-700">
                                 PKR {{ number_format($docReport['collected'], 0) }}
+                            </td>
+                            <td class="p-3 text-right font-mono font-black text-blue-700">
+                                PKR {{ number_format($docReport['doctor_share'], 0) }}
+                            </td>
+                            <td class="p-3 text-right font-mono font-bold text-indigo-700">
+                                PKR {{ number_format($docReport['hospital_share'], 0) }}
                             </td>
                             <td class="p-3 text-right font-mono font-semibold text-purple-700">
                                 PKR {{ number_format($docReport['free_amount'], 0) }}
@@ -279,8 +286,11 @@
                         <td class="p-3.5 text-right font-mono text-sm font-black text-emerald-700">
                             PKR {{ number_format($grandTotal['collected'], 0) }}
                         </td>
-                        <td class="p-3.5 text-right font-mono text-sm font-black text-purple-700">
-                            PKR {{ number_format($grandTotal['free_amount'], 0) }}
+                        <td class="p-3.5 text-right font-mono text-sm font-black text-blue-700">
+                            PKR {{ number_format($grandTotal['doctor_share'], 0) }}
+                        </td>
+                        <td class="p-3.5 text-right font-mono text-sm font-black text-indigo-700">
+                            PKR {{ number_format($grandTotal['hospital_share'], 0) }}
                         </td>
                         <td class="p-3.5 text-center">
                             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-black font-mono bg-slate-900 text-white">
@@ -319,8 +329,9 @@
                         <th class="p-3">Doctor</th>
                         <th class="p-3 text-right">Doctor Fee</th>
                         <th class="p-3 text-center">Fee Type</th>
-                        <th class="p-3">Free Reason</th>
-                        <th class="p-3 text-right">Final Amount</th>
+                        <th class="p-3 text-right">Collected</th>
+                        <th class="p-3 text-center">Doc %</th>
+                        <th class="p-3 text-right">Doc Share</th>
                         <th class="p-3 text-center">Status</th>
                     </tr>
                 </thead>
@@ -370,6 +381,13 @@
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 uppercase border border-purple-200">
                                         Free
                                     </span>
+                                    @if($t->free_reason)
+                                        <span class="block text-[10px] text-gray-500 italic mt-0.5">{{ $t->free_reason }}</span>
+                                    @endif
+                                @elseif(strtolower($t->payment_type) === 'partial')
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 uppercase border border-amber-200">
+                                        Partial
+                                    </span>
                                 @else
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 uppercase border border-blue-200">
                                         Paid
@@ -377,21 +395,7 @@
                                 @endif
                             </td>
 
-                            <!-- Free Reason -->
-                            <td class="p-3 text-gray-600">
-                                @if(strtolower($t->payment_type) === 'free' && $t->free_reason)
-                                    <span class="inline-block text-purple-800 font-medium">
-                                        {{ $t->free_reason }}
-                                        @if($t->free_reason === 'Other' && $t->other_reason)
-                                            <span class="text-[11px] text-gray-500">({{ $t->other_reason }})</span>
-                                        @endif
-                                    </span>
-                                @else
-                                    <span class="text-gray-300">—</span>
-                                @endif
-                            </td>
-
-                            <!-- Final Amount -->
+                            <!-- Collected Amount -->
                             <td class="p-3 text-right whitespace-nowrap font-mono">
                                 @if(strtolower($t->payment_type) === 'free' || floatval($t->charged_amount) == 0)
                                     <span class="font-black text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
@@ -402,6 +406,16 @@
                                         PKR {{ number_format($t->charged_amount, 0) }}
                                     </span>
                                 @endif
+                            </td>
+
+                            <!-- Doc % Snapshot -->
+                            <td class="p-3 text-center font-mono font-bold text-blue-700">
+                                {{ (float)($t->doctor_share_percentage ?? ($t->doctor ? $t->doctor->doctor_share_percentage : 70)) }}%
+                            </td>
+
+                            <!-- Doc Share Amount Snapshot -->
+                            <td class="p-3 text-right font-mono font-black text-blue-700 whitespace-nowrap">
+                                PKR {{ number_format($t->doctor_share_amount ?? 0, 0) }}
                             </td>
 
                             <!-- Status -->

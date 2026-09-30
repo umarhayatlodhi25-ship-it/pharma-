@@ -17,6 +17,11 @@ use App\Models\User;
 use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\PatientToken;
+use App\Models\HospitalBill;
+use App\Models\HospitalBillPayment;
+use App\Models\HospitalService;
+use App\Models\DoctorSettlement;
+use App\Models\DoctorLedger;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -551,6 +556,8 @@ class ReportController extends Controller
                 DB::raw("COUNT(CASE WHEN payment_type = 'free' THEN 1 END) as free_count"),
                 DB::raw("SUM(CASE WHEN status != 'cancelled' THEN consultation_fee ELSE 0 END) as doctor_fees"),
                 DB::raw("SUM(CASE WHEN status != 'cancelled' THEN charged_amount ELSE 0 END) as collected_amount"),
+                DB::raw("SUM(CASE WHEN status != 'cancelled' THEN doctor_share_amount ELSE 0 END) as doctor_share_amount"),
+                DB::raw("SUM(CASE WHEN status != 'cancelled' THEN hospital_share_amount ELSE 0 END) as hospital_share_amount"),
             ])
             ->groupBy('doctor_id')
             ->get()
@@ -563,6 +570,8 @@ class ReportController extends Controller
             'free_patients'  => 0,
             'doctor_fees'    => 0.0,
             'collected'      => 0.0,
+            'doctor_share'   => 0.0,
+            'hospital_share' => 0.0,
             'free_amount'    => 0.0,
             'collection_pct' => 0.0,
         ];
@@ -574,6 +583,8 @@ class ReportController extends Controller
             $pFree = $stat ? intval($stat->free_count) : 0;
             $dFees = $stat ? floatval($stat->doctor_fees) : 0.0;
             $dCollected = $stat ? floatval($stat->collected_amount) : 0.0;
+            $dDocShare = $stat ? floatval($stat->doctor_share_amount) : 0.0;
+            $dHospShare = $stat ? floatval($stat->hospital_share_amount) : 0.0;
             $dFreeAmount = max(0, $dFees - $dCollected);
             $dPct = $dFees > 0 ? round(($dCollected / $dFees) * 100, 1) : 0.0;
 
@@ -584,6 +595,8 @@ class ReportController extends Controller
                 'free_patients'  => $pFree,
                 'doctor_fees'    => $dFees,
                 'collected'      => $dCollected,
+                'doctor_share'   => $dDocShare,
+                'hospital_share' => $dHospShare,
                 'free_amount'    => $dFreeAmount,
                 'collection_pct' => $dPct,
             ];
@@ -593,6 +606,8 @@ class ReportController extends Controller
             $grandTotal['free_patients']  += $pFree;
             $grandTotal['doctor_fees']    += $dFees;
             $grandTotal['collected']      += $dCollected;
+            $grandTotal['doctor_share']   += $dDocShare;
+            $grandTotal['hospital_share'] += $dHospShare;
             $grandTotal['free_amount']    += $dFreeAmount;
         }
 
@@ -618,6 +633,377 @@ class ReportController extends Controller
             'totalFreeAmount',
             'doctorReports',
             'grandTotal'
+        ));
+    }
+
+    /**
+     * 12. Doctor Collection Report (Detailed)
+     */
+    public function doctorCollection(Request $request)
+    {
+        $doctors = Doctor::orderBy('name')->get();
+        $doctorId = $request->get('doctor_id');
+        $filter = $request->get('filter', 'today'); // today, yesterday, weekly, monthly, custom, all
+        $paymentStatus = $request->get('payment_status', 'all');
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+
+        $query = HospitalBill::with(['doctor', 'patient', 'service', 'token']);
+
+        if ($doctorId) {
+            $query->where('doctor_id', $doctorId);
+        }
+
+        if ($filter == 'today') {
+            $query->whereDate('bill_date', Carbon::today());
+        } elseif ($filter == 'yesterday') {
+            $query->whereDate('bill_date', Carbon::yesterday());
+        } elseif ($filter == 'weekly') {
+            $query->whereBetween('bill_date', [Carbon::now()->startOfWeek()->toDateString(), Carbon::now()->endOfWeek()->toDateString()]);
+        } elseif ($filter == 'monthly') {
+            $query->whereMonth('bill_date', Carbon::now()->month)->whereYear('bill_date', Carbon::now()->year);
+        } elseif ($filter == 'custom' && $startDate && $endDate) {
+            $query->whereBetween('bill_date', [Carbon::parse($startDate)->toDateString(), Carbon::parse($endDate)->toDateString()]);
+        }
+
+        if ($paymentStatus && $paymentStatus !== 'all') {
+            $query->where('payment_status', $paymentStatus);
+        }
+
+        $bills = $query->latest('id')->get();
+
+        $metrics = [
+            'total_patients'      => $bills->pluck('patient_id')->unique()->count(),
+            'total_bills'         => $bills->count(),
+            'total_billed'        => (float) $bills->sum('total_amount'),
+            'total_collected'     => (float) $bills->sum('paid_amount'),
+            'doctor_total_share'  => (float) $bills->sum('doctor_share'),
+            'hospital_total_share'=> (float) $bills->sum('hospital_share'),
+            'remaining_unpaid'    => (float) $bills->sum('remaining_amount'),
+        ];
+
+        $selectedDoctor = $doctorId ? Doctor::find($doctorId) : null;
+
+        return view('admin.reports.doctor_collection', compact(
+            'bills',
+            'doctors',
+            'selectedDoctor',
+            'doctorId',
+            'filter',
+            'paymentStatus',
+            'startDate',
+            'endDate',
+            'metrics'
+        ));
+    }
+
+    /**
+     * 13. All Doctors Collection Report (Summary & Comparison)
+     */
+    public function allDoctorsCollection(Request $request)
+    {
+        $filter = $request->get('filter', 'today'); // today, yesterday, weekly, monthly, custom, all
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+
+        $billQuery = HospitalBill::query();
+
+        if ($filter == 'today') {
+            $billQuery->whereDate('bill_date', Carbon::today());
+        } elseif ($filter == 'yesterday') {
+            $billQuery->whereDate('bill_date', Carbon::yesterday());
+        } elseif ($filter == 'weekly') {
+            $billQuery->whereBetween('bill_date', [Carbon::now()->startOfWeek()->toDateString(), Carbon::now()->endOfWeek()->toDateString()]);
+        } elseif ($filter == 'monthly') {
+            $billQuery->whereMonth('bill_date', Carbon::now()->month)->whereYear('bill_date', Carbon::now()->year);
+        } elseif ($filter == 'custom' && $startDate && $endDate) {
+            $billQuery->whereBetween('bill_date', [Carbon::parse($startDate)->toDateString(), Carbon::parse($endDate)->toDateString()]);
+        }
+
+        $bills = $billQuery->get();
+        $doctors = Doctor::orderBy('name')->get();
+
+        $doctorSummaries = [];
+        $hospitalTotals = [
+            'total_patients' => 0,
+            'total_billed' => 0,
+            'total_collected' => 0,
+            'total_doctor_share' => 0,
+            'total_hospital_share' => 0,
+            'total_settled' => 0,
+            'balance_payable' => 0,
+        ];
+
+        foreach ($doctors as $doc) {
+            $docBills = $bills->where('doctor_id', $doc->id);
+            $pCount = $docBills->pluck('patient_id')->unique()->count();
+            $billed = (float) $docBills->sum('total_amount');
+            $collected = (float) $docBills->sum('paid_amount');
+            $docShare = (float) $docBills->sum('doctor_share');
+            $hospShare = (float) $docBills->sum('hospital_share');
+            
+            $totalSettled = (float) $doc->settlements()->sum('amount');
+            $currentPayable = (float) $doc->current_payable;
+
+            $doctorSummaries[] = [
+                'doctor' => $doc,
+                'patients_count' => $pCount,
+                'total_billed' => $billed,
+                'total_collected' => $collected,
+                'doctor_share' => $docShare,
+                'hospital_share' => $hospShare,
+                'total_settled' => $totalSettled,
+                'current_payable' => $currentPayable,
+            ];
+
+            $hospitalTotals['total_patients'] += $pCount;
+            $hospitalTotals['total_billed'] += $billed;
+            $hospitalTotals['total_collected'] += $collected;
+            $hospitalTotals['total_doctor_share'] += $docShare;
+            $hospitalTotals['total_hospital_share'] += $hospShare;
+            $hospitalTotals['total_settled'] += $totalSettled;
+            $hospitalTotals['balance_payable'] += $currentPayable;
+        }
+
+        return view('admin.reports.all_doctors_collection', compact(
+            'doctorSummaries',
+            'hospitalTotals',
+            'filter',
+            'startDate',
+            'endDate'
+        ));
+    }
+
+    /**
+     * 14. Hospital Overall Collection Report (Overall Revenue)
+     */
+    public function hospitalCollection(Request $request)
+    {
+        $filter = $request->get('filter', 'today'); // today, yesterday, weekly, monthly, custom, all
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+
+        $billQuery = HospitalBill::query();
+        $settlementQuery = DoctorSettlement::query();
+
+        if ($filter == 'today') {
+            $billQuery->whereDate('bill_date', Carbon::today());
+            $settlementQuery->whereDate('settlement_date', Carbon::today());
+        } elseif ($filter == 'yesterday') {
+            $billQuery->whereDate('bill_date', Carbon::yesterday());
+            $settlementQuery->whereDate('settlement_date', Carbon::yesterday());
+        } elseif ($filter == 'weekly') {
+            $billQuery->whereBetween('bill_date', [Carbon::now()->startOfWeek()->toDateString(), Carbon::now()->endOfWeek()->toDateString()]);
+            $settlementQuery->whereBetween('settlement_date', [Carbon::now()->startOfWeek()->toDateString(), Carbon::now()->endOfWeek()->toDateString()]);
+        } elseif ($filter == 'monthly') {
+            $billQuery->whereMonth('bill_date', Carbon::now()->month)->whereYear('bill_date', Carbon::now()->year);
+            $settlementQuery->whereMonth('settlement_date', Carbon::now()->month)->whereYear('settlement_date', Carbon::now()->year);
+        } elseif ($filter == 'custom' && $startDate && $endDate) {
+            $billQuery->whereBetween('bill_date', [Carbon::parse($startDate)->toDateString(), Carbon::parse($endDate)->toDateString()]);
+            $settlementQuery->whereBetween('settlement_date', [Carbon::parse($startDate)->toDateString(), Carbon::parse($endDate)->toDateString()]);
+        }
+
+        $bills = $billQuery->with(['doctor', 'service'])->get();
+        $settlementsSum = (float) $settlementQuery->sum('amount');
+
+        $metrics = [
+            'total_billed'       => (float) $bills->sum('total_amount'),
+            'total_collected'    => (float) $bills->sum('paid_amount'),
+            'doctor_share'       => (float) $bills->sum('doctor_share'),
+            'hospital_share'     => (float) $bills->sum('hospital_share'),
+            'total_unpaid'       => (float) $bills->sum('remaining_amount'),
+            'total_settled'      => $settlementsSum,
+            'cash_in_hand'       => (float) ($bills->sum('paid_amount') - $settlementsSum),
+        ];
+
+        // Breakdown by Service
+        $serviceBreakdown = $bills->groupBy('hospital_service_id')->map(function ($group) {
+            $service = $group->first()->service;
+            return [
+                'name' => $service ? $service->name : 'General Consultation',
+                'count' => $group->count(),
+                'billed' => (float) $group->sum('total_amount'),
+                'collected' => (float) $group->sum('paid_amount'),
+                'hospital_share' => (float) $group->sum('hospital_share'),
+                'doctor_share' => (float) $group->sum('doctor_share'),
+            ];
+        });
+
+        // Breakdown by Doctor
+        $doctorBreakdown = $bills->groupBy('doctor_id')->map(function ($group) {
+            $doctor = $group->first()->doctor;
+            return [
+                'name' => $doctor ? $doctor->name : 'N/A',
+                'count' => $group->count(),
+                'billed' => (float) $group->sum('total_amount'),
+                'collected' => (float) $group->sum('paid_amount'),
+                'hospital_share' => (float) $group->sum('hospital_share'),
+                'doctor_share' => (float) $group->sum('doctor_share'),
+            ];
+        });
+
+        return view('admin.reports.hospital_collection', compact(
+            'metrics',
+            'serviceBreakdown',
+            'doctorBreakdown',
+            'filter',
+            'startDate',
+            'endDate'
+        ));
+    }
+
+    /**
+     * 15. Hospital Services Report
+     */
+    public function hospitalServices(Request $request)
+    {
+        $filter = $request->get('filter', 'today'); // today, yesterday, weekly, monthly, custom, all
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+
+        $billQuery = HospitalBill::query();
+
+        if ($filter == 'today') {
+            $billQuery->whereDate('bill_date', Carbon::today());
+        } elseif ($filter == 'yesterday') {
+            $billQuery->whereDate('bill_date', Carbon::yesterday());
+        } elseif ($filter == 'weekly') {
+            $billQuery->whereBetween('bill_date', [Carbon::now()->startOfWeek()->toDateString(), Carbon::now()->endOfWeek()->toDateString()]);
+        } elseif ($filter == 'monthly') {
+            $billQuery->whereMonth('bill_date', Carbon::now()->month)->whereYear('bill_date', Carbon::now()->year);
+        } elseif ($filter == 'custom' && $startDate && $endDate) {
+            $billQuery->whereBetween('bill_date', [Carbon::parse($startDate)->toDateString(), Carbon::parse($endDate)->toDateString()]);
+        }
+
+        $bills = $billQuery->get();
+        $services = HospitalService::orderBy('name')->get();
+
+        $serviceRows = [];
+        $totals = [
+            'count' => 0,
+            'billed' => 0,
+            'collected' => 0,
+            'hospital_share' => 0,
+            'doctor_share' => 0,
+        ];
+
+        foreach ($services as $srv) {
+            $srvBills = $bills->where('hospital_service_id', $srv->id);
+            $cnt = $srvBills->count();
+            $bld = (float) $srvBills->sum('total_amount');
+            $clt = (float) $srvBills->sum('paid_amount');
+            $hsh = (float) $srvBills->sum('hospital_share');
+            $dsh = (float) $srvBills->sum('doctor_share');
+
+            $serviceRows[] = [
+                'service' => $srv,
+                'count' => $cnt,
+                'billed' => $bld,
+                'collected' => $clt,
+                'hospital_share' => $hsh,
+                'doctor_share' => $dsh,
+            ];
+
+            $totals['count'] += $cnt;
+            $totals['billed'] += $bld;
+            $totals['collected'] += $clt;
+            $totals['hospital_share'] += $hsh;
+            $totals['doctor_share'] += $dsh;
+        }
+
+        return view('admin.reports.hospital_services', compact(
+            'serviceRows',
+            'totals',
+            'filter',
+            'startDate',
+            'endDate'
+        ));
+    }
+
+    /**
+     * 16. Doctor Payable Report
+     */
+    public function doctorPayable(Request $request)
+    {
+        $doctors = Doctor::orderBy('name')->get();
+
+        $rows = [];
+        $grandTotal = [
+            'total_earned' => 0,
+            'total_settled' => 0,
+            'current_payable' => 0,
+        ];
+
+        foreach ($doctors as $doc) {
+            $earned = (float) $doc->total_earned;
+            $settled = (float) $doc->total_paid;
+            $payable = (float) $doc->current_payable;
+            $lastSettlement = $doc->settlements()->latest('settlement_date')->first();
+
+            $rows[] = [
+                'doctor' => $doc,
+                'earned' => $earned,
+                'settled' => $settled,
+                'payable' => $payable,
+                'last_settlement_date' => $lastSettlement ? $lastSettlement->settlement_date->format('d-M-Y') : 'Never',
+            ];
+
+            $grandTotal['total_earned'] += $earned;
+            $grandTotal['total_settled'] += $settled;
+            $grandTotal['current_payable'] += $payable;
+        }
+
+        return view('admin.reports.doctor_payable', compact('rows', 'grandTotal'));
+    }
+
+    /**
+     * 17. Doctor Settlements History Report
+     */
+    public function doctorSettlements(Request $request)
+    {
+        $doctors = Doctor::orderBy('name')->get();
+        $doctorId = $request->get('doctor_id');
+        $filter = $request->get('filter', 'all'); // all, today, weekly, monthly, custom
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+        $paymentMethod = $request->get('payment_method');
+
+        $query = DoctorSettlement::with(['doctor', 'settler']);
+
+        if ($doctorId) {
+            $query->where('doctor_id', $doctorId);
+        }
+
+        if ($filter == 'today') {
+            $query->whereDate('settlement_date', Carbon::today());
+        } elseif ($filter == 'yesterday') {
+            $query->whereDate('settlement_date', Carbon::yesterday());
+        } elseif ($filter == 'weekly') {
+            $query->whereBetween('settlement_date', [Carbon::now()->startOfWeek()->toDateString(), Carbon::now()->endOfWeek()->toDateString()]);
+        } elseif ($filter == 'monthly') {
+            $query->whereMonth('settlement_date', Carbon::now()->month)->whereYear('settlement_date', Carbon::now()->year);
+        } elseif ($filter == 'custom' && $startDate && $endDate) {
+            $query->whereBetween('settlement_date', [Carbon::parse($startDate)->toDateString(), Carbon::parse($endDate)->toDateString()]);
+        }
+
+        if ($paymentMethod) {
+            $query->where('payment_method', $paymentMethod);
+        }
+
+        $settlements = $query->latest('id')->get();
+        $totalAmount = (float) $settlements->sum('amount');
+        $totalCount = $settlements->count();
+
+        return view('admin.reports.doctor_settlements', compact(
+            'settlements',
+            'doctors',
+            'doctorId',
+            'filter',
+            'startDate',
+            'endDate',
+            'paymentMethod',
+            'totalAmount',
+            'totalCount'
         ));
     }
 }

@@ -38,7 +38,10 @@ class TokenManagement extends Component
     public $duplicate_patient_warning = null;
 
     // Fee & Payment
-    public $fee_type = 'paid'; // 'paid' or 'free'
+    public $hospital_service_id = '';
+    public $fee_type = 'paid'; // 'paid', 'free', or 'partial'
+    public $paid_amount = '';
+    public $payment_method = 'cash';
     public $free_reason = '';
     public $other_reason = '';
     public $notes = '';
@@ -70,10 +73,23 @@ class TokenManagement extends Component
             }
         }
 
+        // Auto-select default consultation service
+        $defaultService = \App\Models\HospitalService::active()->where('service_type', 'consultation')->first()
+            ?? \App\Models\HospitalService::active()->first();
+        if ($defaultService) {
+            $this->hospital_service_id = (string) $defaultService->id;
+        }
+
         if (request()->has('patient_id')) {
             $this->selectPatient(request('patient_id'));
         }
     }
+
+    public function updatedHospitalServiceId($serviceId)
+    {
+        // When service changes, re-sync fee if needed
+    }
+
 
     public function updatedDoctorId()
     {
@@ -182,8 +198,15 @@ class TokenManagement extends Component
         if ($value === 'paid') {
             $this->free_reason = '';
             $this->other_reason = '';
-        } elseif ($value === 'free' && empty($this->free_reason)) {
-            $this->free_reason = 'Poor Patient';
+            $this->paid_amount = '';
+        } elseif ($value === 'free') {
+            if (empty($this->free_reason)) {
+                $this->free_reason = 'Poor Patient';
+            }
+            $this->paid_amount = 0;
+        } elseif ($value === 'partial') {
+            $this->free_reason = '';
+            $this->other_reason = '';
         }
     }
 
@@ -196,9 +219,11 @@ class TokenManagement extends Component
 
         // Validation rules
         $rules = [
-            'doctor_id'    => 'required|exists:doctors,id',
-            'fee_type'     => 'required|in:paid,free',
-            'notes'        => 'nullable|string|max:500',
+            'doctor_id'           => 'required|exists:doctors,id',
+            'hospital_service_id' => 'nullable|exists:hospital_services,id',
+            'fee_type'            => 'required|in:paid,free,partial',
+            'payment_method'      => 'required|in:cash,card,bank_transfer,other',
+            'notes'               => 'nullable|string|max:500',
         ];
 
         if ($this->patient_mode === 'existing') {
@@ -218,6 +243,8 @@ class TokenManagement extends Component
             if ($this->free_reason === 'Other') {
                 $rules['other_reason'] = 'required|string|max:255';
             }
+        } elseif ($this->fee_type === 'partial') {
+            $rules['paid_amount'] = 'required|numeric|min:0.01';
         }
 
         $messages = [
@@ -228,19 +255,64 @@ class TokenManagement extends Component
             'new_gender.required'          => 'Gender is required.',
             'free_reason.required'         => 'Reason for Free Visit is required.',
             'other_reason.required'        => 'Please specify the free visit reason.',
+            'paid_amount.required'         => 'Please enter the collected payment amount.',
         ];
 
         $this->validate($rules, $messages);
 
         $doctor = Doctor::findOrFail($this->doctor_id);
-        $doctorFee = (float) $doctor->consultation_fee;
-        $finalAmount = ($this->fee_type === 'free') ? 0.00 : $doctorFee;
+        $service = !empty($this->hospital_service_id) ? \App\Models\HospitalService::find($this->hospital_service_id) : null;
+        $isConsultation = (!$service || $service->service_type === 'consultation' || in_array($service->code, ['SRV-CONSULT', 'DOC_CONSULT']));
+
+        if ($isConsultation) {
+            $doctorFee = (float) $doctor->consultation_fee;
+            $doctorSharePct = (float) ($doctor->doctor_share_percentage ?? 70.00);
+            $hospitalSharePct = round(100.00 - $doctorSharePct, 2);
+        } else {
+            $doctorFee = (float) $service->default_fee;
+            $doctorSharePct = (float) $service->doctor_share_percentage;
+            $hospitalSharePct = (float) $service->hospital_share_percentage;
+        }
+
+        $discountAmount = 0.00;
+        if ($this->fee_type === 'free') {
+            $finalAmount = 0.00;
+            $discountAmount = $doctorFee;
+            $doctorShareAmount = 0.00;
+            $hospitalShareAmount = 0.00;
+        } elseif ($this->fee_type === 'partial') {
+            $finalAmount = round(floatval($this->paid_amount), 2);
+            if ($finalAmount > $doctorFee) {
+                $finalAmount = $doctorFee;
+            }
+            // Revenue split recognized ONLY on the amount actually collected
+            $doctorShareAmount = round($finalAmount * ($doctorSharePct / 100), 2);
+            $hospitalShareAmount = round($finalAmount - $doctorShareAmount, 2);
+        } else {
+            $finalAmount = $doctorFee;
+            $doctorShareAmount = round($finalAmount * ($doctorSharePct / 100), 2);
+            $hospitalShareAmount = round($finalAmount - $doctorShareAmount, 2);
+        }
+
         $freeReason = ($this->fee_type === 'free') ? $this->free_reason : null;
         $otherReason = ($this->fee_type === 'free' && $this->free_reason === 'Other') ? $this->other_reason : null;
         $today = now()->toDateString();
 
         try {
-            $token = DB::transaction(function () use ($doctor, $doctorFee, $finalAmount, $freeReason, $otherReason, $today) {
+            $token = DB::transaction(function () use (
+                $doctor,
+                $service,
+                $doctorFee,
+                $finalAmount,
+                $discountAmount,
+                $doctorSharePct,
+                $hospitalSharePct,
+                $doctorShareAmount,
+                $hospitalShareAmount,
+                $freeReason,
+                $otherReason,
+                $today
+            ) {
                 // 1. Create Patient if New Patient mode
                 if ($this->patient_mode === 'new') {
                     $patient = Patient::create([
@@ -262,20 +334,52 @@ class TokenManagement extends Component
                 $nextTokenNumber = ($maxToken ? intval($maxToken) : 0) + 1;
 
                 // 3. Create Token record
-                return PatientToken::create([
-                    'patient_id'       => $patientId,
-                    'doctor_id'        => $doctor->id,
-                    'token_number'     => $nextTokenNumber,
-                    'token_date'       => $today,
-                    'payment_type'     => $this->fee_type,
-                    'consultation_fee' => $doctorFee,
-                    'charged_amount'   => $finalAmount,
-                    'free_reason'      => $freeReason,
-                    'other_reason'     => $otherReason,
-                    'status'           => 'waiting',
-                    'notes'            => trim($this->notes) ?: null,
+                $createdToken = PatientToken::create([
+                    'patient_id'                => $patientId,
+                    'doctor_id'                 => $doctor->id,
+                    'hospital_service_id'       => $service ? $service->id : null,
+                    'token_number'              => $nextTokenNumber,
+                    'token_date'                => $today,
+                    'payment_type'              => $this->fee_type,
+                    'consultation_fee'          => $doctorFee,
+                    'charged_amount'            => $finalAmount,
+                    'discount_amount'           => $discountAmount,
+                    'doctor_share_percentage'   => $doctorSharePct,
+                    'hospital_share_percentage' => $hospitalSharePct,
+                    'doctor_share_amount'       => $doctorShareAmount,
+                    'hospital_share_amount'     => $hospitalShareAmount,
+                    'free_reason'               => $freeReason,
+                    'other_reason'              => $otherReason,
+                    'status'                    => 'waiting',
+                    'notes'                     => trim($this->notes) ?: null,
                 ]);
+
+                // 4. Create Hospital Bill & Revenue Split atomically
+                $billingService = app(\App\Services\HospitalBillingService::class);
+
+                $bill = $billingService->createBill([
+                    'patient_id'                => $patientId,
+                    'doctor_id'                 => $doctor->id,
+                    'hospital_service_id'       => $service ? $service->id : null,
+                    'patient_token_id'          => $createdToken->id,
+                    'total_amount'              => $doctorFee,
+                    'discount_amount'           => $discountAmount,
+                    'doctor_share_percentage'   => $doctorSharePct,
+                    'payment_type'              => $this->fee_type,
+                    'paid_amount'               => $finalAmount,
+                    'payment_method'            => $this->payment_method,
+                    'free_reason'               => $freeReason,
+                    'notes'                     => trim($this->notes) ?: null,
+                    'created_by'                => auth()->id(),
+                ]);
+
+                $createdToken->update([
+                    'hospital_bill_id' => $bill->id,
+                ]);
+
+                return $createdToken;
             });
+
 
             // Set generated token for preview card and print
             $this->generatedTokenId = $token->id;
@@ -420,9 +524,14 @@ class TokenManagement extends Component
         $generatedToken = $this->generatedTokenId ? PatientToken::with(['patient', 'doctor'])->find($this->generatedTokenId) : null;
         $printToken = $this->printTokenId ? PatientToken::with(['patient', 'doctor'])->find($this->printTokenId) : $generatedToken;
 
+        $services = \App\Models\HospitalService::active()->orderBy('name')->get();
+        $selectedService = !empty($this->hospital_service_id) ? \App\Models\HospitalService::find($this->hospital_service_id) : null;
+
         return view('livewire.opd.token-management', compact(
             'doctors',
             'selectedDoctor',
+            'services',
+            'selectedService',
             'selectedPatient',
             'patientSearchResults',
             'queueTokens',
@@ -438,4 +547,5 @@ class TokenManagement extends Component
             'today'
         ))->layout('layouts.app');
     }
+
 }

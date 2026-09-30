@@ -56,7 +56,7 @@
         </div>
     @endif
 
-    @if ($errors->any())
+    @if (isset($errors) && $errors->any())
         <div class="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-2xl text-sm shadow-xs">
             <div class="flex items-center space-x-2 font-bold mb-1.5">
                 <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
@@ -74,17 +74,17 @@
     <form id="tokenForm" action="{{ route('patient-tokens.store') }}" method="POST" class="space-y-6">
         @csrf
 
-        <!-- PART 2 & PART 3: SELECT DOCTOR & CURRENT DATE -->
+        <!-- PART 2 & PART 3: SELECT DOCTOR, SERVICE & DATE -->
         <div class="bg-white p-6 sm:p-7 rounded-2xl shadow-xs border border-slate-200/80">
             <div class="border-b border-slate-100 pb-4 mb-5 flex justify-between items-center">
                 <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2">
                     <i class="fa-solid fa-user-doctor text-blue-600"></i>
-                    <span>1. Select Doctor & Date</span>
+                    <span>1. Select Doctor, Service & Date</span>
                 </h2>
-                <span class="text-xs text-slate-400 font-semibold">Active OPD Doctors Only</span>
+                <span class="text-xs text-slate-400 font-semibold">OPD & Clinical Procedures</span>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <!-- Doctor Selection Dropdown -->
                 <div>
                     <label for="doctor_id" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
@@ -104,17 +104,19 @@
                                 data-name="{{ $doc->name }}"
                                 data-specialization="{{ $doc->specialization }}"
                                 data-fee="{{ (float) $doc->consultation_fee }}"
+                                data-doc-pct="{{ (float) ($doc->doctor_share_percentage ?? 70) }}"
+                                data-hosp-pct="{{ (float) ($doc->hospital_share_percentage ?? 30) }}"
                                 {{ (old('doctor_id', $selectedDoctor?->id) == $doc->id) ? 'selected' : '' }}
                             >
-                                {{ $doc->name }} — {{ $doc->specialization }} (PKR {{ number_format($doc->consultation_fee, 0) }})
+                                {{ $doc->name }} — {{ $doc->specialization }} (PKR {{ number_format($doc->consultation_fee, 0) }} • {{ (float)($doc->doctor_share_percentage ?? 70) }}% / {{ (float)($doc->hospital_share_percentage ?? 30) }}%)
                             </option>
                         @endforeach
                     </select>
 
-                    <!-- Doctor Quick Info Display -->
-                    <div id="doctorInfoCard" class="mt-3 p-4 bg-blue-50/70 border border-blue-100 rounded-xl text-xs space-y-1.5 transition">
+                    <!-- Doctor Quick Info Display (User Spec Section 4) -->
+                    <div id="doctorInfoCard" class="mt-3 p-3.5 bg-blue-50/70 border border-blue-100 rounded-xl text-xs space-y-1.5 transition">
                         <div class="flex justify-between items-center">
-                            <span class="text-slate-500">Doctor Name:</span>
+                            <span class="text-slate-500">Doctor:</span>
                             <span id="docDispName" class="font-bold text-slate-800 text-sm">Please select doctor</span>
                         </div>
                         <div class="flex justify-between items-center">
@@ -124,6 +126,67 @@
                         <div class="flex justify-between items-center pt-1.5 border-t border-blue-200/50">
                             <span class="text-slate-600 font-medium">Consultation Fee:</span>
                             <span id="docDispFee" class="font-mono font-black text-blue-900 text-sm">PKR 0</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-500">Doctor Share:</span>
+                            <span id="docDispDocPct" class="font-mono font-bold text-blue-700">70%</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-500">Hospital Share:</span>
+                            <span id="docDispHospPct" class="font-mono font-bold text-indigo-700">30% (Automatic)</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 pt-1 border-t border-blue-200/40 text-center">
+                            <div class="p-1.5 bg-white/80 rounded border border-blue-100">
+                                <span class="text-[9px] font-bold text-blue-600 uppercase block">Doctor Amount</span>
+                                <span id="docDispDocAmount" class="font-mono font-black text-blue-900 text-xs">PKR 0</span>
+                            </div>
+                            <div class="p-1.5 bg-white/80 rounded border border-blue-100">
+                                <span class="text-[9px] font-bold text-indigo-600 uppercase block">Hospital Amount</span>
+                                <span id="docDispHospAmount" class="font-mono font-black text-indigo-900 text-xs">PKR 0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hospital Service Selection Dropdown -->
+                <div>
+                    <label for="hospital_service_id" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
+                        Hospital Service / Procedure
+                    </label>
+                    <select 
+                        id="hospital_service_id" 
+                        name="hospital_service_id" 
+                        class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 transition cursor-pointer"
+                        onchange="handleServiceChange()"
+                    >
+                        @foreach($services as $srv)
+                            <option 
+                                value="{{ $srv->id }}"
+                                data-name="{{ $srv->name }}"
+                                data-code="{{ $srv->code }}"
+                                data-fee="{{ (float) $srv->default_fee }}"
+                                data-doc-pct="{{ $srv->doctor_share_percentage }}"
+                                data-hosp-pct="{{ $srv->hospital_share_percentage }}"
+                                {{ old('hospital_service_id', (in_array($srv->code, ['SRV-CONSULT', 'DOC_CONSULT']) ? $srv->id : '')) == $srv->id ? 'selected' : '' }}
+                            >
+                                {{ $srv->name }} ({{ $srv->doctor_share_percentage }}% Doc / {{ $srv->hospital_share_percentage }}% Hosp)
+                            </option>
+                        @endforeach
+                    </select>
+
+                    <!-- Service Quick Split Info -->
+                    <div id="serviceInfoCard" class="mt-3 p-3.5 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs space-y-1.5 transition">
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-500">Service:</span>
+                            <span id="srvDispName" class="font-bold text-slate-800">Doctor Consultation</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-500">Split Rule:</span>
+                            <span id="srvDispSplit" class="font-mono font-bold text-indigo-700">70% Doc / 30% Hosp</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-1.5 border-t border-indigo-200/50">
+                            <span class="text-slate-600 font-medium">Standard Fee:</span>
+                            <span id="srvDispFee" class="font-mono font-black text-indigo-900 text-sm">Uses Doctor Fee</span>
                         </div>
                     </div>
                 </div>
@@ -141,12 +204,15 @@
                             </span>
                             <span class="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800">Today</span>
                         </div>
-                        <p class="text-[11px] text-slate-400 mt-1">Tokens are automatically generated for today's OPD date.</p>
+                        <p class="text-[11px] text-slate-400 mt-1">Tokens are generated for today's OPD queue.</p>
                     </div>
 
-                    <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center space-x-3 text-xs text-slate-600">
-                        <i class="fa-solid fa-shield-halved text-blue-500 text-lg"></i>
-                        <span>Doctor consultation fee is fixed by hospital records and cannot be arbitrarily modified.</span>
+                    <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/70 text-xs text-slate-600 space-y-1">
+                        <div class="flex items-center space-x-2 font-bold text-slate-700">
+                            <i class="fa-solid fa-scale-balanced text-blue-600"></i>
+                            <span>Hospital Revenue Split</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500">The hospital receives 100% of patient payments. Doctor share is credited to the doctor's ledger on collected cash.</p>
                     </div>
                 </div>
             </div>
@@ -429,67 +495,122 @@
             </div>
         </div>
 
-        <!-- PART 8, 9, 10, 11: PAYMENT TYPE & CHARGED AMOUNT -->
+        <!-- PART 8, 9, 10, 11: PAYMENT TYPE, PARTIAL PAYMENT & REVENUE SPLIT -->
         <div class="bg-white p-6 sm:p-7 rounded-2xl shadow-xs border border-slate-200/80 space-y-6">
             <div class="border-b border-slate-100 pb-4 flex justify-between items-center">
                 <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2">
                     <i class="fa-solid fa-coins text-blue-600"></i>
-                    <span>3. Payment Type & Consultation Fee</span>
+                    <span>3. Payment Type & Hospital Revenue Split</span>
                 </h2>
-                <span class="text-xs text-slate-400 font-semibold">Hospital Billing</span>
+                <span class="text-xs text-slate-400 font-semibold">Hospital Billing Engine</span>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Payment Mode Switcher (Paid vs Free) -->
+                <!-- Payment Mode Switcher (Paid vs Partial vs Free) -->
                 <div class="space-y-4">
                     <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">
                         Payment Type <span class="text-rose-500">*</span>
                     </label>
 
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-3 gap-2 sm:gap-3">
                         <!-- Paid Option -->
-                        <label id="labelPaid" class="cursor-pointer p-4 rounded-xl border-2 border-blue-600 bg-blue-50/50 flex items-center space-x-3 transition">
-                            <input 
-                                type="radio" 
-                                name="payment_type" 
-                                value="paid" 
-                                {{ old('payment_type', 'paid') === 'paid' ? 'checked' : '' }}
-                                class="text-blue-600 focus:ring-blue-500 h-4 w-4"
-                                onchange="handlePaymentChange('paid')"
-                            >
-                            <div>
-                                <span class="font-bold text-sm text-slate-900 block">Paid Consultation</span>
-                                <span class="text-xs text-slate-500">Normal Doctor Fee</span>
+                        <label id="labelPaid" class="cursor-pointer p-3 rounded-xl border-2 border-blue-600 bg-blue-50/50 flex flex-col justify-between transition">
+                            <div class="flex items-center space-x-2 mb-1">
+                                <input 
+                                    type="radio" 
+                                    name="payment_type" 
+                                    value="paid" 
+                                    {{ old('payment_type', 'paid') === 'paid' ? 'checked' : '' }}
+                                    class="text-blue-600 focus:ring-blue-500 h-4 w-4"
+                                    onchange="handlePaymentChange('paid')"
+                                >
+                                <span class="font-bold text-xs sm:text-sm text-slate-900">Full Paid</span>
                             </div>
+                            <span class="text-[10px] text-slate-500">100% Collected</span>
+                        </label>
+
+                        <!-- Partial Option -->
+                        <label id="labelPartial" class="cursor-pointer p-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 flex flex-col justify-between transition">
+                            <div class="flex items-center space-x-2 mb-1">
+                                <input 
+                                    type="radio" 
+                                    name="payment_type" 
+                                    value="partial" 
+                                    {{ old('payment_type') === 'partial' ? 'checked' : '' }}
+                                    class="text-amber-600 focus:ring-amber-500 h-4 w-4"
+                                    onchange="handlePaymentChange('partial')"
+                                >
+                                <span class="font-bold text-xs sm:text-sm text-slate-900">Partial</span>
+                            </div>
+                            <span class="text-[10px] text-amber-600 font-semibold">Advance Deposit</span>
                         </label>
 
                         <!-- Free Option -->
-                        <label id="labelFree" class="cursor-pointer p-4 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 flex items-center space-x-3 transition">
-                            <input 
-                                type="radio" 
-                                name="payment_type" 
-                                value="free" 
-                                {{ old('payment_type') === 'free' ? 'checked' : '' }}
-                                class="text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                                onchange="handlePaymentChange('free')"
-                            >
-                            <div>
-                                <span class="font-bold text-sm text-slate-900 block">Free Consultation</span>
-                                <span class="text-xs text-emerald-600 font-semibold">100% Fee Waiver (PKR 0)</span>
+                        <label id="labelFree" class="cursor-pointer p-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 flex flex-col justify-between transition">
+                            <div class="flex items-center space-x-2 mb-1">
+                                <input 
+                                    type="radio" 
+                                    name="payment_type" 
+                                    value="free" 
+                                    {{ old('payment_type') === 'free' ? 'checked' : '' }}
+                                    class="text-purple-600 focus:ring-purple-500 h-4 w-4"
+                                    onchange="handlePaymentChange('free')"
+                                >
+                                <span class="font-bold text-xs sm:text-sm text-slate-900">Free</span>
                             </div>
+                            <span class="text-[10px] text-purple-600 font-semibold">100% Waiver</span>
                         </label>
                     </div>
 
+                    <!-- Partial Payment Input Field -->
+                    <div id="sectionPartialAmount" class="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3 {{ old('payment_type') === 'partial' ? '' : 'hidden' }}">
+                        <label for="paid_amount" class="block text-xs font-bold uppercase tracking-wider text-amber-900">
+                            Paid Amount (Advance Collected) <span class="text-rose-500">*</span>
+                        </label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-xs font-bold text-amber-700">PKR</span>
+                            <input 
+                                type="number" 
+                                step="1" 
+                                min="0" 
+                                id="paid_amount" 
+                                name="paid_amount" 
+                                value="{{ old('paid_amount') }}" 
+                                placeholder="0" 
+                                class="w-full pl-12 pr-3 py-2.5 bg-white border border-amber-300 rounded-xl text-sm font-mono font-bold text-amber-900 focus:outline-none focus:border-amber-500"
+                                oninput="updateBillingBreakdown()"
+                            >
+                        </div>
+                        <p class="text-[11px] text-amber-700">Doctor & Hospital share will be calculated strictly on this collected amount.</p>
+                    </div>
+
+                    <!-- Payment Method Dropdown -->
+                    <div>
+                        <label for="payment_method" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                            Payment Method
+                        </label>
+                        <select 
+                            id="payment_method" 
+                            name="payment_method" 
+                            class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 transition"
+                        >
+                            <option value="cash" {{ old('payment_method') === 'cash' ? 'selected' : '' }}>Cash</option>
+                            <option value="card" {{ old('payment_method') === 'card' ? 'selected' : '' }}>Debit / Credit Card</option>
+                            <option value="bank_transfer" {{ old('payment_method') === 'bank_transfer' ? 'selected' : '' }}>Bank Transfer / Online</option>
+                            <option value="other" {{ old('payment_method') === 'other' ? 'selected' : '' }}>Other</option>
+                        </select>
+                    </div>
+
                     <!-- Free Consultation Reason Dropdown (Part 11) -->
-                    <div id="sectionFreeReason" class="p-4 bg-amber-50/60 border border-amber-200/80 rounded-xl space-y-3 {{ old('payment_type') === 'free' ? '' : 'hidden' }}">
+                    <div id="sectionFreeReason" class="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-3 {{ old('payment_type') === 'free' ? '' : 'hidden' }}">
                         <div>
-                            <label for="free_reason" class="block text-xs font-bold uppercase tracking-wider text-amber-900 mb-1.5">
+                            <label for="free_reason" class="block text-xs font-bold uppercase tracking-wider text-purple-900 mb-1.5">
                                 Free Reason <span class="text-rose-500">*</span>
                             </label>
                             <select 
                                 id="free_reason" 
                                 name="free_reason" 
-                                class="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-sm focus:outline-none focus:border-amber-500 text-slate-800 transition"
+                                class="w-full p-2.5 bg-white border border-purple-300 rounded-xl text-sm focus:outline-none focus:border-purple-500 text-slate-800 transition"
                                 onchange="handleFreeReasonChange(this.value)"
                             >
                                 <option value="">-- Select Reason --</option>
@@ -503,54 +624,81 @@
 
                         <!-- Other Reason text input -->
                         <div id="sectionOtherReason" class="{{ old('free_reason') === 'Other' ? '' : 'hidden' }}">
-                            <label for="other_reason" class="block text-xs font-bold uppercase tracking-wider text-amber-900 mb-1.5">
+                            <label for="other_reason" class="block text-xs font-bold uppercase tracking-wider text-purple-900 mb-1.5">
                                 Specify Other Reason <span class="text-rose-500">*</span>
                             </label>
                             <input 
                                 type="text" 
                                 id="other_reason" 
                                 name="other_reason" 
-                                value="{{ old('other_reason') }}"
+                                value="{{ old('other_reason') }}" 
                                 placeholder="Enter specific free reason details..."
-                                class="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-sm focus:outline-none focus:border-amber-500 text-slate-800 transition"
+                                class="w-full p-2.5 bg-white border border-purple-300 rounded-xl text-sm focus:outline-none focus:border-purple-500 text-slate-800 transition"
                             >
                         </div>
                     </div>
                 </div>
 
-                <!-- Financial Calculation Display Box (Parts 10 & 11) -->
-                <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/90 flex flex-col justify-between">
+                <!-- Financial Calculation Display Box with Revenue Split (User Spec Section 15) -->
+                <div class="bg-gradient-to-br from-slate-50 to-blue-50/30 p-5 rounded-2xl border border-slate-200/90 flex flex-col justify-between space-y-4">
                     <div>
-                        <p class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Billing Breakdown</p>
+                        <div class="flex items-center justify-between border-b border-slate-200/70 pb-3 mb-3">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2">
+                                <i class="fa-solid fa-file-invoice-dollar text-blue-600"></i>
+                                <span>Consultation Billing</span>
+                            </h3>
+                            <span id="splitBadge" class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] font-mono font-bold">70/30 Split</span>
+                        </div>
+
+                        <!-- Doctor & Patient Summary -->
+                        <div class="p-3 bg-white rounded-xl border border-slate-200/80 mb-3 space-y-1 text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Doctor:</span>
+                                <span id="billingDocName" class="font-bold text-slate-800">Please select doctor</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500">Patient:</span>
+                                <span id="billingPatientName" class="font-bold text-slate-800">Walk-in / Not selected</span>
+                            </div>
+                        </div>
                         
-                        <div class="space-y-3">
-                            <div class="flex justify-between items-center text-sm">
-                                <span class="text-slate-600">Consultation Fee:</span>
-                                <span id="billConsultationFee" class="font-mono font-bold text-slate-800">PKR 0</span>
+                        <!-- Revenue Split Breakdown Rows (Section 15) -->
+                        <div class="space-y-2.5 text-xs bg-white p-3.5 rounded-xl border border-slate-200/80">
+                            <div class="flex justify-between items-center text-slate-600">
+                                <span class="font-medium">Consultation Fee</span>
+                                <span id="billConsultationFee" class="font-mono font-bold text-slate-900 text-sm">PKR 0</span>
                             </div>
 
-                            <div class="flex justify-between items-center text-sm">
-                                <span class="text-slate-600">Payment Status:</span>
-                                <span id="billPaymentStatus" class="font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded text-xs">
-                                    PAID
-                                </span>
+                            <div class="flex justify-between items-center text-blue-700">
+                                <span id="previewDocShareLabel" class="font-medium">Doctor Share (70%)</span>
+                                <span id="previewDocShare" class="font-mono font-bold text-blue-800 text-sm">PKR 0</span>
                             </div>
 
-                            <div class="pt-3 border-t border-slate-200 flex justify-between items-center">
+                            <div class="flex justify-between items-center text-indigo-700">
+                                <span id="previewHospShareLabel" class="font-medium">Hospital Share (30%)</span>
+                                <span id="previewHospShare" class="font-mono font-bold text-indigo-800 text-sm">PKR 0</span>
+                            </div>
+
+                            <div class="pt-2 border-t border-slate-200 flex justify-between items-center">
                                 <div>
-                                    <span class="text-sm font-bold text-slate-900 block">Charged Amount:</span>
-                                    <span class="text-[11px] text-slate-400">Total payable by patient</span>
+                                    <span class="text-xs font-bold text-slate-900 block">Amount to Collect</span>
+                                    <span id="billPaymentStatus" class="font-bold text-[10px] text-blue-700 uppercase">FULL PAID</span>
                                 </div>
-                                <span id="billChargedAmount" class="font-mono font-black text-2xl text-blue-900">
+                                <span id="billChargedAmount" class="font-mono font-black text-xl text-blue-900">
                                     PKR 0
                                 </span>
+                            </div>
+
+                            <div id="rowRemainingDue" class="hidden flex justify-between items-center text-amber-700 pt-1.5 border-t border-amber-100">
+                                <span class="font-semibold text-xs">Remaining Due</span>
+                                <span id="billRemainingDisplay" class="font-mono font-bold text-sm">PKR 0</span>
                             </div>
                         </div>
                     </div>
 
-                    <p class="text-[11px] text-slate-400 mt-4 pt-3 border-t border-slate-200/60 flex items-center space-x-1.5">
+                    <p class="text-[10px] text-slate-400 pt-2 border-t border-slate-200/60 flex items-center space-x-1.5">
                         <i class="fa-solid fa-lock text-slate-400 text-[10px]"></i>
-                        <span>Doctor's base consultation fee remains unchanged in doctor records.</span>
+                        <span>Doctor share is configured once in Doctor Profile. Percentages are locked for receptionists.</span>
                     </p>
                 </div>
             </div>
@@ -593,9 +741,16 @@
 <!-- Vanilla JS for Interactive Reception Counter Logic -->
 <script>
     let currentDoctorFee = 0;
+    let currentDoctorDocPct = 70;
+    let currentDoctorHospPct = 30;
+    let currentServiceFee = 0;
+    let currentDocPct = 70;
+    let currentHospPct = 30;
+    let isConsultService = true;
     let searchDebounceTimer = null;
 
     document.addEventListener('DOMContentLoaded', function () {
+        handleServiceChange();
         handleDoctorChange();
         
         // Initial payment state
@@ -605,9 +760,52 @@
         // Initial patient mode
         const initialMode = document.getElementById('patient_mode').value || 'existing';
         setPatientMode(initialMode);
+
+        // Sync new patient name to billing preview
+        const newNameInput = document.getElementById('patient_name');
+        if (newNameInput) {
+            newNameInput.addEventListener('input', function () {
+                const billingPatient = document.getElementById('billingPatientName');
+                if (billingPatient) {
+                    billingPatient.textContent = this.value.trim() || 'New Patient';
+                }
+            });
+        }
     });
 
-    // 1. DOCTOR SELECTION LOGIC (Part 2)
+    // 1. DOCTOR & SERVICE SELECTION LOGIC
+    function handleServiceChange() {
+        const srvSelect = document.getElementById('hospital_service_id');
+        const opt = srvSelect ? srvSelect.options[srvSelect.selectedIndex] : null;
+
+        if (opt && opt.value) {
+            const name = opt.getAttribute('data-name');
+            const code = opt.getAttribute('data-code');
+            const fee = parseFloat(opt.getAttribute('data-fee')) || 0;
+
+            isConsultService = (code === 'SRV-CONSULT' || code === 'DOC_CONSULT' || !code);
+
+            if (isConsultService) {
+                // Consultation split is strictly determined once in Doctor Profile
+                currentDocPct = currentDoctorDocPct;
+                currentHospPct = currentDoctorHospPct;
+            } else {
+                // Hospital procedures use procedure-specific split
+                currentDocPct = parseFloat(opt.getAttribute('data-doc-pct')) || 0;
+                currentHospPct = parseFloat(opt.getAttribute('data-hosp-pct')) || 0;
+            }
+
+            currentServiceFee = fee;
+
+            document.getElementById('srvDispName').textContent = name;
+            document.getElementById('srvDispSplit').textContent = `${currentDocPct}% Doc / ${currentHospPct}% Hosp`;
+            const splitBadge = document.getElementById('splitBadge');
+            if (splitBadge) splitBadge.textContent = `${currentDocPct}/${currentHospPct} Split`;
+            document.getElementById('srvDispFee').textContent = isConsultService ? 'Uses Doctor Fee' : `PKR ${fee.toLocaleString('en-US')}`;
+        }
+        updateBillingBreakdown();
+    }
+
     function handleDoctorChange() {
         const doctorSelect = document.getElementById('doctor_id');
         const selectedOption = doctorSelect.options[doctorSelect.selectedIndex];
@@ -616,16 +814,44 @@
             const name = selectedOption.getAttribute('data-name');
             const spec = selectedOption.getAttribute('data-specialization');
             const fee = parseFloat(selectedOption.getAttribute('data-fee')) || 0;
+            const docPct = parseFloat(selectedOption.getAttribute('data-doc-pct')) || 70;
+            const hospPct = parseFloat(selectedOption.getAttribute('data-hosp-pct')) || Math.round((100 - docPct) * 100) / 100;
 
             currentDoctorFee = fee;
+            currentDoctorDocPct = docPct;
+            currentDoctorHospPct = hospPct;
+
+            const docAmount = Math.round(fee * (docPct / 100) * 100) / 100;
+            const hospAmount = Math.round((fee - docAmount) * 100) / 100;
+
             document.getElementById('docDispName').textContent = name;
             document.getElementById('docDispSpec').textContent = spec;
             document.getElementById('docDispFee').textContent = 'PKR ' + fee.toLocaleString('en-US', { minimumFractionDigits: 0 });
+            document.getElementById('docDispDocPct').textContent = docPct + '%';
+            document.getElementById('docDispHospPct').textContent = hospPct + '% (Automatic)';
+            document.getElementById('docDispDocAmount').textContent = 'PKR ' + docAmount.toLocaleString('en-US');
+            document.getElementById('docDispHospAmount').textContent = 'PKR ' + hospAmount.toLocaleString('en-US');
+
+            const billingDoc = document.getElementById('billingDocName');
+            if (billingDoc) billingDoc.textContent = name;
+
+            if (isConsultService) {
+                currentDocPct = docPct;
+                currentHospPct = hospPct;
+                const splitBadge = document.getElementById('splitBadge');
+                if (splitBadge) splitBadge.textContent = `${docPct}/${hospPct} Split`;
+            }
         } else {
             currentDoctorFee = 0;
             document.getElementById('docDispName').textContent = 'Please select doctor';
             document.getElementById('docDispSpec').textContent = '—';
             document.getElementById('docDispFee').textContent = 'PKR 0';
+            document.getElementById('docDispDocPct').textContent = '70%';
+            document.getElementById('docDispHospPct').textContent = '30% (Automatic)';
+            document.getElementById('docDispDocAmount').textContent = 'PKR 0';
+            document.getElementById('docDispHospAmount').textContent = 'PKR 0';
+            const billingDoc = document.getElementById('billingDocName');
+            if (billingDoc) billingDoc.textContent = 'Please select doctor';
         }
 
         updateBillingBreakdown();
@@ -742,6 +968,9 @@
         document.getElementById('dispPatientCnic').textContent = patient.cnic || '—';
         document.getElementById('dispPatientAddress').textContent = patient.address || '—';
 
+        const billingPatient = document.getElementById('billingPatientName');
+        if (billingPatient) billingPatient.textContent = patient.name;
+
         // Check active token
         const activeWarning = document.getElementById('patientActiveTokenWarning');
         const activeLink = document.getElementById('patientActiveTokenLink');
@@ -764,6 +993,8 @@
         document.getElementById('patient_id').value = '';
         document.getElementById('selectedPatientCard').classList.add('hidden');
         document.getElementById('noPatientPrompt').classList.remove('hidden');
+        const billingPatient = document.getElementById('billingPatientName');
+        if (billingPatient) billingPatient.textContent = 'Walk-in / Not selected';
         document.getElementById('patientSearchInput').focus();
     }
 
@@ -804,16 +1035,31 @@
     // 5. PAYMENT TYPE & BILLING CALCULATION (Parts 9, 10, 11)
     function handlePaymentChange(type) {
         const labelPaid = document.getElementById('labelPaid');
+        const labelPartial = document.getElementById('labelPartial');
         const labelFree = document.getElementById('labelFree');
         const freeSec = document.getElementById('sectionFreeReason');
+        const partSec = document.getElementById('sectionPartialAmount');
+
+        // Reset classes
+        labelPaid.className = 'cursor-pointer p-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 flex flex-col justify-between transition';
+        labelPartial.className = 'cursor-pointer p-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 flex flex-col justify-between transition';
+        labelFree.className = 'cursor-pointer p-3 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 flex flex-col justify-between transition';
+
+        freeSec.classList.add('hidden');
+        partSec.classList.add('hidden');
 
         if (type === 'paid') {
-            labelPaid.className = 'cursor-pointer p-4 rounded-xl border-2 border-blue-600 bg-blue-50/50 flex items-center space-x-3 transition';
-            labelFree.className = 'cursor-pointer p-4 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 flex items-center space-x-3 transition';
-            freeSec.classList.add('hidden');
-        } else {
-            labelFree.className = 'cursor-pointer p-4 rounded-xl border-2 border-emerald-600 bg-emerald-50/50 flex items-center space-x-3 transition';
-            labelPaid.className = 'cursor-pointer p-4 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 flex items-center space-x-3 transition';
+            labelPaid.className = 'cursor-pointer p-3 rounded-xl border-2 border-blue-600 bg-blue-50/50 flex flex-col justify-between transition';
+        } else if (type === 'partial') {
+            labelPartial.className = 'cursor-pointer p-3 rounded-xl border-2 border-amber-600 bg-amber-50/50 flex flex-col justify-between transition';
+            partSec.classList.remove('hidden');
+            const paidInput = document.getElementById('paid_amount');
+            if (!paidInput.value || parseFloat(paidInput.value) <= 0) {
+                const totalFee = isConsultService ? currentDoctorFee : (currentServiceFee || currentDoctorFee);
+                paidInput.value = Math.round(totalFee / 2);
+            }
+        } else if (type === 'free') {
+            labelFree.className = 'cursor-pointer p-3 rounded-xl border-2 border-purple-600 bg-purple-50/50 flex flex-col justify-between transition';
             freeSec.classList.remove('hidden');
         }
 
@@ -836,20 +1082,55 @@
         const feeDisp = document.getElementById('billConsultationFee');
         const statusDisp = document.getElementById('billPaymentStatus');
         const chargedDisp = document.getElementById('billChargedAmount');
+        const docShareDisp = document.getElementById('previewDocShare');
+        const hospShareDisp = document.getElementById('previewHospShare');
+        const docShareLabel = document.getElementById('previewDocShareLabel');
+        const hospShareLabel = document.getElementById('previewHospShareLabel');
+        const rowRemaining = document.getElementById('rowRemainingDue');
+        const remainingDisp = document.getElementById('billRemainingDisplay');
 
-        feeDisp.textContent = 'PKR ' + currentDoctorFee.toLocaleString('en-US', { minimumFractionDigits: 0 });
+        const baseFee = isConsultService ? currentDoctorFee : (currentServiceFee > 0 ? currentServiceFee : currentDoctorFee);
+        feeDisp.textContent = 'PKR ' + baseFee.toLocaleString('en-US', { minimumFractionDigits: 0 });
+
+        let collectedAmount = 0;
+        let remainingAmount = 0;
 
         if (paymentType === 'free') {
-            statusDisp.textContent = 'FREE / WAIVED';
-            statusDisp.className = 'font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded text-xs';
+            collectedAmount = 0;
+            remainingAmount = 0;
+            statusDisp.textContent = '100% FREE';
+            statusDisp.className = 'font-bold text-[10px] text-purple-700 bg-purple-100 px-2 py-0.5 rounded';
             chargedDisp.textContent = 'PKR 0';
-            chargedDisp.className = 'font-mono font-black text-2xl text-emerald-700';
+            if (rowRemaining) rowRemaining.classList.add('hidden');
+        } else if (paymentType === 'partial') {
+            const paidVal = parseFloat(document.getElementById('paid_amount')?.value) || 0;
+            collectedAmount = Math.max(0, Math.min(paidVal, baseFee));
+            remainingAmount = Math.max(0, baseFee - collectedAmount);
+            statusDisp.textContent = 'PARTIAL';
+            statusDisp.className = 'font-bold text-[10px] text-amber-800 bg-amber-100 px-2 py-0.5 rounded';
+            chargedDisp.textContent = 'PKR ' + collectedAmount.toLocaleString('en-US');
+            if (rowRemaining) {
+                rowRemaining.classList.remove('hidden');
+                if (remainingDisp) remainingDisp.textContent = 'PKR ' + remainingAmount.toLocaleString('en-US');
+            }
         } else {
-            statusDisp.textContent = 'PAID';
-            statusDisp.className = 'font-semibold text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded text-xs';
-            chargedDisp.textContent = 'PKR ' + currentDoctorFee.toLocaleString('en-US', { minimumFractionDigits: 0 });
-            chargedDisp.className = 'font-mono font-black text-2xl text-blue-900';
+            collectedAmount = baseFee;
+            remainingAmount = 0;
+            statusDisp.textContent = 'FULL PAID';
+            statusDisp.className = 'font-bold text-[10px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded';
+            chargedDisp.textContent = 'PKR ' + baseFee.toLocaleString('en-US');
+            if (rowRemaining) rowRemaining.classList.add('hidden');
         }
+
+        // Revenue split calculation
+        const docShare = Math.round(collectedAmount * (currentDocPct / 100) * 100) / 100;
+        const hospShare = Math.round((collectedAmount - docShare) * 100) / 100;
+
+        if (docShareLabel) docShareLabel.textContent = `Doctor Share (${currentDocPct}%)`;
+        if (hospShareLabel) hospShareLabel.textContent = `Hospital Share (${currentHospPct}%)`;
+
+        if (docShareDisp) docShareDisp.textContent = 'PKR ' + docShare.toLocaleString('en-US');
+        if (hospShareDisp) hospShareDisp.textContent = 'PKR ' + hospShare.toLocaleString('en-US');
     }
 
     function escapeHtml(text) {

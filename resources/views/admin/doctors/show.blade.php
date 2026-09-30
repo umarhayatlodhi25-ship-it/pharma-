@@ -85,10 +85,15 @@
     @endif
 
     <!-- DOCTOR DETAILS CARD (Section 8) -->
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
-        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-2">
-            Doctor Profile Information
-        </h3>
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5">
+        <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+            <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                Doctor Profile Information
+            </h3>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                Revenue Split Configured
+            </span>
+        </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
             <div>
@@ -99,11 +104,6 @@
             <div>
                 <span class="text-gray-400 block font-medium">Qualification</span>
                 <span class="font-bold text-gray-800 text-sm">{{ $doctor->qualification ?: '—' }}</span>
-            </div>
-
-            <div>
-                <span class="text-gray-400 block font-medium">Consultation Fee</span>
-                <span class="font-black text-emerald-700 text-base font-mono">PKR {{ number_format($doctor->consultation_fee, 0) }}</span>
             </div>
 
             <div>
@@ -121,7 +121,7 @@
                 <span class="font-semibold text-gray-800">{{ $doctor->email ?: '—' }}</span>
             </div>
 
-            <div class="sm:col-span-2">
+            <div class="sm:col-span-3">
                 <span class="text-gray-400 block font-medium">Address</span>
                 <span class="font-semibold text-gray-800">{{ $doctor->address ?: '—' }}</span>
             </div>
@@ -133,43 +133,107 @@
             </div>
             @endif
         </div>
+
+        <!-- Consultation & Revenue Share Profile Configuration -->
+        <div class="mt-4 pt-4 border-t border-blue-50 bg-gradient-to-r from-blue-50/50 to-indigo-50/40 p-4 rounded-xl border border-blue-100">
+            <div class="flex items-center space-x-2 mb-3">
+                <i class="fa-solid fa-scale-balanced text-blue-600 text-sm"></i>
+                <h4 class="text-xs font-bold text-blue-950 uppercase tracking-wide">Consultation & Revenue Split Settings</h4>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
+                <div class="bg-white p-3 rounded-lg border border-blue-100 shadow-2xs">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase block">Consultation Fee</span>
+                    <span class="text-base font-black text-gray-900 font-mono">PKR {{ number_format($doctor->consultation_fee, 0) }}</span>
+                </div>
+                <div class="bg-white p-3 rounded-lg border border-blue-100 shadow-2xs">
+                    <span class="text-[10px] font-bold text-blue-600 uppercase block">Doctor Share %</span>
+                    <span class="text-base font-black text-blue-700 font-mono">{{ (float)$doctor->doctor_share_percentage }}%</span>
+                </div>
+                <div class="bg-white p-3 rounded-lg border border-blue-100 shadow-2xs">
+                    <span class="text-[10px] font-bold text-indigo-600 uppercase block">Hospital Share %</span>
+                    <span class="text-base font-black text-indigo-700 font-mono">{{ (float)$doctor->hospital_share_percentage }}%</span>
+                </div>
+                <div class="bg-white p-3 rounded-lg border border-emerald-100 shadow-2xs">
+                    <span class="text-[10px] font-bold text-emerald-600 uppercase block">Doctor / Visit</span>
+                    <span class="text-base font-black text-emerald-700 font-mono">PKR {{ number_format($doctor->doctor_share_amount, 2) }}</span>
+                </div>
+                <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+                    <span class="text-[10px] font-bold text-slate-600 uppercase block">Hospital / Visit</span>
+                    <span class="text-base font-black text-slate-800 font-mono">PKR {{ number_format($doctor->hospital_share_amount, 2) }}</span>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- OPD SUMMARY STATISTICS (Section 8) -->
-    <div>
-        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
-            OPD Summary
-        </h3>
+    <!-- DOCTOR REVENUE SHARE & PAYABLE LEDGER (User Spec Section 9) -->
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 pb-3">
+            <div>
+                <h3 class="text-sm font-bold text-gray-900 flex items-center space-x-2">
+                    <i class="fa-solid fa-wallet text-emerald-600"></i>
+                    <span>Doctor Revenue Share & Payable Ledger</span>
+                </h3>
+                <p class="text-xs text-gray-500">Live ledger balances computed from completed and collected consultations.</p>
+            </div>
+            @if(Route::has('doctor-settlements.create'))
+            <a href="{{ route('doctor-settlements.create', ['doctor_id' => $doctor->id]) }}" class="inline-flex items-center px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-2xs transition">
+                <i class="fa-solid fa-money-bill-transfer mr-1.5"></i>
+                Pay Doctor / Settlement
+            </a>
+            @endif
+        </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                <span class="text-[11px] font-bold text-gray-400 uppercase block">Total Patients</span>
-                <span class="text-xl font-black text-gray-800 font-mono">{{ $totalPatients }}</span>
-                <span class="text-[10px] text-gray-400 block">Unique individuals</span>
+            <div class="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <span class="text-[11px] font-bold text-gray-500 uppercase block">Total Patients</span>
+                <span class="text-xl font-black text-gray-900 font-mono">{{ $totalPatients }}</span>
+                <span class="text-[10px] text-gray-400 block">{{ $totalTokens }} visits</span>
             </div>
 
-            <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                <span class="text-[11px] font-bold text-emerald-500 uppercase block">Paid Patients</span>
-                <span class="text-xl font-black text-emerald-600 font-mono">{{ $paidPatients }}</span>
-                <span class="text-[10px] text-emerald-600 block">Paying visits</span>
+            <div class="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                <span class="text-[11px] font-bold text-emerald-700 uppercase block">Paid Patients</span>
+                <span class="text-xl font-black text-emerald-900 font-mono">{{ $paidPatients }}</span>
+                <span class="text-[10px] text-emerald-600 block">Active paid visits</span>
             </div>
 
-            <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                <span class="text-[11px] font-bold text-purple-500 uppercase block">Free Patients</span>
-                <span class="text-xl font-black text-purple-600 font-mono">{{ $freePatients }}</span>
-                <span class="text-[10px] text-purple-600 block">Exempted visits</span>
+            <div class="p-3 bg-purple-50/50 rounded-xl border border-purple-100">
+                <span class="text-[11px] font-bold text-purple-700 uppercase block">Free Patients</span>
+                <span class="text-xl font-black text-purple-900 font-mono">{{ $freePatients }}</span>
+                <span class="text-[10px] text-purple-600 block">Complimentary</span>
             </div>
 
-            <div class="bg-white p-4 rounded-xl border border-blue-100 bg-blue-50/20 shadow-sm">
+            <div class="p-3 bg-blue-50/50 rounded-xl border border-blue-100">
                 <span class="text-[11px] font-bold text-blue-700 uppercase block">Total Doctor Fees</span>
-                <span class="text-xl font-black text-blue-700 font-mono">PKR {{ number_format($totalDoctorFees, 0) }}</span>
-                <span class="text-[10px] text-blue-500 block">Scheduled fees</span>
+                <span class="text-xl font-black text-blue-900 font-mono">PKR {{ number_format($totalDoctorFees, 2) }}</span>
+                <span class="text-[10px] text-blue-600 block">Gross consultation fee</span>
             </div>
 
-            <div class="bg-white p-4 rounded-xl border border-emerald-100 bg-emerald-50/20 shadow-sm">
-                <span class="text-[11px] font-bold text-emerald-700 uppercase block">Total Collection</span>
-                <span class="text-xl font-black text-emerald-700 font-mono">PKR {{ number_format($totalCollection, 0) }}</span>
-                <span class="text-[10px] text-emerald-600 block">Net collected</span>
+            <div class="p-3 bg-teal-50/60 rounded-xl border border-teal-100">
+                <span class="text-[11px] font-bold text-teal-700 uppercase block">Total Collection</span>
+                <span class="text-xl font-black text-teal-900 font-mono">PKR {{ number_format($totalCollection, 2) }}</span>
+                <span class="text-[10px] text-teal-600 block">Cash collected</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-gray-100">
+            <div class="p-2.5 bg-emerald-50/40 rounded-lg border border-emerald-100/60">
+                <span class="text-[10px] font-bold text-emerald-700 uppercase block">Doctor Share</span>
+                <span class="text-base font-black text-emerald-800 font-mono">PKR {{ number_format($totalEarned, 2) }}</span>
+            </div>
+
+            <div class="p-2.5 bg-indigo-50/40 rounded-lg border border-indigo-100/60">
+                <span class="text-[10px] font-bold text-indigo-700 uppercase block">Paid to Doctor</span>
+                <span class="text-base font-black text-indigo-800 font-mono">PKR {{ number_format($totalPaid, 2) }}</span>
+            </div>
+
+            <div class="p-2.5 bg-amber-50/50 rounded-lg border border-amber-200/70">
+                <span class="text-[10px] font-bold text-amber-800 uppercase block">Remaining Payable</span>
+                <span class="text-base font-black text-amber-900 font-mono">PKR {{ number_format($currentPayable, 2) }}</span>
+            </div>
+
+            <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                <span class="text-[10px] font-bold text-slate-700 uppercase block">Doctor Share %</span>
+                <span class="text-base font-black text-slate-900 font-mono">{{ (float)$doctor->doctor_share_percentage }}%</span>
             </div>
         </div>
     </div>
@@ -196,8 +260,9 @@
                         <th class="py-3 px-4">Patient</th>
                         <th class="py-3 px-4 text-right">Doctor Fee</th>
                         <th class="py-3 px-4 text-center">Fee Type</th>
-                        <th class="py-3 px-4">Free Reason</th>
-                        <th class="py-3 px-4 text-right">Final Amount</th>
+                        <th class="py-3 px-4 text-right">Collected</th>
+                        <th class="py-3 px-4 text-center">Doc %</th>
+                        <th class="py-3 px-4 text-right">Doc Share</th>
                         <th class="py-3 px-4 text-center">Status</th>
                     </tr>
                 </thead>
@@ -231,9 +296,6 @@
                                     </span>
                                 @endif
                             </td>
-                            <td class="py-3 px-4 text-gray-600">
-                                {{ $t->free_reason ?: '—' }}
-                            </td>
                             <td class="py-3 px-4 text-right font-mono whitespace-nowrap">
                                 @if(strtolower($t->payment_type) === 'free' || floatval($t->charged_amount) == 0)
                                     <span class="font-black text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
@@ -244,6 +306,12 @@
                                         PKR {{ number_format($t->charged_amount, 0) }}
                                     </span>
                                 @endif
+                            </td>
+                            <td class="py-3 px-4 text-center font-mono font-bold text-blue-700">
+                                {{ (float)($t->doctor_share_percentage ?? $doctor->doctor_share_percentage ?? 70) }}%
+                            </td>
+                            <td class="py-3 px-4 text-right font-mono font-black text-emerald-700 whitespace-nowrap">
+                                PKR {{ number_format($t->doctor_share_amount ?? 0, 2) }}
                             </td>
                             <td class="py-3 px-4 text-center">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase

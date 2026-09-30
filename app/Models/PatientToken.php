@@ -25,11 +25,18 @@ class PatientToken extends Model
     protected $fillable = [
         'patient_id',
         'doctor_id',
+        'hospital_service_id',
+        'hospital_bill_id',
         'token_number',
         'token_date',
         'payment_type',
         'consultation_fee',
         'charged_amount',
+        'doctor_share_percentage',
+        'hospital_share_percentage',
+        'doctor_share_amount',
+        'hospital_share_amount',
+        'discount_amount',
         'free_reason',
         'other_reason',
         'status',
@@ -49,12 +56,17 @@ class PatientToken extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'token_number'     => 'integer',
-        'token_date'       => 'date:Y-m-d',
-        'consultation_fee' => 'decimal:2',
-        'charged_amount'   => 'decimal:2',
-        'called_at'        => 'datetime',
-        'completed_at'     => 'datetime',
+        'token_number'              => 'integer',
+        'token_date'                => 'date:Y-m-d',
+        'consultation_fee'          => 'decimal:2',
+        'charged_amount'            => 'decimal:2',
+        'doctor_share_percentage'   => 'decimal:2',
+        'hospital_share_percentage' => 'decimal:2',
+        'doctor_share_amount'       => 'decimal:2',
+        'hospital_share_amount'     => 'decimal:2',
+        'discount_amount'           => 'decimal:2',
+        'called_at'                 => 'datetime',
+        'completed_at'              => 'datetime',
     ];
 
     /**
@@ -71,6 +83,22 @@ class PatientToken extends Model
     public function doctor(): BelongsTo
     {
         return $this->belongsTo(Doctor::class, 'doctor_id');
+    }
+
+    /**
+     * Relationship: The hospital service for this token.
+     */
+    public function service(): BelongsTo
+    {
+        return $this->belongsTo(HospitalService::class, 'hospital_service_id');
+    }
+
+    /**
+     * Relationship: The hospital bill generated for this token.
+     */
+    public function bill(): BelongsTo
+    {
+        return $this->belongsTo(HospitalBill::class, 'hospital_bill_id');
     }
 
     /**

@@ -19,6 +19,9 @@ use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\PatientTokenController;
 use App\Http\Controllers\DoctorController;
+use App\Http\Controllers\HospitalServiceController;
+use App\Http\Controllers\HospitalBillingController;
+use App\Http\Controllers\DoctorLedgerController;
 use App\Http\Controllers\SettingsController;
 use App\Livewire\Opd\TokenManagement;
 
@@ -172,6 +175,12 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/low-stock', [ReportController::class, 'lowStock'])->name('low-stock');
             Route::get('/discounts', [ReportController::class, 'discounts'])->name('discounts');
             Route::get('/opd', [ReportController::class, 'opd'])->name('opd');
+            Route::get('/doctor-collection', [ReportController::class, 'doctorCollection'])->name('doctor-collection');
+            Route::get('/all-doctors-collection', [ReportController::class, 'allDoctorsCollection'])->name('all-doctors-collection');
+            Route::get('/hospital-collection', [ReportController::class, 'hospitalCollection'])->name('hospital-collection');
+            Route::get('/hospital-services', [ReportController::class, 'hospitalServices'])->name('hospital-services');
+            Route::get('/doctor-payable', [ReportController::class, 'doctorPayable'])->name('doctor-payable');
+            Route::get('/doctor-settlements', [ReportController::class, 'doctorSettlements'])->name('doctor-settlements');
         });
     });
 
@@ -230,6 +239,26 @@ Route::middleware(['auth'])->group(function () {
 
     // OPD Tokens Management (Phase 3.2: Interactive Livewire Workflow)
     Route::get('/opd/tokens', TokenManagement::class)->name('opd.tokens');
+
+    // Hospital Services (Configurable split & active/inactive)
+    Route::get('/hospital-services', [HospitalServiceController::class, 'index'])->name('hospital-services.index');
+    Route::post('/hospital-services', [HospitalServiceController::class, 'store'])->name('hospital-services.store');
+    Route::put('/hospital-services/{hospitalService}', [HospitalServiceController::class, 'update'])->name('hospital-services.update');
+    Route::patch('/hospital-services/{hospitalService}/status', [HospitalServiceController::class, 'toggleStatus'])->name('hospital-services.status');
+
+    // Hospital Billing (Invoices, partial payments, receipts)
+    Route::get('/hospital-billing', [HospitalBillingController::class, 'index'])->name('hospital-billing.index');
+    Route::get('/hospital-billing/create', [HospitalBillingController::class, 'create'])->name('hospital-billing.create');
+    Route::post('/hospital-billing', [HospitalBillingController::class, 'store'])->name('hospital-billing.store');
+    Route::get('/hospital-billing/{bill}', [HospitalBillingController::class, 'show'])->name('hospital-billing.show');
+    Route::post('/hospital-billing/{bill}/payment', [HospitalBillingController::class, 'receivePayment'])->name('hospital-billing.payment');
+    Route::get('/hospital-billing/{bill}/receipt', [HospitalBillingController::class, 'printReceipt'])->name('hospital-billing.receipt');
+
+    // Doctor Ledgers & Settlements
+    Route::get('/doctor-ledgers', [DoctorLedgerController::class, 'index'])->name('doctor-ledgers.index');
+    Route::get('/doctors/{doctor}/ledger', [DoctorLedgerController::class, 'show'])->name('doctor-ledgers.show');
+    Route::post('/doctors/{doctor}/settle', [DoctorLedgerController::class, 'settle'])->name('doctor-ledgers.settle');
+    Route::get('/doctor-settlements/{settlement}/voucher', [DoctorLedgerController::class, 'printVoucher'])->name('doctor-settlements.voucher');
 });
 
 

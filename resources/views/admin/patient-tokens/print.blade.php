@@ -3,27 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Token Slip - #{{ $token->formatted_token_number }}</title>
+    <title>OPD Token #{{ $token->token_number ?: $token->formatted_token_number }}</title>
+    @php
+        $profile = account_profile();
+        $hospitalName = $profile->account_name ?: config('app.name', 'HOSPITAL CLINIC');
+
+        // Dynamic status formatting
+        $statusRaw = strtolower($token->status ?? 'waiting');
+        $displayStatus = match($statusRaw) {
+            'in_consultation', 'in consultation', 'called' => 'IN CONSULTATION',
+            'completed' => 'COMPLETED',
+            'cancelled' => 'CANCELLED',
+            'waiting' => 'WAITING',
+            default => strtoupper($token->status ?? 'WAITING'),
+        };
+
+        // Patient ID formatting
+        $patientIdDisplay = $token->patient ? ($token->patient->patient_number ?: 'PT-' . str_pad($token->patient->id, 5, '0', STR_PAD_LEFT)) : '—';
+    @endphp
     <style>
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Courier New', Courier, monospace, monospace;
+            font-family: 'Courier New', Courier, monospace, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
 
         body {
             background-color: #f1f5f9;
+            color: #000;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 24px 12px;
-            color: #000;
+            padding: 20px 10px;
+            font-size: 12px;
+            line-height: 1.3;
         }
 
+        /* Screen controls bar */
         .no-print-bar {
             width: 320px;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
             display: flex;
             justify-content: space-between;
             gap: 8px;
@@ -31,7 +53,7 @@
 
         .btn {
             flex: 1;
-            padding: 10px 14px;
+            padding: 9px 12px;
             font-size: 13px;
             font-weight: bold;
             border-radius: 6px;
@@ -39,15 +61,16 @@
             border: none;
             text-align: center;
             text-decoration: none;
+            font-family: system-ui, -apple-system, sans-serif;
         }
 
         .btn-primary {
-            background-color: #2563eb;
+            background-color: #0f172a;
             color: #fff;
         }
 
         .btn-primary:hover {
-            background-color: #1d4ed8;
+            background-color: #1e293b;
         }
 
         .btn-secondary {
@@ -59,105 +82,180 @@
             background-color: #cbd5e1;
         }
 
+        /* Thermal Ticket Container (Optimized for 80mm paper, ~72-76mm usable) */
         .ticket {
             width: 320px;
             background: #fff;
-            padding: 18px 16px;
+            padding: 16px 14px;
             border: 1px dashed #94a3b8;
             border-radius: 4px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            text-align: center;
+            color: #000;
         }
 
+        /* Header */
         .header {
+            padding-bottom: 8px;
             text-align: center;
-            border-bottom: 2px dashed #000;
-            padding-bottom: 12px;
-            margin-bottom: 14px;
+        }
+
+        .hospital-logo {
+            max-height: 48px;
+            max-width: 140px;
+            margin: 0 auto 6px auto;
+            display: block;
+            object-fit: contain;
+            filter: grayscale(100%) contrast(150%);
         }
 
         .hospital-name {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 900;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
+            line-height: 1.25;
+            word-break: break-word;
         }
 
-        .sub-header {
+        .opd-badge {
             font-size: 12px;
-            font-weight: bold;
+            font-weight: 800;
             letter-spacing: 2px;
             margin-top: 4px;
+            text-transform: uppercase;
         }
 
+        /* Dashed Dividers */
+        .divider {
+            border: none;
+            border-top: 1px dashed #000;
+            margin: 8px 0;
+            width: 100%;
+        }
+
+        /* Token Hero Section */
         .token-hero {
+            padding: 6px 0;
             text-align: center;
-            padding: 12px 0;
-            margin-bottom: 12px;
-            border-bottom: 2px dashed #000;
         }
 
         .token-label {
-            font-size: 12px;
-            font-weight: bold;
-            letter-spacing: 1px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1.5px;
             text-transform: uppercase;
         }
 
         .token-num {
-            font-size: 42px;
+            font-size: 40px;
             font-weight: 900;
-            line-height: 1;
-            margin-top: 4px;
-            letter-spacing: 2px;
+            line-height: 1.05;
+            letter-spacing: 1px;
+            margin-top: 2px;
         }
 
+        /* Key-Value Info Table */
         .info-table {
             width: 100%;
-            margin-bottom: 12px;
             border-collapse: collapse;
+            text-align: left;
+            margin: 4px 0;
         }
 
         .info-table tr td {
-            padding: 4px 0;
-            font-size: 13px;
-            vertical-align: top;
-        }
-
-        .info-table tr td:first-child {
-            color: #333;
-            width: 38%;
-            font-weight: normal;
-        }
-
-        .info-table tr td:last-child {
-            font-weight: bold;
-            color: #000;
-            text-align: right;
-        }
-
-        .divider {
-            border-top: 2px dashed #000;
-            margin: 10px 0;
-        }
-
-        .footer {
-            text-align: center;
+            padding: 3px 0;
             font-size: 12px;
-            padding-top: 10px;
-            line-height: 1.4;
+            vertical-align: top;
+            line-height: 1.3;
         }
 
-        .footer .notice {
-            font-weight: bold;
+        .info-table tr td.label-col {
+            color: #000;
+            width: 38%;
+            font-weight: 600;
+            text-align: left;
+        }
+
+        .info-table tr td.val-col {
+            color: #000;
+            width: 62%;
+            font-weight: 800;
+            text-align: right;
+            word-break: break-word;
+        }
+
+        /* Fee Section */
+        .fee-section {
+            padding: 6px 0;
+            text-align: center;
+        }
+
+        .fee-label {
+            font-size: 11px;
+            font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
+        .fee-value {
+            font-size: 18px;
+            font-weight: 900;
+            margin-top: 2px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Status Section */
+        .status-section {
+            padding: 6px 0;
+            text-align: center;
+        }
+
+        .status-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .status-value {
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+            text-transform: uppercase;
+        }
+
+        /* Footer */
+        .footer {
+            padding-top: 6px;
+            text-align: center;
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        .footer .footer-wait {
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .footer .footer-thanks {
+            font-weight: 500;
+        }
+
+        /* Thermal Printer CSS (@media print) */
         @media print {
-            body {
-                background: #fff;
-                padding: 0;
+            @page {
+                size: 80mm auto;
                 margin: 0;
+            }
+
+            html, body {
+                background: #fff !important;
+                color: #000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
             }
 
             .no-print-bar {
@@ -165,11 +263,13 @@
             }
 
             .ticket {
-                width: 100%;
-                max-width: 80mm;
-                border: none;
-                box-shadow: none;
-                padding: 8px 4px;
+                width: 74mm !important;
+                max-width: 74mm !important;
+                margin: 0 auto !important;
+                padding: 4mm 2mm !important;
+                border: none !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
             }
         }
     </style>
@@ -179,87 +279,85 @@
     <!-- On-screen Navigation Controls (Hidden in Print) -->
     <div class="no-print-bar">
         <button class="btn btn-primary" onclick="window.print()">
-            Print Slip
+            Print Token Slip
         </button>
         <button class="btn btn-secondary" onclick="window.close()">
             Close
         </button>
     </div>
 
-    <!-- Thermal Print Slip Container -->
+    <!-- Thermal Print Slip Container (80mm standard) -->
     <div class="ticket">
+
+        <!-- HEADER: Logo + Organization Name + OPD Token -->
         <div class="header">
-            <div class="hospital-name">OPD CONSULTATION</div>
-            <div class="sub-header">TOKEN SLIP</div>
+            @if($profile->hasLogo())
+                <img src="{{ $profile->logo_url }}" alt="{{ $hospitalName }}" class="hospital-logo">
+            @endif
+            <div class="hospital-name">{{ $hospitalName }}</div>
+            <div class="opd-badge">OPD TOKEN</div>
         </div>
 
+        <div class="divider"></div>
+
+        <!-- TOKEN NO -->
         <div class="token-hero">
-            <div class="token-label">TOKEN NO</div>
-            <div class="token-num">{{ $token->formatted_token_number }}</div>
+            <div class="token-label">TOKEN NO.</div>
+            <div class="token-num">#{{ $token->token_number ?: $token->formatted_token_number }}</div>
         </div>
 
+        <div class="divider"></div>
+
+        <!-- PATIENT INFORMATION -->
         <table class="info-table">
             <tr>
-                <td>Patient:</td>
-                <td>{{ $token->patient->name ?? '—' }}</td>
+                <td class="label-col">Patient</td>
+                <td class="val-col">{{ $token->patient->name ?? '—' }}</td>
             </tr>
             <tr>
-                <td>Patient No:</td>
-                <td>{{ $token->patient->patient_number ?? '—' }}</td>
+                <td class="label-col">Patient ID</td>
+                <td class="val-col">{{ $patientIdDisplay }}</td>
             </tr>
             <tr>
-                <td>Age / Gender:</td>
-                <td>{{ $token->patient->age ?? '—' }} Y / {{ $token->patient->gender ?? '—' }}</td>
+                <td class="label-col">Doctor</td>
+                <td class="val-col">{{ $token->doctor->name ?? '—' }}</td>
             </tr>
             <tr>
-                <td>Doctor:</td>
-                <td>{{ $token->doctor->name ?? '—' }}</td>
-            </tr>
-            @if($token->doctor && $token->doctor->specialization)
-            <tr>
-                <td>Specialization:</td>
-                <td>{{ $token->doctor->specialization }}</td>
-            </tr>
-            @endif
-            <tr>
-                <td>Date:</td>
-                <td>{{ \Carbon\Carbon::parse($token->token_date)->format('d-M-Y') }}</td>
+                <td class="label-col">Date</td>
+                <td class="val-col">{{ \Carbon\Carbon::parse($token->token_date)->format('d M Y') }}</td>
             </tr>
             <tr>
-                <td>Time:</td>
-                <td>{{ $token->created_at ? $token->created_at->format('h:i A') : '—' }}</td>
+                <td class="label-col">Time</td>
+                <td class="val-col">{{ $token->created_at ? $token->created_at->format('h:i A') : now()->format('h:i A') }}</td>
             </tr>
         </table>
 
         <div class="divider"></div>
 
-        <table class="info-table">
-            <tr>
-                <td>Consultation Fee:</td>
-                <td>PKR {{ number_format($token->consultation_fee, 0) }}</td>
-            </tr>
-            <tr>
-                <td>Payment:</td>
-                <td>{{ strtoupper($token->payment_type) }}</td>
-            </tr>
-            <tr>
-                <td>Charged Amount:</td>
-                <td>PKR {{ number_format($token->charged_amount, 0) }}</td>
-            </tr>
-            @if($token->payment_type === 'free' && $token->free_reason)
-            <tr>
-                <td>Free Reason:</td>
-                <td>{{ $token->free_reason }}</td>
-            </tr>
-            @endif
-        </table>
+        <!-- Fee Section -->
+        <div class="fee-section">
+            <div class="fee-label">Consultation Fee</div>
+            <div class="fee-value">PKR {{ number_format($token->consultation_fee, 0) }}</div>
+        </div>
 
         <div class="divider"></div>
 
+        <!-- STATUS -->
+        <div class="status-section">
+            <div class="status-label">STATUS</div>
+            <div class="status-value">{{ $displayStatus }}</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- FOOTER -->
         <div class="footer">
-            <p class="notice">Please wait for your turn.</p>
-            <p style="font-size: 11px; margin-top: 4px; color: #555;">Thank you for your patience.</p>
+            <p class="footer-wait">Please wait for your token<br>to be called.</p>
+            <p class="footer-thanks">Thank you for choosing<br>our healthcare services.</p>
         </div>
+
+        <div class="divider"></div>
+
     </div>
 
     <script>
@@ -267,7 +365,7 @@
         window.onload = function() {
             setTimeout(function() {
                 window.print();
-            }, 350);
+            }, 300);
         };
     </script>
 </body>

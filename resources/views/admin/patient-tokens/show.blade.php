@@ -31,15 +31,22 @@
                 </div>
 
                 <div class="flex items-center space-x-2">
-                    <a href="{{ route('patient-tokens.print', $token->id) }}" target="_blank" class="bg-white hover:bg-emerald-50 text-slate-900 px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition flex items-center space-x-2">
+                    <a href="{{ route('patient-tokens.print', $token->id) }}" target="_blank" class="bg-white hover:bg-emerald-50 text-slate-900 px-4 py-2.5 rounded-xl font-bold text-sm shadow-md transition flex items-center space-x-2">
                         <i class="fa-solid fa-print text-sm text-emerald-700"></i>
                         <span>Print Token</span>
                     </a>
+                    @if($token->hospital_bill_id)
+                        <a href="{{ route('hospital-billing.receipt', $token->hospital_bill_id) }}" target="_blank" class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-md transition flex items-center space-x-2">
+                            <i class="fa-solid fa-receipt text-sm"></i>
+                            <span>Print Receipt</span>
+                        </a>
+                    @endif
                     <a href="{{ route('patient-tokens.index') }}" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl font-semibold text-sm border border-white/20 transition flex items-center space-x-1.5">
                         <i class="fa-solid fa-list-ol text-xs"></i>
                         <span>Back to Token Queue</span>
                     </a>
                 </div>
+
             </div>
 
             <!-- Quick Summary Grid -->
@@ -211,25 +218,34 @@
 
             <!-- Section 3: Financial & Payment Details (Part 20) -->
             <div class="pt-6 border-t border-slate-100">
-                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center space-x-2">
-                    <i class="fa-solid fa-receipt text-slate-400"></i>
-                    <span>Financial Details</span>
-                </h3>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center space-x-2">
+                        <i class="fa-solid fa-receipt text-slate-400"></i>
+                        <span>Financial & Revenue Split Details</span>
+                    </h3>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
+                        Transaction Split Snapshot
+                    </span>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div class="p-4 bg-slate-50 rounded-xl border border-slate-200/60">
                         <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Consultation Fee</span>
                         <p class="text-lg font-mono font-bold text-slate-800 mt-1">
                             PKR {{ number_format($token->consultation_fee ?? 0, 0) }}
                         </p>
-                        <span class="text-[10px] text-slate-400">Doctor's regular fee</span>
+                        <span class="text-[10px] text-slate-400">Doctor's scheduled fee</span>
                     </div>
 
                     <div class="p-4 bg-slate-50 rounded-xl border border-slate-200/60">
                         <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Payment Type</span>
                         <div class="mt-1">
                             @if($token->payment_type === 'free')
-                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800">
                                     FREE CONSULTATION
+                                </span>
+                            @elseif($token->payment_type === 'partial')
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+                                    PARTIAL PAYMENT
                                 </span>
                             @else
                                 <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
@@ -238,17 +254,30 @@
                             @endif
                         </div>
                         <span class="text-[10px] text-slate-400">
-                            {{ $token->payment_type === 'free' ? 'Fee 100% Waived' : 'Full Payment' }}
+                            {{ $token->payment_type === 'free' ? 'Fee 100% Waived' : ($token->payment_type === 'partial' ? 'Advance Payment' : 'Full Payment') }}
                         </span>
                     </div>
 
-                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200/60">
-                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Charged Amount</span>
-                        <p class="text-xl font-mono font-black {{ $token->charged_amount == 0 ? 'text-emerald-700' : 'text-blue-900' }} mt-1">
-                            PKR {{ number_format($token->charged_amount ?? 0, 0) }}
+                    <div class="p-4 bg-blue-50/70 rounded-xl border border-blue-100">
+                        <span class="text-[11px] font-bold uppercase tracking-wider text-blue-700">Doctor Share Snapshot</span>
+                        <p class="text-lg font-mono font-black text-blue-900 mt-1">
+                            PKR {{ number_format($token->doctor_share_amount ?? 0, 2) }}
                         </p>
-                        <span class="text-[10px] text-slate-400">Amount collected at reception</span>
+                        <span class="text-[10px] text-blue-600 font-semibold">{{ (float)($token->doctor_share_percentage ?? 70) }}% applied at booking</span>
                     </div>
+
+                    <div class="p-4 bg-indigo-50/70 rounded-xl border border-indigo-100">
+                        <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-700">Hospital Share Snapshot</span>
+                        <p class="text-lg font-mono font-black text-indigo-900 mt-1">
+                            PKR {{ number_format($token->hospital_share_amount ?? 0, 2) }}
+                        </p>
+                        <span class="text-[10px] text-indigo-600 font-semibold">{{ (float)($token->hospital_share_percentage ?? 30) }}% hospital revenue</span>
+                    </div>
+                </div>
+
+                <div class="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex items-center justify-between text-xs">
+                    <span class="text-slate-600 font-medium">Total Cash Collected by Hospital:</span>
+                    <span class="font-mono font-black text-emerald-700 text-base">PKR {{ number_format($token->charged_amount ?? 0, 2) }}</span>
                 </div>
 
                 <!-- If Free: Show Free Reason & Other Reason -->

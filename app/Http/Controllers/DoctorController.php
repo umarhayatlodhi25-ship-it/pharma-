@@ -70,12 +70,19 @@ class DoctorController extends Controller
             'qualification'    => 'nullable|string|max:255',
             'phone'            => 'nullable|string|max:30',
             'email'            => 'nullable|email|max:100',
-            'gender'           => 'nullable|in:Male,Female,Other',
-            'consultation_fee' => 'required|numeric|min:0',
-            'status'           => 'required|in:active,inactive',
-            'address'          => 'nullable|string|max:500',
-            'notes'            => 'nullable|string|max:1000',
+            'gender'                  => 'nullable|in:Male,Female,Other',
+            'consultation_fee'        => 'required|numeric|min:0',
+            'doctor_share_percentage' => 'nullable|numeric|min:0|max:100',
+            'status'                  => 'required|in:active,inactive',
+            'address'                 => 'nullable|string|max:500',
+            'notes'                   => 'nullable|string|max:1000',
         ]);
+
+        $docShare = isset($validated['doctor_share_percentage']) && $validated['doctor_share_percentage'] !== null && $validated['doctor_share_percentage'] !== ''
+            ? floatval($validated['doctor_share_percentage'])
+            : 70.00;
+        $validated['doctor_share_percentage'] = $docShare;
+        $validated['hospital_share_percentage'] = round(100.00 - $docShare, 2);
 
         // Duplicate doctor detection: check same name AND specialization (Section 14)
         if (!$request->boolean('confirm_duplicate')) {
@@ -122,6 +129,11 @@ class DoctorController extends Controller
         $totalDoctorFees = (float) (clone $validTokens)->sum('consultation_fee');
         $totalCollection = (float) (clone $validTokens)->sum('charged_amount');
 
+        // Revenue Share & Ledger Summary
+        $totalEarned = (float) $doctor->total_earned;
+        $totalPaid = (float) $doctor->total_paid;
+        $currentPayable = (float) $doctor->current_payable;
+
         return view('admin.doctors.show', compact(
             'doctor',
             'tokens',
@@ -130,7 +142,10 @@ class DoctorController extends Controller
             'paidPatients',
             'freePatients',
             'totalDoctorFees',
-            'totalCollection'
+            'totalCollection',
+            'totalEarned',
+            'totalPaid',
+            'currentPayable'
         ));
     }
 
@@ -153,12 +168,19 @@ class DoctorController extends Controller
             'qualification'    => 'nullable|string|max:255',
             'phone'            => 'nullable|string|max:30',
             'email'            => 'nullable|email|max:100',
-            'gender'           => 'nullable|in:Male,Female,Other',
-            'consultation_fee' => 'required|numeric|min:0',
-            'status'           => 'required|in:active,inactive',
-            'address'          => 'nullable|string|max:500',
-            'notes'            => 'nullable|string|max:1000',
+            'gender'                  => 'nullable|in:Male,Female,Other',
+            'consultation_fee'        => 'required|numeric|min:0',
+            'doctor_share_percentage' => 'nullable|numeric|min:0|max:100',
+            'status'                  => 'required|in:active,inactive',
+            'address'                 => 'nullable|string|max:500',
+            'notes'                   => 'nullable|string|max:1000',
         ]);
+
+        $docShare = isset($validated['doctor_share_percentage']) && $validated['doctor_share_percentage'] !== null && $validated['doctor_share_percentage'] !== ''
+            ? floatval($validated['doctor_share_percentage'])
+            : ($doctor->doctor_share_percentage ?? 70.00);
+        $validated['doctor_share_percentage'] = $docShare;
+        $validated['hospital_share_percentage'] = round(100.00 - $docShare, 2);
 
         $doctor->update($validated);
 

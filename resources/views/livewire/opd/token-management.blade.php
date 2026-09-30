@@ -437,74 +437,116 @@
                 @endif
             </div>
 
-            <!-- STEP 3: DOCTOR FEE & FREE PATIENT OPTIONS -->
+            <!-- STEP 3: HOSPITAL SERVICE & REVENUE SPLIT -->
             <div class="pt-4 border-t border-slate-100 space-y-4">
                 <div class="flex items-center justify-between">
                     <label class="block text-sm font-bold text-slate-800">
                         <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">3</span>
-                        Consultation Fee & Type <span class="text-rose-500">*</span>
+                        Service & Revenue Split <span class="text-rose-500">*</span>
                     </label>
 
-                    <!-- Fee Type Radio Buttons -->
+                    <!-- Fee Type Radio Buttons: Paid, Partial, Free -->
                     <div class="inline-flex p-1 bg-slate-100 rounded-xl text-xs font-semibold">
                         <button 
                             type="button" 
                             wire:click="$set('fee_type', 'paid')" 
-                            class="px-3.5 py-1.5 rounded-lg transition-all {{ $fee_type === 'paid' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900' }}"
+                            class="px-3 py-1.5 rounded-lg transition-all {{ $fee_type === 'paid' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900' }}"
                         >
-                            <i class="fa-solid fa-money-bill-wave mr-1.5"></i> Paid
+                            <i class="fa-solid fa-money-bill-wave mr-1"></i> Paid
+                        </button>
+                        <button 
+                            type="button" 
+                            wire:click="$set('fee_type', 'partial')" 
+                            class="px-3 py-1.5 rounded-lg transition-all {{ $fee_type === 'partial' ? 'bg-amber-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900' }}"
+                        >
+                            <i class="fa-solid fa-clock-rotate-left mr-1"></i> Partial
                         </button>
                         <button 
                             type="button" 
                             wire:click="$set('fee_type', 'free')" 
-                            class="px-3.5 py-1.5 rounded-lg transition-all {{ $fee_type === 'free' ? 'bg-purple-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900' }}"
+                            class="px-3 py-1.5 rounded-lg transition-all {{ $fee_type === 'free' ? 'bg-purple-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900' }}"
                         >
-                            <i class="fa-solid fa-hand-holding-heart mr-1.5"></i> Free Visit
+                            <i class="fa-solid fa-hand-holding-heart mr-1"></i> Free
                         </button>
                     </div>
                 </div>
 
-                <!-- Fee Display & Calculation Cards -->
-                @if($fee_type === 'paid')
-                    <div class="p-4 rounded-xl border border-slate-200 bg-slate-50/70 grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <span class="text-xs text-slate-500 block">Doctor Consultation Fee</span>
-                            <span class="font-bold text-slate-800 text-lg">
-                                PKR {{ number_format($selectedDoctor ? $selectedDoctor->consultation_fee : 0, 0) }}
-                            </span>
+                <!-- Hospital Service Dropdown -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Select Hospital Service <span class="text-rose-500">*</span></label>
+                    <select 
+                        wire:model.live="hospital_service_id" 
+                        class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 shadow-2xs font-medium"
+                    >
+                        @foreach($services as $srv)
+                            <option value="{{ $srv->id }}">
+                                {{ $srv->name }} (Fee: PKR {{ number_format($srv->default_fee, 0) }}) - Doc: {{ number_format($srv->doctor_share_percentage, 0) }}% / Hosp: {{ number_format($srv->hospital_share_percentage, 0) }}%
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
+                @php
+                    $actDoc = $selectedDoctor;
+                    $actSrv = $selectedService;
+                    $baseFee = (float)($actSrv && $actSrv->service_type !== 'consultation' ? $actSrv->default_fee : ($actDoc ? $actDoc->consultation_fee : 500));
+                    $docPct = (float)($actSrv ? $actSrv->doctor_share_percentage : 70);
+                    $hospPct = (float)($actSrv ? $actSrv->hospital_share_percentage : 30);
+                    $collectedAmt = ($fee_type === 'free') ? 0.0 : (($fee_type === 'partial') ? (float)$paid_amount : $baseFee);
+                    $calcDocShare = ($fee_type === 'free') ? 0.0 : round($collectedAmt * ($docPct / 100), 2);
+                    $calcHospShare = ($fee_type === 'free') ? 0.0 : round($collectedAmt - $calcDocShare, 2);
+                    $remDue = max(0.0, round($baseFee - $collectedAmt, 2));
+                @endphp
+
+                <!-- Live Revenue Split Cards -->
+                <div class="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                        <div class="p-2.5 bg-white rounded-lg border border-slate-200">
+                            <span class="text-[10px] text-slate-500 block uppercase font-bold">Total Service Fee</span>
+                            <span class="font-bold text-slate-900 font-mono text-sm">PKR {{ number_format($baseFee, 2) }}</span>
                         </div>
-                        <div class="text-right">
-                            <span class="text-xs text-slate-500 block">Amount Payable</span>
-                            <span class="font-black text-emerald-700 text-xl">
-                                PKR {{ number_format($selectedDoctor ? $selectedDoctor->consultation_fee : 0, 0) }}
-                            </span>
+                        <div class="p-2.5 bg-white rounded-lg border border-slate-200">
+                            <span class="text-[10px] text-emerald-600 block uppercase font-bold">Hospital Receives</span>
+                            <span class="font-bold text-emerald-700 font-mono text-sm">PKR {{ number_format($collectedAmt, 2) }}</span>
+                        </div>
+                        <div class="p-2.5 bg-blue-50/80 rounded-lg border border-blue-200">
+                            <span class="text-[10px] text-blue-700 block uppercase font-bold">Doctor Share ({{ number_format($docPct, 0) }}%)</span>
+                            <span class="font-bold text-blue-700 font-mono text-sm">PKR {{ number_format($calcDocShare, 2) }}</span>
+                        </div>
+                        <div class="p-2.5 bg-emerald-50/80 rounded-lg border border-emerald-200">
+                            <span class="text-[10px] text-emerald-700 block uppercase font-bold">Hospital Share ({{ number_format($hospPct, 0) }}%)</span>
+                            <span class="font-bold text-emerald-700 font-mono text-sm">PKR {{ number_format($calcHospShare, 2) }}</span>
                         </div>
                     </div>
-                @else
-                    <!-- Free Visit Options -->
-                    <div class="p-4 rounded-xl border border-purple-200 bg-purple-50/40 space-y-3 text-sm">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <span class="text-xs text-purple-700 block">Doctor's Original Fee (Recorded)</span>
-                                <span class="font-semibold text-slate-500 line-through text-sm">
-                                    PKR {{ number_format($selectedDoctor ? $selectedDoctor->consultation_fee : 0, 0) }}
-                                </span>
+
+                    <!-- Partial Payment input -->
+                    @if($fee_type === 'partial')
+                        <div class="pt-2 border-t border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div class="flex-1">
+                                <label class="block font-bold text-amber-900 mb-1">Paid Amount Now (PKR) <span class="text-rose-500">*</span></label>
+                                <input 
+                                    type="number" 
+                                    step="0.01" 
+                                    wire:model.live="paid_amount" 
+                                    placeholder="e.g. 300"
+                                    class="w-full rounded-lg border border-amber-300 px-3 py-1.5 bg-white text-sm font-mono font-bold text-amber-900 focus:border-amber-500"
+                                >
+                                @error('paid_amount') <span class="text-rose-500 text-[11px] font-medium">{{ $message }}</span> @enderror
                             </div>
                             <div class="text-right">
-                                <span class="text-xs text-purple-700 block">Final Fee</span>
-                                <span class="font-black text-purple-700 text-xl tracking-wide">
-                                    FREE
-                                </span>
+                                <span class="text-slate-500 text-[11px] block">Remaining Due:</span>
+                                <span class="font-bold text-amber-700 text-sm font-mono">PKR {{ number_format($remDue, 2) }}</span>
                             </div>
                         </div>
+                    @endif
 
-                        <div>
-                            <label class="block text-xs font-bold text-slate-800 mb-1">
-                                Reason for Free Visit <span class="text-rose-500">*</span>
-                            </label>
+                    <!-- Free Visit Reason -->
+                    @if($fee_type === 'free')
+                        <div class="pt-2 border-t border-purple-200 text-xs space-y-2">
+                            <label class="block font-bold text-purple-900">Reason for Free Visit <span class="text-rose-500">*</span></label>
                             <select 
                                 wire:model.live="free_reason" 
-                                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 shadow-2xs"
+                                class="w-full rounded-lg border border-purple-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-purple-500 shadow-2xs font-medium"
                             >
                                 <option value="">-- Select Free Reason --</option>
                                 <option value="Poor Patient">Poor Patient</option>
@@ -514,41 +556,35 @@
                                 <option value="Hospital Policy">Hospital Policy</option>
                                 <option value="Other">Other</option>
                             </select>
-                            @error('free_reason')
-                                <p class="text-xs text-rose-500 font-medium mt-1">{{ $message }}</p>
-                            @enderror
+                            @error('free_reason') <span class="text-rose-500 text-[11px] font-medium">{{ $message }}</span> @enderror
                         </div>
+                    @endif
+                </div>
 
-                        @if($free_reason === 'Other')
-                            <div>
-                                <label class="block text-xs font-bold text-slate-800 mb-1">
-                                    Specify Other Reason <span class="text-rose-500">*</span>
-                                </label>
-                                <input 
-                                    type="text" 
-                                    wire:model="other_reason" 
-                                    placeholder="Enter reason for complimentary visit..."
-                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 shadow-2xs"
-                                />
-                                @error('other_reason')
-                                    <p class="text-xs text-rose-500 font-medium mt-1">{{ $message }}</p>
-                                @enderror
-                            </div>
-                        @endif
+                <!-- Payment Method & Clinical Notes -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Payment Method</label>
+                        <select wire:model="payment_method" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm bg-white focus:border-blue-500 shadow-2xs">
+                            <option value="cash">Cash Counter</option>
+                            <option value="card">Debit / Credit Card</option>
+                            <option value="bank_transfer">Bank Transfer</option>
+                            <option value="other">Other / Cheque</option>
+                        </select>
                     </div>
-                @endif
 
-                <!-- Clinical Notes (Optional) -->
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Visit Notes / Symptoms (Optional)</label>
-                    <input 
-                        type="text" 
-                        wire:model="notes" 
-                        placeholder="e.g. Fever checkup, follow-up, general consultation"
-                        class="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-2xs"
-                    />
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Visit Notes / Symptoms (Optional)</label>
+                        <input 
+                            type="text" 
+                            wire:model="notes" 
+                            placeholder="e.g. Fever, follow-up, procedure notes"
+                            class="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 shadow-2xs"
+                        />
+                    </div>
                 </div>
             </div>
+
 
             <!-- STEP 4: GENERATE TOKEN BUTTON -->
             <div class="pt-4 border-t border-slate-100">
@@ -638,6 +674,19 @@
                                 @endif
                             </div>
 
+                            @if($generatedToken->bill)
+                            <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono space-y-1 text-left">
+                                <div class="flex justify-between text-blue-700">
+                                    <span>Doctor Share:</span>
+                                    <strong>PKR {{ number_format($generatedToken->bill->doctor_share, 2) }}</strong>
+                                </div>
+                                <div class="flex justify-between text-emerald-700">
+                                    <span>Hospital Share:</span>
+                                    <strong>PKR {{ number_format($generatedToken->bill->hospital_share, 2) }}</strong>
+                                </div>
+                            </div>
+                            @endif
+
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-500 font-medium">Status:</span>
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
@@ -647,27 +696,41 @@
                         </div>
 
                         <!-- Action Buttons -->
-                        <div class="grid grid-cols-2 gap-3 pt-1 no-print">
-                            <button 
-                                type="button" 
-                                wire:click="printToken({{ $generatedToken->id }})" 
-                                class="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm shadow-xs transition flex items-center justify-center space-x-2"
-                            >
-                                <i class="fa-solid fa-print"></i>
-                                <span>Print Token</span>
-                            </button>
+                        <div class="space-y-2 pt-1 no-print">
+                            <div class="grid grid-cols-2 gap-2">
+                                <a 
+                                    href="{{ route('patient-tokens.print', $generatedToken->id) }}" 
+                                    target="_blank"
+                                    class="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition flex items-center justify-center space-x-1.5"
+                                >
+                                    <i class="fa-solid fa-ticket"></i>
+                                    <span>Print Token</span>
+                                </a>
+
+                                @if($generatedToken->hospital_bill_id)
+                                <a 
+                                    href="{{ route('hospital-billing.receipt', $generatedToken->hospital_bill_id) }}" 
+                                    target="_blank"
+                                    class="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center justify-center space-x-1.5"
+                                >
+                                    <i class="fa-solid fa-receipt"></i>
+                                    <span>Print Receipt</span>
+                                </a>
+                                @endif
+                            </div>
 
                             <button 
                                 type="button" 
                                 wire:click="startNewToken" 
-                                class="w-full py-2.5 px-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-sm border border-blue-200 transition flex items-center justify-center space-x-2"
+                                class="w-full py-2 px-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition flex items-center justify-center space-x-2"
                             >
                                 <i class="fa-solid fa-plus"></i>
-                                <span>New Token</span>
+                                <span>Generate Next Token</span>
                             </button>
                         </div>
                     </div>
                 </div>
+
 
             @else
                 <!-- LIVE PREVIEW BEFORE GENERATING -->
