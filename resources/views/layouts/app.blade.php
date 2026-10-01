@@ -136,16 +136,21 @@
                 <div>
                     <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-3 mb-2">Hospital</p>
                     <div class="space-y-1">
+                        @if(!$user || $user->hasPermission('manage_patients'))
                         <a href="/patients" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('patients*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-hospital-user w-5"></i>
                             <span>Patients</span>
                         </a>
+                        @endif
 
+                        @if(!$user || $user->hasPermission('manage_doctors'))
                         <a href="/doctors" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('doctors*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-user-doctor w-5"></i>
                             <span>Doctors</span>
                         </a>
+                        @endif
 
+                        @if(!$user || $user->hasPermission('manage_opd_tokens'))
                         <a href="/opd/tokens" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ (request()->is('opd/tokens*') || request()->is('patient-tokens*')) ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-ticket-simple w-5"></i>
                             <span>OPD Tokens</span>
@@ -156,6 +161,7 @@
                                 <span class="ml-auto bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{{ $todayWaiting }}</span>
                             @endif
                         </a>
+                        @endif
                     </div>
                 </div>
 

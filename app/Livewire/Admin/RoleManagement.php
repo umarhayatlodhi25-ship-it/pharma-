@@ -21,6 +21,12 @@ class RoleManagement extends Component
         'manage_hold_invoices' => 'Manage Hold Invoices',
         'view_sales' => 'View Sales History',
         'view_expiry' => 'View Expiry Alerts',
+        'manage_patients' => 'Manage Patients',
+        'manage_doctors' => 'Manage Doctors',
+        'manage_opd_tokens' => 'Manage OPD Tokens',
+        'manage_hospital_billing' => 'Manage Hospital Billing',
+        'manage_doctor_ledgers' => 'Manage Doctor Ledgers',
+        'manage_hospital_services' => 'Manage Hospital Services',
         'view_reports' => 'View Reports Hub',
     ];
     public $selectedFeatures = [];

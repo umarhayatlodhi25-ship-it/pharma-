@@ -135,35 +135,47 @@
                 <div>
                     <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-3 mb-2">Hospital</p>
                     <div class="space-y-1">
+                        @if(!$user || $user->hasPermission('manage_patients'))
                         <a href="/patients" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('patients*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-hospital-user w-5"></i>
                             <span>Patients</span>
                         </a>
+                        @endif
 
+                        @if(!$user || $user->hasPermission('manage_doctors'))
                         <a href="/doctors" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('doctors*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-user-doctor w-5"></i>
                             <span>Doctors</span>
                         </a>
+                        @endif
 
+                        @if(!$user || $user->hasPermission('manage_opd_tokens'))
                         <a href="/opd/tokens" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ (request()->is('opd/tokens*') || request()->is('patient-tokens*')) ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-ticket-simple w-5"></i>
                             <span>OPD Tokens</span>
                         </a>
+                        @endif
 
+                        @if(!$user || $user->hasPermission('manage_hospital_billing'))
                         <a href="/hospital-billing" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('hospital-billing*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-file-invoice-dollar w-5"></i>
                             <span>Hospital Billing</span>
                         </a>
+                        @endif
 
+                        @if(!$user || $user->hasPermission('manage_doctor_ledgers'))
                         <a href="/doctor-ledgers" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ (request()->is('doctor-ledgers*') || request()->is('doctors/*/ledger*') || request()->is('doctor-settlements*')) ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-scale-balanced w-5"></i>
                             <span>Doctor Ledgers</span>
                         </a>
+                        @endif
 
+                        @if(!$user || $user->hasPermission('manage_hospital_services'))
                         <a href="/hospital-services" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('hospital-services*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-hand-holding-medical w-5"></i>
                             <span>Hospital Services</span>
                         </a>
+                        @endif
                     </div>
                 </div>
 
