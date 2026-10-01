@@ -26,6 +26,12 @@ class AppServiceProvider extends ServiceProvider
             URL::forceScheme('https');
         }
 
+        \Illuminate\Support\Facades\Event::listen(function (\Illuminate\Database\Events\ConnectionEstablished $event) {
+            if ($event->connection->getDriverName() === 'pgsql') {
+                $event->connection->getPdo()->setAttribute(\PDO::ATTR_EMULATE_PREPARES, true);
+            }
+        });
+
         // Centralized Account Profile sharing across all views
         \Illuminate\Support\Facades\View::composer('*', function ($view) {
             try {
