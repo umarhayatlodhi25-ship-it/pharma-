@@ -43,6 +43,15 @@ if (!$dbConnection || $dbConnection === 'sqlite') {
     }
 }
 
+if ($dbUrl = getenv('DATABASE_URL') ?: ($_ENV['DATABASE_URL'] ?? null)) {
+    if (strpos($dbUrl, 'options=') !== false) {
+        $cleanUrl = preg_replace('/(&|\?)options=[^&]+/', '', $dbUrl);
+        putenv("DATABASE_URL={$cleanUrl}");
+        $_ENV['DATABASE_URL'] = $cleanUrl;
+        $_SERVER['DATABASE_URL'] = $cleanUrl;
+    }
+}
+
 // Set environment variables for Vercel Serverless
 putenv('SESSION_DRIVER=cookie');
 $_ENV['SESSION_DRIVER'] = 'cookie';
