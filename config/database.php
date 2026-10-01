@@ -86,8 +86,8 @@ return [
 
         'pgsql' => [
             'driver' => 'pgsql',
-            'url' => str_replace('-pooler.', '.', env('POSTGRES_URL_NON_POOLING', env('POSTGRES_URL', env('DATABASE_URL', env('DB_URL'))))),
-            'host' => str_replace('-pooler.', '.', env('DB_HOST', '127.0.0.1')),
+            'url' => env('DATABASE_URL'),
+            'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
@@ -98,7 +98,7 @@ return [
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
             'options' => [
-                'endpoint' => 'ep-proud-wildflower-aeestj7q',
+                \PDO::ATTR_EMULATE_PREPARES => true,
             ],
         ],
 
