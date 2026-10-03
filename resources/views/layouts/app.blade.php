@@ -156,6 +156,21 @@
                                 <span class="ml-auto bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{{ $todayWaiting }}</span>
                             @endif
                         </a>
+
+                        <a href="/hospital-billing" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('hospital-billing*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <i class="fa-solid fa-file-invoice-dollar w-5"></i>
+                            <span>Hospital Billing</span>
+                        </a>
+
+                        <a href="/doctor-ledgers" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ (request()->is('doctor-ledgers*') || request()->is('doctors/*/ledger*') || request()->is('doctor-settlements*')) ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <i class="fa-solid fa-scale-balanced w-5"></i>
+                            <span>Doctor Ledgers</span>
+                        </a>
+
+                        <a href="/hospital-services" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('hospital-services*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <i class="fa-solid fa-hand-holding-medical w-5"></i>
+                            <span>Hospital Services</span>
+                        </a>
                     </div>
                 </div>
 
