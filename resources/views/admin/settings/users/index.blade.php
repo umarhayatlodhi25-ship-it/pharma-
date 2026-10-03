@@ -15,10 +15,16 @@
             </p>
         </div>
 
-        <a href="{{ route('admin.settings.users.create') }}"
-           class="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition shadow-sm">
-            <i class="fa-solid fa-user-plus mr-2"></i> + Add User
-        </a>
+        <div class="flex items-center space-x-3">
+            <a href="{{ route('admin.settings.roles.index') }}"
+               class="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition shadow-sm">
+                <i class="fa-solid fa-user-shield mr-2"></i> Manage Roles
+            </a>
+            <a href="{{ route('admin.settings.users.create') }}"
+               class="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition shadow-sm">
+                <i class="fa-solid fa-user-plus mr-2"></i> + Add User
+            </a>
+        </div>
     </div>
 
     {{-- FLASH MESSAGES --}}

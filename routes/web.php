@@ -75,6 +75,129 @@ Route::get('/admin/setup', function (\Illuminate\Http\Request $request) {
     return response()->json(['status' => 'Setup Complete', 'details' => $output]);
 });
 
+Route::get('/run-migrations-live', function () {
+    try {
+        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        return 'Migrations ran successfully: ' . \Illuminate\Support\Facades\Artisan::output();
+    } catch (\Exception $e) {
+        $error = $e->getMessage();
+        if ($e->getPrevious()) {
+            $error .= " | Previous: " . $e->getPrevious()->getMessage();
+        }
+        return 'Error: ' . $error;
+    }
+});
+
+Route::get('/create-roles-tables', function () {
+    try {
+        $db = \Illuminate\Support\Facades\DB::connection();
+        
+        // Create roles table
+        $db->statement("CREATE TABLE IF NOT EXISTS roles (
+            id BIGSERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            slug VARCHAR(255) NOT NULL UNIQUE,
+            created_at TIMESTAMP,
+            updated_at TIMESTAMP
+        )");
+        
+        // Create role_permissions table
+        $db->statement("CREATE TABLE IF NOT EXISTS role_permissions (
+            id BIGSERIAL PRIMARY KEY,
+            role_id BIGINT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+            feature VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP,
+            updated_at TIMESTAMP,
+            UNIQUE(role_id, feature)
+        )");
+        
+        // Seed default roles
+        $roles = [
+            ['name' => 'Admin', 'slug' => 'admin'],
+            ['name' => 'Pharmacist', 'slug' => 'pharmacist'],
+            ['name' => 'Cashier', 'slug' => 'cashier'],
+            ['name' => 'Hospital', 'slug' => 'hospital'],
+            ['name' => 'Assistant Admin', 'slug' => 'assistant_admin'],
+        ];
+        
+        $inserted = 0;
+        foreach ($roles as $role) {
+            $exists = $db->table('roles')->where('slug', $role['slug'])->exists();
+            if (!$exists) {
+                $db->table('roles')->insert(array_merge($role, [
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]));
+                $inserted++;
+            }
+        }
+        
+        // Also add to migrations table so Laravel doesn't re-run
+        $migrationName = '2026_10_01_000000_create_roles_and_permissions_tables';
+        $migExists = $db->table('migrations')->where('migration', $migrationName)->exists();
+        if (!$migExists) {
+            $batch = $db->table('migrations')->max('batch') ?? 0;
+            $db->table('migrations')->insert([
+                'migration' => $migrationName,
+                'batch' => $batch + 1,
+            ]);
+        }
+        
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Roles tables created and seeded!',
+            'roles_inserted' => $inserted,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage(),
+        ]);
+    }
+});
+
+Route::get('/cleanup-dummy', function () {
+    try {
+        $keepEmails = [
+            'admin@pharmacy.com', 
+            'admin@gmail.com', 
+            'faizanlodhi035@gmail.com'
+        ];
+        
+        // 1. Delete from Local DB
+        $deletedUsers = \App\Models\User::whereNotIn('email', $keepEmails)->forceDelete();
+
+        // 2. Delete from Firebase
+        $deletedFromFirebase = 0;
+        $fbUsers = \App\Services\FirebaseService::getUsersFromFirebase();
+        foreach ($fbUsers as $key => $fbData) {
+            $email = strtolower(trim($fbData['email'] ?? ''));
+            if ($email && !in_array($email, $keepEmails)) {
+                \App\Services\FirebaseService::deleteUser($email);
+                $deletedFromFirebase++;
+            }
+        }
+
+        // 3. Cleanup other tables
+        $deletedPatients = \Illuminate\Support\Facades\DB::table('patients')->delete();
+        $deletedDoctors = \Illuminate\Support\Facades\DB::table('doctors')->delete();
+        $deletedTokens = \Illuminate\Support\Facades\DB::table('patient_tokens')->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Dummy data cleaned up completely!',
+            'deleted_users_db' => $deletedUsers,
+            'deleted_users_firebase' => $deletedFromFirebase,
+            'deleted_patients' => $deletedPatients,
+            'deleted_doctors' => $deletedDoctors,
+            'deleted_tokens' => $deletedTokens
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+});
+
+
 Route::middleware('throttle:10,1')->group(function () {
     Route::get('/admin/migration', [\App\Http\Controllers\Admin\MigrationController::class, 'index'])
         ->name('admin.migration.index');
@@ -120,6 +243,9 @@ Route::middleware(['auth'])->group(function () {
             ->name('admin.settings.')
             ->group(function () {
                 Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
+                Route::get('/roles', function() {
+                    return view('admin.settings.roles.index');
+                })->name('roles.index');
                 Route::get('/users/create', [UserManagementController::class, 'create'])->name('users.create');
                 Route::post('/users', [UserManagementController::class, 'store'])->name('users.store');
                 Route::get('/users/{id}/edit', [UserManagementController::class, 'edit'])->name('users.edit');

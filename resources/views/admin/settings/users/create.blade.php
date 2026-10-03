@@ -113,20 +113,11 @@
                         Select Role
                     </option>
 
-                    <option value="admin"
-                        @selected(old('role') === 'admin')>
-                        Admin
-                    </option>
-
-                    <option value="pharmacist"
-                        @selected(old('role') === 'pharmacist')>
-                        Pharmacist
-                    </option>
-
-                    <option value="cashier"
-                        @selected(old('role') === 'cashier')>
-                        Cashier
-                    </option>
+                    @foreach($roles as $r)
+                        <option value="{{ $r->slug }}" @selected(old('role') === $r->slug)>
+                            {{ $r->name }}
+                        </option>
+                    @endforeach
 
                 </select>
 
