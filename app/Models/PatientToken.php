@@ -106,7 +106,10 @@ class PatientToken extends Model
      */
     public function getFormattedTokenNumberAttribute(): string
     {
-        return str_pad((string) $this->token_number, 3, '0', STR_PAD_LEFT);
+        $profile = \App\Models\AccountProfile::current();
+        $prefix = $profile->token_prefix ?? '';
+        $padded = str_pad((string) $this->token_number, 3, '0', STR_PAD_LEFT);
+        return $prefix . $padded;
     }
 
     /**
@@ -222,7 +225,16 @@ class PatientToken extends Model
      */
     public static function generateNextTokenNumber(string $date): int
     {
-        $max = self::where('token_date', $date)->max('token_number');
-        return ($max ? intval($max) : 0) + 1;
+        $profile = \App\Models\AccountProfile::current();
+        $query = self::query();
+        
+        if ($profile->daily_token_reset) {
+            $query->where('token_date', $date);
+        }
+        
+        $max = $query->max('token_number');
+        $startNumber = (int) $profile->token_start_number > 0 ? (int) $profile->token_start_number : 1;
+        
+        return $max ? (intval($max) + 1) : $startNumber;
     }
 }

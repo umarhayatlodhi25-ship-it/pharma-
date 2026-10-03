@@ -76,11 +76,11 @@
                     <i class="fa-solid fa-chevron-right text-xs {{ $activeTab === 'profile' ? 'text-blue-600' : 'text-gray-300' }}"></i>
                 </a>
 
-                <!-- 2. User Account -->
-                <a href="{{ route('admin.settings.users.index') }}" 
-                   class="flex items-center justify-between p-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
+                <!-- 2. User Accounts -->
+                <a href="{{ route('settings.index', ['tab' => 'users']) }}" 
+                   class="flex items-center justify-between p-3 rounded-lg text-sm font-semibold transition {{ $activeTab === 'users' ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs' : 'text-gray-700 hover:bg-gray-50' }}">
                     <div class="flex items-center space-x-3">
-                        <div class="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 flex items-center justify-center text-sm">
+                        <div class="w-8 h-8 rounded-lg {{ $activeTab === 'users' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500' }} flex items-center justify-center text-sm">
                             <i class="fa-solid fa-users"></i>
                         </div>
                         <div>
@@ -88,26 +88,23 @@
                             <span class="text-[11px] text-gray-400 font-normal">Manage system staff & roles</span>
                         </div>
                     </div>
-                    <span class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                        Manage <i class="fa-solid fa-arrow-up-right-from-square ml-0.5"></i>
-                    </span>
+                    <i class="fa-solid fa-chevron-right text-xs {{ $activeTab === 'users' ? 'text-blue-600' : 'text-gray-300' }}"></i>
                 </a>
 
-                <!-- 3. Print & Token Settings (Placeholder) -->
-                <div class="flex items-center justify-between p-3 rounded-lg text-sm font-medium text-gray-400 bg-gray-50/60 border border-dashed border-gray-200">
+                <!-- 3. Print & Token Settings -->
+                <a href="{{ route('settings.index', ['tab' => 'print_token']) }}" 
+                   class="flex items-center justify-between p-3 rounded-lg text-sm font-semibold transition {{ $activeTab === 'print_token' ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs' : 'text-gray-700 hover:bg-gray-50' }}">
                     <div class="flex items-center space-x-3">
-                        <div class="w-8 h-8 rounded-lg bg-gray-200/70 text-gray-400 flex items-center justify-center text-sm">
+                        <div class="w-8 h-8 rounded-lg {{ $activeTab === 'print_token' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500' }} flex items-center justify-center text-sm">
                             <i class="fa-solid fa-print"></i>
                         </div>
                         <div>
-                            <span class="block leading-tight font-bold text-gray-600">Print & Token Settings</span>
-                            <span class="text-[11px] text-gray-400">Thermal receipt & slip layouts</span>
+                            <span class="block leading-tight font-bold">Print & Token Settings</span>
+                            <span class="text-[11px] text-gray-400 font-normal">Thermal receipt & slip layouts</span>
                         </div>
                     </div>
-                    <span class="text-[9px] uppercase tracking-wider font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                        Phase 3.6
-                    </span>
-                </div>
+                    <i class="fa-solid fa-chevron-right text-xs {{ $activeTab === 'print_token' ? 'text-blue-600' : 'text-gray-300' }}"></i>
+                </a>
 
                 <!-- 4. Security (Placeholder) -->
                 <div class="flex items-center justify-between p-3 rounded-lg text-sm font-medium text-gray-400 bg-gray-50/60 border border-dashed border-gray-200">
@@ -154,8 +151,9 @@
             </div>
         </div>
 
-        <!-- RIGHT COLUMN: ACCOUNT / ORGANIZATION PROFILE FORM (8 COLS) -->
+        <!-- RIGHT COLUMN: DYNAMIC CONTENT (8 COLS) -->
         <div class="lg:col-span-8">
+            @if($activeTab === 'profile')
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
                 
                 <div class="p-5 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
@@ -419,6 +417,11 @@
                 </form>
 
             </div>
+            @elseif($activeTab === 'print_token')
+                @include('admin.settings.print_token')
+            @elseif($activeTab === 'users')
+                @include('admin.settings.users.index')
+            @endif
         </div>
 
     </div>

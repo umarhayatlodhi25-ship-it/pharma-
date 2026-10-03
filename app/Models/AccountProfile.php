@@ -24,6 +24,21 @@ class AccountProfile extends Model
         'footer_text',
         'currency',
         'timezone',
+        'token_prefix',
+        'token_start_number',
+        'daily_token_reset',
+        'auto_print_token',
+        'default_token_status',
+        'thermal_paper_size',
+        'print_copies',
+        'show_logo',
+        'show_organization_name',
+        'show_patient_id',
+        'show_doctor_name',
+        'show_date',
+        'show_time',
+        'show_consultation_fee',
+        'show_token_status',
     ];
 
     /**

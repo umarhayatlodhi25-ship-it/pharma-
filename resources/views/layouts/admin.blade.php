@@ -202,10 +202,7 @@
                             <span>Settings</span>
                         </a>
 
-                        <a href="{{ route('admin.settings.users.index') }}" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('admin/settings/users*') || request()->is('settings/users*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
-                            <i class="fa-solid fa-users w-5"></i>
-                            <span>User Management</span>
-                        </a>
+
                         @endif
                         
                         <form action="/logout" method="POST">

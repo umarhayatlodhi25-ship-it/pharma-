@@ -21,6 +21,7 @@ class Sale extends Model
         'paid_amount',
         'change_amount',
         'payment_method',
+        'payment_status',
     ];
 
     /*
@@ -61,6 +62,20 @@ class Sale extends Model
     {
         return $this->hasMany(
             SaleItem::class,
+            'sale_id'
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PAYMENTS
+    |--------------------------------------------------------------------------
+    */
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(
+            CustomerPayment::class,
             'sale_id'
         );
     }

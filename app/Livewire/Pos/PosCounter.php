@@ -23,7 +23,9 @@ class PosCounter extends Component
     public $discount = 0;
     public $tax = 0;
     public $paid_amount = 0;
+    public $payment_type = 'full'; // full, partial, credit
     public $customer_id = '';
+    public $customer_outstanding = 0;
     public $restored_hold_ref = '';
 
     // Public properties for direct calculation
@@ -376,6 +378,26 @@ class PosCounter extends Component
 
     public function updatedPaidAmount()
     {
+        if ($this->payment_type === 'full') {
+            $this->payment_type = 'partial';
+        }
+        $this->calculateTotals();
+    }
+
+    public function updatedPaymentType()
+    {
+        $this->calculateTotals();
+    }
+
+    public function updatedCustomerId()
+    {
+        if ($this->customer_id) {
+            $customer = Customer::find($this->customer_id);
+            $this->customer_outstanding = $customer ? $customer->outstanding_balance : 0;
+        } else {
+            $this->customer_outstanding = 0;
+            $this->payment_type = 'full';
+        }
         $this->calculateTotals();
     }
 
@@ -386,6 +408,12 @@ class PosCounter extends Component
         $tx = is_numeric($this->tax) ? (float)$this->tax : 0;
         
         $this->totalAmount = max(0, round(($this->subtotal - $disc) + $tx, 2));
+
+        if ($this->payment_type === 'full') {
+            $this->paid_amount = $this->totalAmount;
+        } elseif ($this->payment_type === 'credit') {
+            $this->paid_amount = 0;
+        }
         
         $paid = is_numeric($this->paid_amount) ? (float)$this->paid_amount : 0;
         $this->changeAmount = max(0, round($paid - $this->totalAmount, 2));
@@ -427,6 +455,16 @@ class PosCounter extends Component
         }
 
         try {
+            if (!$this->customer_id && $this->payment_type !== 'full') {
+                session()->flash('error', 'Only registered customers can use partial payment or credit.');
+                return;
+            }
+
+            if ($this->payment_type === 'partial' && (empty($this->paid_amount) || $this->paid_amount <= 0 || $this->paid_amount > $this->totalAmount)) {
+                 session()->flash('error', 'For partial payments, the paid amount must be greater than 0 and less than or equal to the total amount.');
+                 return;
+            }
+
             $lastSaleId = null;
 
             DB::transaction(function () use (&$lastSaleId) {
@@ -435,15 +473,37 @@ class PosCounter extends Component
                     ['name' => 'Admin', 'email' => 'admin@pharmacy.com', 'password' => bcrypt('password')]
                 );
 
+                $paid = is_numeric($this->paid_amount) ? (float)$this->paid_amount : 0;
+                
+                $status = 'paid';
+                if ($paid == 0 && $this->totalAmount > 0) {
+                    $status = 'unpaid';
+                } elseif ($paid < $this->totalAmount) {
+                    $status = 'partial';
+                }
+
                 $sale = Sale::create([
                     'invoice_number' => 'INV-' . time(),
                     'user_id' => auth()->id() ?? 1,
                     'customer_id' => $this->customer_id ?: null,
                     'subtotal' => $this->subtotal,
                     'total_amount' => $this->totalAmount,
-                    'paid_amount' => $this->paid_amount ?: $this->totalAmount,
+                    'paid_amount' => $paid,
                     'change_amount' => $this->changeAmount,
+                    'payment_status' => $status,
                 ]);
+
+                if ($paid > 0 && $this->customer_id) {
+                    \App\Models\CustomerPayment::create([
+                        'customer_id' => $this->customer_id,
+                        'sale_id' => $sale->id,
+                        'amount' => $paid,
+                        'payment_method' => 'cash',
+                        'payment_date' => now(),
+                        'user_id' => auth()->id() ?? 1,
+                        'remarks' => 'Initial payment for ' . $sale->invoice_number,
+                    ]);
+                }
 
                 $lastSaleId = $sale->id;
                 $packagingService = app(PackagingService::class);

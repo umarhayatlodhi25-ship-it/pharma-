@@ -120,9 +120,9 @@
                         <th class="p-3.5">Date & Time</th>
                         <th class="p-3.5">Sold By</th>
                         <th class="p-3.5">Payment Method</th>
-                        <th class="p-3.5 text-right">Subtotal</th>
-                        <th class="p-3.5 text-right">Discount</th>
+                        <th class="p-3.5 text-center">Status</th>
                         <th class="p-3.5 text-right">Total Amount</th>
+                        <th class="p-3.5 text-right">Paid Amount</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -143,9 +143,17 @@
                                 {{ $sale->payment_method }}
                             </span>
                         </td>
-                        <td class="p-3.5 text-right font-medium">PKR {{ number_format($sale->subtotal, 2) }}</td>
-                        <td class="p-3.5 text-right text-red-500 font-medium">PKR {{ number_format($sale->discount, 2) }}</td>
-                        <td class="p-3.5 text-right font-bold text-emerald-600">PKR {{ number_format($sale->total_amount, 2) }}</td>
+                        <td class="p-3.5 text-center">
+                            @if($sale->payment_status === 'paid')
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-700">Paid</span>
+                            @elseif($sale->payment_status === 'partial')
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-100 text-amber-700">Partial</span>
+                            @else
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-100 text-rose-700">Unpaid</span>
+                            @endif
+                        </td>
+                        <td class="p-3.5 text-right font-bold text-gray-800">PKR {{ number_format($sale->total_amount, 2) }}</td>
+                        <td class="p-3.5 text-right font-bold text-emerald-600">PKR {{ number_format($sale->paid_amount, 2) }}</td>
                     </tr>
                     @empty
                     <tr>

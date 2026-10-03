@@ -238,6 +238,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
         Route::put('/settings/profile', [SettingsController::class, 'updateProfile'])->name('settings.profile.update');
         Route::delete('/settings/profile/logo', [SettingsController::class, 'deleteLogo'])->name('settings.profile.delete-logo');
+        Route::put('/settings/print-token', [SettingsController::class, 'updatePrintToken'])->name('settings.print-token.update');
 
         Route::prefix('settings')
             ->name('admin.settings.')
@@ -313,6 +314,7 @@ Route::middleware(['auth'])->group(function () {
     // 3. ADMIN, PHARMACIST & CASHIER ROUTES (POS, Sales, Returns, Expiry Alerts)
     Route::middleware(['role:admin,pharmacist,cashier'])->group(function () {
         Route::get('/pos', PosCounter::class);
+        Route::get('/pos/receive-payment/{customerId?}', \App\Livewire\Admin\ReceivePayment::class)->name('pos.receive-payment');
         Route::get('/hold-invoices', HoldInvoiceList::class)->name('hold-invoices.index');
         Route::get('/sales', [SaleController::class, 'index'])->name('sales.index');
         Route::get('/sales/{id}', [SaleController::class, 'show'])->name('sales.show');
