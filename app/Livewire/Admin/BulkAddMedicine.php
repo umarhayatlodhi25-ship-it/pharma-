@@ -179,7 +179,7 @@ class BulkAddMedicine extends Component
                     $baseUnitSlug = Str::slug($dosageUnit);
                     $baseUnit = \App\Models\Unit::firstOrCreate(
                         ['unit_id' => $baseUnitSlug],
-                        ['name' => $dosageUnit, 'symbol' => substr($dosageUnit, 0, 4), 'allow_decimal' => false, 'status' => 'active']
+                        ['name' => $dosageUnit, 'symbol' => substr($dosageUnit, 0, 4), 'allow_decimal' => \Illuminate\Support\Facades\DB::raw('false'), 'status' => 'active']
                     );
 
                     $med = Medicine::create([
@@ -307,7 +307,7 @@ class BulkAddMedicine extends Component
                     $baseUnitSlug = \Illuminate\Support\Str::slug($dosageUnit);
                     $baseUnit = \App\Models\Unit::firstOrCreate(
                         ['unit_id' => $baseUnitSlug],
-                        ['name' => $dosageUnit, 'symbol' => substr($dosageUnit, 0, 4), 'allow_decimal' => false, 'status' => 'active']
+                        ['name' => $dosageUnit, 'symbol' => substr($dosageUnit, 0, 4), 'allow_decimal' => \Illuminate\Support\Facades\DB::raw('false'), 'status' => 'active']
                     );
 
                     $med = Medicine::create([
