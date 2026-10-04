@@ -256,15 +256,8 @@ class BulkAddMedicine extends Component
 
     public function importJson($jsonData)
     {
-        $importedRows = 0;
-        
-        // Remove empty rows if any
-        foreach ($this->rows as $index => $row) {
-            if (empty(trim($row['name'] ?? ''))) {
-                unset($this->rows[$index]);
-            }
-        }
-        $this->rows = array_values($this->rows);
+        $importedCount = 0;
+        $skippedCount = 0;
 
         // Map existing categories
         $categoryMap = [];
@@ -272,45 +265,93 @@ class BulkAddMedicine extends Component
             $categoryMap[strtolower(trim($cat->name))] = $cat->id;
         }
 
-        foreach ($jsonData as $row) {
-            // Row is an array of columns (0-indexed)
-            if (count($row) < 7) continue; // Skip incomplete rows
-            if (empty(trim($row[0]))) continue;
-            
-            $csvCategory = trim($row[1] ?? '');
-            $catKey = strtolower($csvCategory);
-            $categoryId = '';
-            $rawCategory = '';
+        try {
+            DB::transaction(function () use ($jsonData, $categoryMap, &$importedCount, &$skippedCount) {
+                foreach ($jsonData as $row) {
+                    if (count($row) < 7) continue;
+                    $name = trim($row[0] ?? '');
+                    if (empty($name)) continue;
 
-            if ($csvCategory !== '') {
-                if (isset($categoryMap[$catKey])) {
-                    $categoryId = $categoryMap[$catKey];
-                } else {
-                    $rawCategory = $csvCategory;
+                    // Skip if already exists
+                    if (Medicine::where('name', $name)->exists()) {
+                        $skippedCount++;
+                        continue;
+                    }
+
+                    $csvCategory = trim($row[1] ?? '');
+                    $catKey = strtolower($csvCategory);
+                    $categoryId = $categoryMap[$catKey] ?? null;
+
+                    // If category doesn't exist, we skip to be safe (or could create a default)
+                    if (!$categoryId) {
+                        $skippedCount++;
+                        continue;
+                    }
+                    
+                    $dosageUnit = !empty(trim($row[5] ?? '')) ? trim($row[5]) : 'Tablet';
+                    $unitPrice = (float) trim($row[6] ?? '');
+                    $purchasePrice = !empty(trim($row[7] ?? '')) ? (float) trim($row[7]) : null;
+                    $alertQty = !empty(trim($row[8] ?? '')) ? (int) trim($row[8]) : 10;
+                    $barcode = !empty(trim($row[9] ?? '')) ? trim($row[9]) : null;
+
+                    $baseUnitSlug = \Illuminate\Support\Str::slug($dosageUnit);
+                    $baseUnit = \App\Models\Unit::firstOrCreate(
+                        ['unit_id' => $baseUnitSlug],
+                        ['name' => $dosageUnit, 'symbol' => substr($dosageUnit, 0, 4), 'allow_decimal' => false, 'status' => 'active']
+                    );
+
+                    $med = Medicine::create([
+                        'category_id' => $categoryId,
+                        'product_type' => 'medicine',
+                        'name' => $name,
+                        'generic_name' => !empty(trim($row[2] ?? '')) ? trim($row[2]) : null,
+                        'brand' => !empty(trim($row[3] ?? '')) ? trim($row[3]) : null,
+                        'manufacturer' => !empty(trim($row[4] ?? '')) ? trim($row[4]) : null,
+                        'dosage_unit' => $dosageUnit,
+                        'base_unit_id' => $baseUnit->id,
+                        'base_unit' => $dosageUnit,
+                        'primary_unit_to_secondary' => 1,
+                        'secondary_unit_to_base' => 1,
+                        'unit_price' => $unitPrice,
+                        'purchase_price' => $purchasePrice,
+                        'base_unit_selling_price' => $unitPrice,
+                        'barcode' => $barcode,
+                        'alert_quantity' => $alertQty,
+                        'reorder_level' => $alertQty,
+                        'has_expiry' => true,
+                        'track_batches' => true,
+                        'status' => 'active',
+                    ]);
+
+                    \App\Models\MedicinePackaging::create([
+                        'medicine_id' => $med->id,
+                        'unit_id' => $baseUnit->id,
+                        'conversion_to_base' => 1.0,
+                        'quantity_in_parent' => 1.0,
+                        'display_name' => $dosageUnit,
+                        'barcode' => $barcode,
+                        'purchase_price' => $purchasePrice,
+                        'sale_price' => $unitPrice,
+                        'allow_purchase' => true,
+                        'allow_sale' => true,
+                        'status' => 'active',
+                    ]);
+
+                    app(\App\Services\StockLedgerService::class)->syncInventory($med->id);
+                    $importedCount++;
                 }
-            }
-            
-            $this->rows[] = [
-                'name' => trim($row[0] ?? ''),
-                'category_id' => $categoryId,
-                'category_name_raw' => $rawCategory,
-                'generic_name' => trim($row[2] ?? ''),
-                'brand' => trim($row[3] ?? ''),
-                'manufacturer' => trim($row[4] ?? ''),
-                'dosage_unit' => trim($row[5] ?? 'Tablet'),
-                'unit_price' => trim($row[6] ?? ''),
-                'purchase_price' => trim($row[7] ?? ''),
-                'alert_quantity' => trim($row[8] ?? '10'),
-                'barcode' => trim($row[9] ?? ''),
-            ];
-            $importedRows++;
+            });
+
+            session()->flash('message', "{$importedCount} medicines imported and saved directly! ({$skippedCount} skipped due to duplicates or invalid category).");
+        } catch (\Exception $e) {
+            $this->addError('general', 'An error occurred while importing: ' . $e->getMessage());
         }
-        
-        if (empty($this->rows)) {
+
+        // Reset rows so payload stays small
+        $this->rows = [];
+        for ($i = 0; $i < 3; $i++) {
             $this->addRow();
         }
-
-        session()->flash('message', "{$importedRows} rows loaded from file. Please review and click Save All.");
     }
 
     public function importData()
