@@ -204,8 +204,8 @@ class BulkAddMedicine extends Component
                         'barcode' => $barcode,
                         'alert_quantity' => $alertQty,
                         'reorder_level' => $alertQty,
-                        'has_expiry' => true,
-                        'track_batches' => true,
+                        'has_expiry' => \Illuminate\Support\Facades\DB::raw('true'),
+                        'track_batches' => \Illuminate\Support\Facades\DB::raw('true'),
                         'status' => 'active',
                     ]);
 
@@ -219,8 +219,8 @@ class BulkAddMedicine extends Component
                         'barcode' => $barcode,
                         'purchase_price' => $purchasePrice,
                         'sale_price' => $unitPrice,
-                        'allow_purchase' => true,
-                        'allow_sale' => true,
+                        'allow_purchase' => \Illuminate\Support\Facades\DB::raw('true'),
+                        'allow_sale' => \Illuminate\Support\Facades\DB::raw('true'),
                         'status' => 'active',
                     ]);
 
@@ -328,8 +328,8 @@ class BulkAddMedicine extends Component
                         'barcode' => $barcode,
                         'alert_quantity' => $alertQty,
                         'reorder_level' => $alertQty,
-                        'has_expiry' => true,
-                        'track_batches' => true,
+                        'has_expiry' => \Illuminate\Support\Facades\DB::raw('true'),
+                        'track_batches' => \Illuminate\Support\Facades\DB::raw('true'),
                         'status' => 'active',
                     ]);
 
@@ -342,8 +342,8 @@ class BulkAddMedicine extends Component
                         'barcode' => $barcode,
                         'purchase_price' => $purchasePrice,
                         'sale_price' => $unitPrice,
-                        'allow_purchase' => true,
-                        'allow_sale' => true,
+                        'allow_purchase' => \Illuminate\Support\Facades\DB::raw('true'),
+                        'allow_sale' => \Illuminate\Support\Facades\DB::raw('true'),
                         'status' => 'active',
                     ]);
 
