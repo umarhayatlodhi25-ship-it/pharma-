@@ -28,32 +28,45 @@
                 </button>
                 
                 <div class="relative" x-data="{
-                    handleFile(e) {
+                    isImporting: false,
+                    async handleFile(e) {
                         const file = e.target.files[0];
                         if (!file) return;
                         
+                        this.isImporting = true;
+                        
                         const reader = new FileReader();
-                        reader.onload = (evt) => {
-                            const data = new Uint8Array(evt.target.result);
-                            const workbook = XLSX.read(data, {type: 'array'});
-                            const firstSheetName = workbook.SheetNames[0];
-                            const worksheet = workbook.Sheets[firstSheetName];
-                            const json = XLSX.utils.sheet_to_json(worksheet, {header: 1});
-                            
-                            // Remove header row if it exists
-                            if (json.length > 0) json.shift();
-                            
-                            @this.call('importJson', json);
-                            
-                            document.getElementById('importFile').value = '';
+                        reader.onload = async (evt) => {
+                            try {
+                                const data = new Uint8Array(evt.target.result);
+                                const workbook = XLSX.read(data, {type: 'array'});
+                                const firstSheetName = workbook.SheetNames[0];
+                                const worksheet = workbook.Sheets[firstSheetName];
+                                const json = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                                
+                                // Remove header row if it exists
+                                if (json.length > 0) json.shift();
+                                
+                                const chunkSize = 150;
+                                for (let i = 0; i < json.length; i += chunkSize) {
+                                    const chunk = json.slice(i, i + chunkSize);
+                                    await @this.call('importJson', chunk);
+                                }
+                            } catch (err) {
+                                console.error(err);
+                                alert('An error occurred during import.');
+                            } finally {
+                                this.isImporting = false;
+                                document.getElementById('importFile').value = '';
+                            }
                         };
                         reader.readAsArrayBuffer(file);
                     }
                 }">
                     <input type="file" id="importFile" class="hidden" accept=".csv,.txt,.xlsx,.xls" x-on:change="handleFile">
-                    <label for="importFile" class="inline-flex cursor-pointer items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 text-sm font-semibold rounded-xl shadow-xs transition" wire:loading.class="opacity-50 cursor-wait" wire:target="importJson">
-                        <i class="fa-solid fa-file-import text-xs"></i>
-                        <span>Import CSV/Excel</span>
+                    <label for="importFile" class="inline-flex cursor-pointer items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 text-sm font-semibold rounded-xl shadow-xs transition" x-bind:class="{'opacity-50 cursor-wait': isImporting}" wire:loading.class="opacity-50 cursor-wait" wire:target="importJson">
+                        <i x-bind:class="isImporting ? 'fa-solid fa-circle-notch fa-spin' : 'fa-solid fa-file-import'" class="text-xs"></i>
+                        <span x-text="isImporting ? 'Importing...' : 'Import CSV/Excel'">Import CSV/Excel</span>
                     </label>
                 </div>
 

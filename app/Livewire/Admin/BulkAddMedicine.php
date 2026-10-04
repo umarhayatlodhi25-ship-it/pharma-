@@ -14,6 +14,8 @@ class BulkAddMedicine extends Component
 
     public array $rows = [];
     public $importFile;
+    public $totalImported = 0;
+    public $totalSkipped = 0;
 
     public function mount(): void
     {
@@ -359,7 +361,10 @@ class BulkAddMedicine extends Component
                 }
             });
 
-            session()->flash('message', "{$importedCount} medicines imported and saved directly! ({$skippedCount} skipped due to duplicates or invalid category).");
+            $this->totalImported += $importedCount;
+            $this->totalSkipped += $skippedCount;
+
+            session()->flash('message', "{$this->totalImported} medicines imported and saved directly! ({$this->totalSkipped} skipped due to duplicates or invalid category).");
         } catch (\Exception $e) {
             $this->addError('general', 'An error occurred while importing: ' . $e->getMessage());
         }
