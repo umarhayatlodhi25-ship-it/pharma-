@@ -254,16 +254,8 @@ class BulkAddMedicine extends Component
         }, 'medicines_template.csv');
     }
 
-    public function importData()
+    public function importJson($jsonData)
     {
-        $this->validate([
-            'importFile' => 'required|file|mimes:csv,txt|max:5120', // 5MB max
-        ]);
-
-        $path = $this->importFile->getRealPath();
-        $file = fopen($path, 'r');
-        $header = fgetcsv($file);
-
         $importedRows = 0;
         
         // Remove empty rows if any
@@ -280,11 +272,8 @@ class BulkAddMedicine extends Component
             $categoryMap[strtolower(trim($cat->name))] = $cat->id;
         }
 
-        while (($row = fgetcsv($file)) !== false) {
-            $row = array_map(function ($value) {
-                return mb_convert_encoding($value ?? '', 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
-            }, $row);
-
+        foreach ($jsonData as $row) {
+            // Row is an array of columns (0-indexed)
             if (count($row) < 7) continue; // Skip incomplete rows
             if (empty(trim($row[0]))) continue;
             
@@ -316,15 +305,35 @@ class BulkAddMedicine extends Component
             ];
             $importedRows++;
         }
-        fclose($file);
-
-        $this->reset('importFile');
         
         if (empty($this->rows)) {
             $this->addRow();
         }
 
-        session()->flash('message', "{$importedRows} rows loaded from CSV. Please review and click Save All.");
+        session()->flash('message', "{$importedRows} rows loaded from file. Please review and click Save All.");
+    }
+
+    public function importData()
+    {
+        $this->validate([
+            'importFile' => 'required|file|mimes:csv,txt|max:5120', // 5MB max
+        ]);
+
+        $path = $this->importFile->getRealPath();
+        $file = fopen($path, 'r');
+        $header = fgetcsv($file);
+
+        $jsonData = [];
+        while (($row = fgetcsv($file)) !== false) {
+            $row = array_map(function ($value) {
+                return mb_convert_encoding($value ?? '', 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
+            }, $row);
+            $jsonData[] = $row;
+        }
+        fclose($file);
+
+        $this->reset('importFile');
+        $this->importJson($jsonData);
     }
 
     public function render()

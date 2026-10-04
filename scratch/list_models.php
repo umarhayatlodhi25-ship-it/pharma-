@@ -1,0 +1,1 @@
+<?php $key = "AQ.Ab8RN6Ieaih9Tam97CdZGQJpDCGeNEP06YbW0s9fI9bB71RQqA"; echo file_get_contents("https://generativelanguage.googleapis.com/v1beta/models?key=" . $key);

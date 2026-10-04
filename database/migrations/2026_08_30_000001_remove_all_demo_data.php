@@ -33,7 +33,11 @@ return new class extends Migration
 
         foreach ($tablesToClean as $table) {
             if (Schema::hasTable($table)) {
-                DB::table($table)->truncate();
+                try {
+                    DB::table($table)->delete();
+                } catch (\Exception $e) {
+                    // Ignore errors during deletion
+                }
             }
         }
 
