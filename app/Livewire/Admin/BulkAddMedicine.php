@@ -259,14 +259,15 @@ class BulkAddMedicine extends Component
         $importedCount = 0;
         $skippedCount = 0;
 
-        // Map existing categories
+        // Map existing categories by slug
         $categoryMap = [];
         foreach (\App\Models\Category::all() as $cat) {
-            $categoryMap[strtolower(trim($cat->name))] = $cat->id;
+            $categoryMap[$cat->slug] = $cat->id;
+            $categoryMap[\Illuminate\Support\Str::slug($cat->name)] = $cat->id;
         }
 
         try {
-            DB::transaction(function () use ($jsonData, $categoryMap, &$importedCount, &$skippedCount) {
+            DB::transaction(function () use ($jsonData, &$categoryMap, &$importedCount, &$skippedCount) {
                 foreach ($jsonData as $row) {
                     if (count($row) < 7) continue;
                     $name = trim($row[0] ?? '');
@@ -283,19 +284,25 @@ class BulkAddMedicine extends Component
                         $csvCategory = 'Uncategorized';
                     }
                     
-                    $catKey = strtolower($csvCategory);
+                    $catSlug = \Illuminate\Support\Str::slug($csvCategory);
                     
-                    if (isset($categoryMap[$catKey])) {
-                        $categoryId = $categoryMap[$catKey];
+                    if (isset($categoryMap[$catSlug])) {
+                        $categoryId = $categoryMap[$catSlug];
                     } else {
                         // Create the category dynamically
-                        $newCat = \App\Models\Category::create([
-                            'name' => $csvCategory,
-                            'slug' => \Illuminate\Support\Str::slug($csvCategory),
-                            'product_type' => 'medicine',
-                        ]);
-                        $categoryId = $newCat->id;
-                        $categoryMap[$catKey] = $categoryId;
+                        // To be absolutely safe against duplicates, check DB one last time or append a number
+                        $existingCat = \App\Models\Category::where('slug', $catSlug)->first();
+                        if ($existingCat) {
+                            $categoryId = $existingCat->id;
+                        } else {
+                            $newCat = \App\Models\Category::create([
+                                'name' => $csvCategory,
+                                'slug' => $catSlug,
+                                'product_type' => 'medicine',
+                            ]);
+                            $categoryId = $newCat->id;
+                        }
+                        $categoryMap[$catSlug] = $categoryId;
                     }
                     
                     $dosageUnit = !empty(trim($row[5] ?? '')) ? trim($row[5]) : 'Tablet';
