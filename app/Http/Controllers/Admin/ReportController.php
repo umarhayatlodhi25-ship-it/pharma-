@@ -968,7 +968,7 @@ class ReportController extends Controller
         $endDate = $request->get('end_date');
         $paymentMethod = $request->get('payment_method');
 
-        $query = DoctorSettlement::with(['doctor', 'settler']);
+        $query = DoctorSettlement::with(['doctor', 'createdBy']);
 
         if ($doctorId) {
             $query->where('doctor_id', $doctorId);

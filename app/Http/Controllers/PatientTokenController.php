@@ -247,9 +247,23 @@ class PatientTokenController extends Controller
                 $patientId = $request->input('patient_id');
             }
 
-            // Lock and compute today's next sequential token number (restarts at 1 daily)
-            $maxToken = PatientToken::where('token_date', $today)->lockForUpdate()->max('token_number');
-            $nextTokenNumber = ($maxToken ? intval($maxToken) : 0) + 1;
+            $profile = \App\Models\AccountProfile::current();
+            
+            $query = PatientToken::query();
+            if ($profile->daily_token_reset) {
+                $query->where('token_date', $today);
+            }
+            
+            $maxToken = $query->lockForUpdate()->max('token_number');
+            $startNumber = (int) $profile->token_start_number > 0 ? (int) $profile->token_start_number : 1;
+            
+            $nextTokenNumber = $maxToken ? (intval($maxToken) + 1) : $startNumber;
+
+            // Determine default status
+            $defaultStatus = strtolower($profile->default_token_status ?? 'waiting');
+            if (!in_array($defaultStatus, ['waiting', 'called', 'completed'])) {
+                $defaultStatus = 'waiting';
+            }
 
             $createdToken = PatientToken::create([
                 'patient_id'                => $patientId,
@@ -267,7 +281,7 @@ class PatientTokenController extends Controller
                 'hospital_share_amount'     => $hospitalShareAmount,
                 'free_reason'               => $freeReason,
                 'other_reason'              => $otherReason,
-                'status'                    => 'waiting',
+                'status'                    => $defaultStatus,
                 'notes'                     => $request->input('notes'),
             ]);
 
@@ -297,6 +311,12 @@ class PatientTokenController extends Controller
             return $createdToken;
         });
 
+        if (\App\Models\AccountProfile::current()->auto_print_token) {
+            return redirect()->route('patient-tokens.print', $token->id)
+                ->with('token_generated', true)
+                ->with('success', "TOKEN GENERATED SUCCESSFULLY: Token #{$token->formatted_token_number}");
+        }
+
         return redirect()->route('patient-tokens.show', $token->id)
             ->with('token_generated', true)
             ->with('success', "TOKEN GENERATED SUCCESSFULLY: Token #{$token->formatted_token_number}");
@@ -306,9 +326,14 @@ class PatientTokenController extends Controller
     /**
      * Display printable OPD token slip.
      */
-    public function printSlip(PatientToken $token)
+    public function printSlip($id)
     {
-        $token->load(['patient', 'doctor']);
+        if ($id === 'preview') {
+            $token = 'preview';
+            return view('admin.patient-tokens.print', compact('token'));
+        }
+
+        $token = PatientToken::with(['patient', 'doctor'])->findOrFail($id);
         return view('admin.patient-tokens.print', compact('token'));
     }
 

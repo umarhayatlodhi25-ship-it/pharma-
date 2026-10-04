@@ -3,10 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OPD Token #{{ $token->token_number ?: $token->formatted_token_number }}</title>
+    <title>OPD Token {{ $token === 'preview' ? 'Preview' : '#' . ($token->formatted_token_number ?? '') }}</title>
     @php
         $profile = account_profile();
         $hospitalName = $profile->account_name ?: config('app.name', 'HOSPITAL CLINIC');
+
+        // Handle Preview Mode
+        if ($token === 'preview') {
+            $token = new \App\Models\PatientToken([
+                'token_number' => 1,
+                'status' => 'waiting',
+                'consultation_fee' => 500,
+                'created_at' => now(),
+                'token_date' => now()->toDateString(),
+            ]);
+            $token->patient = new \App\Models\Patient(['name' => 'Patient Snapshot A', 'patient_number' => 'PT-00013']);
+            $token->doctor = new \App\Models\Doctor(['name' => 'Dr. Snapshot Test']);
+        }
 
         // Dynamic status formatting
         $statusRaw = strtolower($token->status ?? 'waiting');
@@ -20,6 +33,10 @@
 
         // Patient ID formatting
         $patientIdDisplay = $token->patient ? ($token->patient->patient_number ?: 'PT-' . str_pad($token->patient->id, 5, '0', STR_PAD_LEFT)) : '—';
+        
+        $paperSize = $profile->thermal_paper_size ?? 80;
+        $paperCss = $paperSize == 58 ? '58mm' : '80mm';
+        $ticketWidth = $paperSize == 58 ? '48mm' : '74mm';
     @endphp
     <style>
         * {
@@ -246,7 +263,7 @@
         /* Thermal Printer CSS (@media print) */
         @media print {
             @page {
-                size: 80mm auto;
+                size: {{ $paperCss }} auto;
                 margin: 0;
             }
 
@@ -263,8 +280,8 @@
             }
 
             .ticket {
-                width: 74mm !important;
-                max-width: 74mm !important;
+                width: {{ $ticketWidth }} !important;
+                max-width: {{ $ticketWidth }} !important;
                 margin: 0 auto !important;
                 padding: 4mm 2mm !important;
                 border: none !important;
@@ -286,15 +303,18 @@
         </button>
     </div>
 
-    <!-- Thermal Print Slip Container (80mm standard) -->
-    <div class="ticket">
+    @for($i = 0; $i < ($profile->print_copies ?? 1); $i++)
+    <!-- Thermal Print Slip Container -->
+    <div class="ticket" @if($i > 0) style="page-break-before: always; margin-top: 10px;" @endif>
 
         <!-- HEADER: Logo + Organization Name + OPD Token -->
         <div class="header">
-            @if($profile->hasLogo())
+            @if(($profile->show_logo ?? true) && $profile->hasLogo())
                 <img src="{{ $profile->logo_url }}" alt="{{ $hospitalName }}" class="hospital-logo">
             @endif
-            <div class="hospital-name">{{ $hospitalName }}</div>
+            @if($profile->show_organization_name ?? true)
+                <div class="hospital-name">{{ $hospitalName }}</div>
+            @endif
             <div class="opd-badge">OPD TOKEN</div>
         </div>
 
@@ -302,8 +322,8 @@
 
         <!-- TOKEN NO -->
         <div class="token-hero">
-            <div class="token-label">TOKEN NO.</div>
-            <div class="token-num">#{{ $token->token_number ?: $token->formatted_token_number }}</div>
+            <div class="token-label">TOKEN</div>
+            <div class="token-num">{{ $token->formatted_token_number }}</div>
         </div>
 
         <div class="divider"></div>
@@ -311,54 +331,68 @@
         <!-- PATIENT INFORMATION -->
         <table class="info-table">
             <tr>
-                <td class="label-col">Patient</td>
+                <td class="label-col">Patient:</td>
                 <td class="val-col">{{ $token->patient->name ?? '—' }}</td>
             </tr>
+            @if($profile->show_patient_id ?? true)
             <tr>
-                <td class="label-col">Patient ID</td>
+                <td class="label-col">Patient ID:</td>
                 <td class="val-col">{{ $patientIdDisplay }}</td>
             </tr>
+            @endif
+            @if($profile->show_doctor_name ?? true)
             <tr>
-                <td class="label-col">Doctor</td>
+                <td class="label-col">Doctor:</td>
                 <td class="val-col">{{ $token->doctor->name ?? '—' }}</td>
             </tr>
+            @endif
+            @if($profile->show_date ?? true)
             <tr>
-                <td class="label-col">Date</td>
+                <td class="label-col">Date:</td>
                 <td class="val-col">{{ \Carbon\Carbon::parse($token->token_date)->format('d M Y') }}</td>
             </tr>
+            @endif
+            @if($profile->show_time ?? true)
             <tr>
-                <td class="label-col">Time</td>
+                <td class="label-col">Time:</td>
                 <td class="val-col">{{ $token->created_at ? $token->created_at->format('h:i A') : now()->format('h:i A') }}</td>
             </tr>
+            @endif
         </table>
 
+        @if($profile->show_consultation_fee ?? true)
         <div class="divider"></div>
-
         <!-- Fee Section -->
         <div class="fee-section">
-            <div class="fee-label">Consultation Fee</div>
+            <div class="fee-label">Consultation Fee:</div>
             <div class="fee-value">PKR {{ number_format($token->consultation_fee, 0) }}</div>
         </div>
+        @endif
 
+        @if($profile->show_token_status ?? true)
         <div class="divider"></div>
-
         <!-- STATUS -->
         <div class="status-section">
-            <div class="status-label">STATUS</div>
+            <div class="status-label">STATUS:</div>
             <div class="status-value">{{ $displayStatus }}</div>
         </div>
+        @endif
 
         <div class="divider"></div>
 
         <!-- FOOTER -->
         <div class="footer">
-            <p class="footer-wait">Please wait for your token<br>to be called.</p>
-            <p class="footer-thanks">Thank you for choosing<br>our healthcare services.</p>
+            @if(!empty($profile->footer_text))
+                {!! nl2br(e($profile->footer_text)) !!}
+            @else
+                Thank you for choosing<br>our healthcare services.
+            @endif
         </div>
 
         <div class="divider"></div>
 
     </div>
+    @endfor
 
     <script>
         // Auto trigger print dialog on page load

@@ -168,9 +168,20 @@
                     </div>
                     <button type="button" @click="showModal = true" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer">
                         <i class="fa-solid fa-plus text-[10px]"></i>
-                        <span>Add Customer</span>
+                        <span>Add</span>
                     </button>
                 </div>
+                @if($customer_outstanding > 0)
+                    <div class="mt-2 p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs font-bold flex justify-between items-center">
+                        <div>
+                            <span>Previous Dues:</span>
+                            <span class="text-lg">Rs. {{ number_format($customer_outstanding, 2) }}</span>
+                        </div>
+                        <a href="{{ route('pos.receive-payment', $customer_id) }}" target="_blank" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-wider font-bold transition shadow-sm">
+                            Receive
+                        </a>
+                    </div>
+                @endif
             </div>
         </div>
 
@@ -276,11 +287,27 @@
                 </div>
             </div>
 
-            <!-- Customer Paid Amount Field Added -->
+            <!-- Payment Type Selection -->
+            <div class="flex items-center space-x-3 mb-2">
+                <label class="flex items-center space-x-1 cursor-pointer">
+                    <input type="radio" wire:model.live="payment_type" value="full" class="text-blue-600 focus:ring-blue-500">
+                    <span class="text-xs font-bold text-gray-700">Full</span>
+                </label>
+                <label class="flex items-center space-x-1 cursor-pointer" @if(!$customer_id) title="Requires Customer" @endif>
+                    <input type="radio" wire:model.live="payment_type" value="partial" class="text-blue-600 focus:ring-blue-500" @if(!$customer_id) disabled @endif>
+                    <span class="text-xs font-bold {{ !$customer_id ? 'text-gray-400' : 'text-gray-700' }}">Partial</span>
+                </label>
+                <label class="flex items-center space-x-1 cursor-pointer" @if(!$customer_id) title="Requires Customer" @endif>
+                    <input type="radio" wire:model.live="payment_type" value="credit" class="text-blue-600 focus:ring-blue-500" @if(!$customer_id) disabled @endif>
+                    <span class="text-xs font-bold {{ !$customer_id ? 'text-gray-400' : 'text-gray-700' }}">Credit</span>
+                </label>
+            </div>
+
+            <!-- Customer Paid Amount Field -->
             <div class="flex justify-between items-center text-sm text-gray-600">
                 <span>Paid Amount</span>
                 <div class="w-32">
-                    <input type="number" wire:model.live="paid_amount" placeholder="0.00" class="w-full px-3 py-1 bg-white border border-gray-200 rounded-xl text-right text-sm font-medium focus:outline-none focus:border-blue-600">
+                    <input type="number" wire:model.live="paid_amount" placeholder="0.00" class="w-full px-3 py-1 bg-white border border-gray-200 rounded-xl text-right text-sm font-medium focus:outline-none focus:border-blue-600" {{ $payment_type === 'credit' ? 'disabled' : '' }}>
                 </div>
             </div>
 
@@ -288,6 +315,19 @@
                 <span>Change Return</span>
                 <span class="font-bold text-blue-600">Rs. {{ number_format($changeAmount ?? 0, 2) }}</span>
             </div>
+            
+            @if($customer_id && $payment_type !== 'full')
+                <div class="flex justify-between text-sm text-rose-600 mt-1">
+                    <span>New Sale Dues</span>
+                    <span class="font-bold">Rs. {{ number_format(max(0, $totalAmount - (is_numeric($paid_amount) ? (float)$paid_amount : 0)), 2) }}</span>
+                </div>
+            @endif
+            @if($customer_outstanding > 0)
+                <div class="flex justify-between text-sm text-rose-700 font-bold mt-1 pt-1 border-t border-rose-100">
+                    <span>Total Customer Dues</span>
+                    <span>Rs. {{ number_format($customer_outstanding + max(0, $totalAmount - (is_numeric($paid_amount) ? (float)$paid_amount : 0)), 2) }}</span>
+                </div>
+            @endif
             
             <div class="flex justify-between items-center pt-2 border-t border-gray-200">
                 <span class="text-base font-extrabold text-gray-900">Total Amount</span>
@@ -421,6 +461,14 @@
                         <span>Paid Amount:</span>
                         <span>PKR {{ number_format($completedSale->paid_amount, 2) }}</span>
                     </div>
+                    
+                    @if($completedSale->payment_status === 'partial' || $completedSale->payment_status === 'unpaid')
+                        <div class="flex justify-between text-rose-600 font-bold border-t border-dashed border-rose-200 pt-1">
+                            <span>Outstanding:</span>
+                            <span>PKR {{ number_format($completedSale->total_amount - $completedSale->paid_amount, 2) }}</span>
+                        </div>
+                    @endif
+
                     <div class="flex justify-between text-blue-600 font-bold">
                         <span>Change Return:</span>
                         <span>PKR {{ number_format($completedSale->change_amount, 2) }}</span>

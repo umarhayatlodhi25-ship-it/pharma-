@@ -206,7 +206,7 @@
                             {{ $set->reference_number ?: ($set->notes ?: '—') }}
                         </td>
                         <td class="p-3 text-gray-800 font-medium">
-                            {{ $set->settler ? $set->settler->name : 'Admin' }}
+                            {{ $set->createdBy ? $set->createdBy->name : 'Admin' }}
                         </td>
                         <td class="p-3 text-center text-slate-500 font-mono">
                             {{ $set->settlement_date->format('d-M-Y') }}

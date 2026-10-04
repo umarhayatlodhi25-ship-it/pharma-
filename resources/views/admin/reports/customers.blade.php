@@ -47,7 +47,8 @@
                         <th class="p-3.5">Contact Info</th>
                         <th class="p-3.5 text-center">Total Orders</th>
                         <th class="p-3.5 text-right">Total Spent</th>
-                        <th class="p-3.5">Last Purchase Date</th>
+                        <th class="p-3.5 text-right text-rose-600">Outstanding</th>
+                        <th class="p-3.5 text-center">Action</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -63,7 +64,20 @@
                         </td>
                         <td class="p-3.5 text-center font-bold text-blue-600">{{ number_format($saleGroup->total_orders) }}</td>
                         <td class="p-3.5 text-right font-extrabold text-emerald-600">PKR {{ number_format($saleGroup->total_spent, 2) }}</td>
-                        <td class="p-3.5 text-gray-500 font-medium">{{ \Carbon\Carbon::parse($saleGroup->last_order_date)->format('d M Y, h:i A') }}</td>
+                        <td class="p-3.5 text-right font-extrabold text-rose-600">
+                            @if($cust && $cust->outstanding_balance > 0)
+                                PKR {{ number_format($cust->outstanding_balance, 2) }}
+                            @else
+                                <span class="text-gray-400 font-normal">No Dues</span>
+                            @endif
+                        </td>
+                        <td class="p-3.5 text-center">
+                            @if($cust)
+                                <a href="{{ route('pos.receive-payment', $cust->id) }}" target="_blank" class="bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase transition">
+                                    Ledger / Pay
+                                </a>
+                            @endif
+                        </td>
                     </tr>
                     @empty
                     <tr>

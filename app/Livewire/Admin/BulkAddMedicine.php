@@ -27,6 +27,7 @@ class BulkAddMedicine extends Component
         $this->rows[] = [
             'name' => '',
             'category_id' => '',
+            'category_name_raw' => '',
             'generic_name' => '',
             'brand' => '',
             'manufacturer' => '',
@@ -67,7 +68,7 @@ class BulkAddMedicine extends Component
             return;
         }
 
-        // 2. Perform in-list duplicate checks & DB duplicate checks
+        // 2. Perform in-list duplicate checks & DB duplicate checks & Category checks
         $namesSeen = [];
         $barcodesSeen = [];
         $hasDuplicateError = false;
@@ -77,6 +78,15 @@ class BulkAddMedicine extends Component
             $nameLower = strtolower($name);
             $barcode = trim($this->rows[$index]['barcode'] ?? '');
             $barcodeLower = strtolower($barcode);
+            $rawCategory = trim($this->rows[$index]['category_name_raw'] ?? '');
+            $categoryId = $this->rows[$index]['category_id'] ?? '';
+
+            // Check if there was an invalid category from CSV
+            if (empty($categoryId) && !empty($rawCategory)) {
+                $rowNum = $index + 1;
+                $this->addError("rows.{$index}.category_id", "Row {$rowNum}: Category \"{$rawCategory}\" does not exist.");
+                $hasDuplicateError = true;
+            }
 
             // Check duplicate name within the bulk list
             if (isset($namesSeen[$nameLower])) {
@@ -134,7 +144,21 @@ class BulkAddMedicine extends Component
             $attributes["rows.{$index}.barcode"] = "Row {$rowNum} Barcode";
         }
 
-        $this->validate($rules, [], $attributes);
+        $validator = \Illuminate\Support\Facades\Validator::make(
+            ['rows' => $this->rows],
+            $rules,
+            [],
+            $attributes
+        );
+
+        if ($validator->fails()) {
+            foreach ($validator->errors()->messages() as $key => $messages) {
+                foreach ($messages as $message) {
+                    $this->addError($key, $message);
+                }
+            }
+            return;
+        }
 
         if ($hasDuplicateError) {
             return;
@@ -223,9 +247,9 @@ class BulkAddMedicine extends Component
     {
         return response()->streamDownload(function () {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Name', 'Category ID', 'Generic Name', 'Brand', 'Manufacturer', 'Dosage Unit', 'Sale Price', 'Purchase Price', 'Alert Quantity', 'Barcode']);
+            fputcsv($handle, ['Name', 'Category', 'Generic Name', 'Brand', 'Manufacturer', 'Dosage Unit', 'Sale Price', 'Purchase Price', 'Alert Quantity', 'Barcode']);
             // Example row
-            fputcsv($handle, ['Sample Medicine', '1', 'Sample Generic', 'Sample Brand', 'Sample Mfg', 'Tablet', '10.50', '8.00', '10', '123456']);
+            fputcsv($handle, ['Sample Medicine', 'Tablets & Capsules', 'Sample Generic', 'Sample Brand', 'Sample Mfg', 'Tablet', '10.50', '8.00', '10', '123456']);
             fclose($handle);
         }, 'medicines_template.csv');
     }
@@ -250,21 +274,45 @@ class BulkAddMedicine extends Component
         }
         $this->rows = array_values($this->rows);
 
+        // Map existing categories
+        $categoryMap = [];
+        foreach (\App\Models\Category::all() as $cat) {
+            $categoryMap[strtolower(trim($cat->name))] = $cat->id;
+        }
+
         while (($row = fgetcsv($file)) !== false) {
+            $row = array_map(function ($value) {
+                return mb_convert_encoding($value ?? '', 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
+            }, $row);
+
             if (count($row) < 7) continue; // Skip incomplete rows
             if (empty(trim($row[0]))) continue;
             
+            $csvCategory = trim($row[1] ?? '');
+            $catKey = strtolower($csvCategory);
+            $categoryId = '';
+            $rawCategory = '';
+
+            if ($csvCategory !== '') {
+                if (isset($categoryMap[$catKey])) {
+                    $categoryId = $categoryMap[$catKey];
+                } else {
+                    $rawCategory = $csvCategory;
+                }
+            }
+            
             $this->rows[] = [
-                'name' => $row[0] ?? '',
-                'category_id' => $row[1] ?? '',
-                'generic_name' => $row[2] ?? '',
-                'brand' => $row[3] ?? '',
-                'manufacturer' => $row[4] ?? '',
-                'dosage_unit' => $row[5] ?? 'Tablet',
-                'unit_price' => $row[6] ?? '',
-                'purchase_price' => $row[7] ?? '',
-                'alert_quantity' => $row[8] ?? '10',
-                'barcode' => $row[9] ?? '',
+                'name' => trim($row[0] ?? ''),
+                'category_id' => $categoryId,
+                'category_name_raw' => $rawCategory,
+                'generic_name' => trim($row[2] ?? ''),
+                'brand' => trim($row[3] ?? ''),
+                'manufacturer' => trim($row[4] ?? ''),
+                'dosage_unit' => trim($row[5] ?? 'Tablet'),
+                'unit_price' => trim($row[6] ?? ''),
+                'purchase_price' => trim($row[7] ?? ''),
+                'alert_quantity' => trim($row[8] ?? '10'),
+                'barcode' => trim($row[9] ?? ''),
             ];
             $importedRows++;
         }

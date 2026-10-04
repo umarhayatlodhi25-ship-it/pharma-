@@ -38,7 +38,46 @@ class SettingsController extends Controller
             'America/New_York' => 'America/New_York (EST/EDT)',
         ];
 
-        return view('admin.settings.index', compact('profile', 'activeTab', 'currencies', 'timezones'));
+        // User Management Logic
+        $usersData = [];
+        if ($activeTab === 'users') {
+            $status = $request->query('status', 'active');
+            $perPage = $request->query('per_page', 'all');
+
+            if (!in_array($status, ['active', 'trashed', 'all'])) {
+                $status = 'active';
+            }
+
+            $query = \App\Models\User::query();
+
+            if ($status === 'trashed') {
+                $query->onlyTrashed();
+            } elseif ($status === 'all') {
+                $query->withTrashed();
+            } else {
+                $query->whereNull('deleted_at');
+            }
+
+            if ($perPage === 'all') {
+                $users = $query->orderByDesc('id')->paginate(1000)->withQueryString();
+            } else {
+                $limit = in_array((int) $perPage, [5, 10, 25, 50, 100]) ? (int) $perPage : 10;
+                $users = $query->orderByDesc('id')->paginate($limit)->withQueryString();
+            }
+
+            $usersData = [
+                'users' => $users,
+                'status' => $status,
+                'perPage' => $perPage,
+                'counts' => [
+                    'active' => \App\Models\User::whereNull('deleted_at')->count(),
+                    'trashed' => \App\Models\User::onlyTrashed()->count(),
+                    'all' => \App\Models\User::withTrashed()->count(),
+                ]
+            ];
+        }
+
+        return view('admin.settings.index', compact('profile', 'activeTab', 'currencies', 'timezones') + $usersData);
     }
 
     /**
@@ -108,5 +147,48 @@ class SettingsController extends Controller
 
         return redirect()->route('settings.index', ['tab' => 'profile'])
             ->with('success', 'Logo removed successfully.');
+    }
+
+    /**
+     * Update Print & Token Settings.
+     */
+    public function updatePrintToken(Request $request)
+    {
+        $validated = $request->validate([
+            'token_prefix'           => 'nullable|string|max:10',
+            'token_start_number'     => 'required|integer|min:1',
+            'daily_token_reset'      => 'nullable|boolean',
+            'auto_print_token'       => 'nullable|boolean',
+            'default_token_status'   => 'required|string|max:50',
+            'thermal_paper_size'     => 'required|in:58,80',
+            'print_copies'           => 'required|in:1,2',
+            'show_logo'              => 'nullable|boolean',
+            'show_organization_name' => 'nullable|boolean',
+            'show_patient_id'        => 'nullable|boolean',
+            'show_doctor_name'       => 'nullable|boolean',
+            'show_date'              => 'nullable|boolean',
+            'show_time'              => 'nullable|boolean',
+            'show_consultation_fee'  => 'nullable|boolean',
+            'show_token_status'      => 'nullable|boolean',
+            'footer_text'            => 'nullable|string|max:500',
+        ]);
+
+        // Fix boolean values for checkboxes
+        $booleans = [
+            'daily_token_reset', 'auto_print_token', 'show_logo', 'show_organization_name',
+            'show_patient_id', 'show_doctor_name', 'show_date', 'show_time', 
+            'show_consultation_fee', 'show_token_status'
+        ];
+
+        foreach ($booleans as $field) {
+            $validated[$field] = $request->has($field);
+        }
+
+        $profile = AccountProfile::current();
+        $profile->update($validated);
+        AccountProfile::clearCache();
+
+        return redirect()->route('settings.index', ['tab' => 'print_token'])
+            ->with('success', 'Print & Token Settings updated successfully.');
     }
 }

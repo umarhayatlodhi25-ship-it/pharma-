@@ -1,7 +1,3 @@
-@extends('layouts.app')
-
-@section('content')
-
 <div class="space-y-6">
 
     {{-- HEADER --}}
@@ -49,7 +45,7 @@
     {{-- STATUS TABS & DISPLAY OPTIONS --}}
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 pb-3">
         <div class="flex items-center space-x-2 overflow-x-auto">
-            <a href="{{ route('admin.settings.users.index', ['status' => 'active', 'per_page' => $perPage ?? 'all']) }}"
+            <a href="{{ route('settings.index', ['tab' => 'users', 'status' => 'active', 'per_page' => $perPage ?? 'all']) }}"
                class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 {{ ($status ?? 'active') === 'active' ? 'bg-blue-600 text-white font-semibold shadow-xs' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200' }}">
                 <span>Active Users</span>
                 <span class="ml-1 px-2 py-0.5 text-xs rounded-full {{ ($status ?? 'active') === 'active' ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-700' }}">
@@ -57,7 +53,7 @@
                 </span>
             </a>
 
-            <a href="{{ route('admin.settings.users.index', ['status' => 'trashed', 'per_page' => $perPage ?? 'all']) }}"
+            <a href="{{ route('settings.index', ['tab' => 'users', 'status' => 'trashed', 'per_page' => $perPage ?? 'all']) }}"
                class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 {{ ($status ?? '') === 'trashed' ? 'bg-amber-600 text-white font-semibold shadow-xs' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200' }}">
                 <i class="fa-solid fa-trash-can text-xs"></i>
                 <span>Trashed Users</span>
@@ -66,7 +62,7 @@
                 </span>
             </a>
 
-            <a href="{{ route('admin.settings.users.index', ['status' => 'all', 'per_page' => $perPage ?? 'all']) }}"
+            <a href="{{ route('settings.index', ['tab' => 'users', 'status' => 'all', 'per_page' => $perPage ?? 'all']) }}"
                class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 {{ ($status ?? '') === 'all' ? 'bg-gray-800 text-white font-semibold shadow-xs' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200' }}">
                 <span>All Accounts</span>
                 <span class="ml-1 px-2 py-0.5 text-xs rounded-full {{ ($status ?? '') === 'all' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700' }}">
@@ -78,7 +74,8 @@
         {{-- PER PAGE SELECTOR --}}
         <div class="flex items-center space-x-2 text-xs text-gray-600 shrink-0">
             <span class="font-medium">Show Rows:</span>
-            <form method="GET" action="{{ route('admin.settings.users.index') }}" class="inline">
+            <form method="GET" action="{{ route('settings.index') }}" class="inline">
+                <input type="hidden" name="tab" value="users">
                 <input type="hidden" name="status" value="{{ $status ?? 'active' }}">
                 <select name="per_page" onchange="this.form.submit()" class="bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="all" {{ ($perPage ?? 'all') === 'all' ? 'selected' : '' }}>Show All (Unlimited)</option>
@@ -240,5 +237,3 @@
     </div>
 
 </div>
-
-@endsection
