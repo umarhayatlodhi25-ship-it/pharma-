@@ -279,13 +279,23 @@ class BulkAddMedicine extends Component
                     }
 
                     $csvCategory = trim($row[1] ?? '');
+                    if (empty($csvCategory)) {
+                        $csvCategory = 'Uncategorized';
+                    }
+                    
                     $catKey = strtolower($csvCategory);
-                    $categoryId = $categoryMap[$catKey] ?? null;
-
-                    // If category doesn't exist, we skip to be safe (or could create a default)
-                    if (!$categoryId) {
-                        $skippedCount++;
-                        continue;
+                    
+                    if (isset($categoryMap[$catKey])) {
+                        $categoryId = $categoryMap[$catKey];
+                    } else {
+                        // Create the category dynamically
+                        $newCat = \App\Models\Category::create([
+                            'name' => $csvCategory,
+                            'slug' => \Illuminate\Support\Str::slug($csvCategory),
+                            'product_type' => 'medicine',
+                        ]);
+                        $categoryId = $newCat->id;
+                        $categoryMap[$catKey] = $categoryId;
                     }
                     
                     $dosageUnit = !empty(trim($row[5] ?? '')) ? trim($row[5]) : 'Tablet';
