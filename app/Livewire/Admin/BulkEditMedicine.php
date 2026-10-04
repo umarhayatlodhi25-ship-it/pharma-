@@ -13,41 +13,9 @@ class BulkEditMedicine extends Component
     public array $rows = [];
     public string $search = '';
 
-    public function mount()
+    public function updatingSearch()
     {
-        $this->loadMedicines();
-    }
-
-    public function loadMedicines()
-    {
-        $medicines = Medicine::query()
-            ->when($this->search, function($q) {
-                $q->where('name', 'like', "%{$this->search}%")
-                  ->orWhere('barcode', 'like', "%{$this->search}%");
-            })
-            ->limit(50)
-            ->get();
-            
-        $this->rows = [];
-        foreach ($medicines as $medicine) {
-            $this->rows[$medicine->id] = [
-                'id' => $medicine->id,
-                'name' => $medicine->name,
-                'generic_name' => $medicine->generic_name ?? '',
-                'brand' => $medicine->brand ?? '',
-                'manufacturer' => $medicine->manufacturer ?? '',
-                'dosage_unit' => $medicine->dosage_unit,
-                'unit_price' => $medicine->unit_price,
-                'purchase_price' => $medicine->purchase_price,
-                'alert_quantity' => $medicine->alert_quantity,
-                'barcode' => $medicine->barcode ?? '',
-            ];
-        }
-    }
-
-    public function updatedSearch()
-    {
-        $this->loadMedicines();
+        $this->resetPage();
     }
 
     public function saveAll()
@@ -96,6 +64,43 @@ class BulkEditMedicine extends Component
 
     public function render()
     {
-        return view('livewire.admin.bulk-edit-medicine');
+        $medicines = Medicine::query()
+            ->when($this->search, function($q) {
+                $q->where('name', 'like', "%{$this->search}%")
+                  ->orWhere('barcode', 'like', "%{$this->search}%");
+            })
+            ->paginate(50);
+            
+        // Sync rows for the current page
+        $currentPageIds = $medicines->pluck('id')->toArray();
+        
+        // Remove rows that are not in the current page to save state size
+        foreach (array_keys($this->rows) as $id) {
+            if (!in_array($id, $currentPageIds)) {
+                unset($this->rows[$id]);
+            }
+        }
+
+        // Add missing rows
+        foreach ($medicines as $medicine) {
+            if (!isset($this->rows[$medicine->id])) {
+                $this->rows[$medicine->id] = [
+                    'id' => $medicine->id,
+                    'name' => $medicine->name,
+                    'generic_name' => $medicine->generic_name ?? '',
+                    'brand' => $medicine->brand ?? '',
+                    'manufacturer' => $medicine->manufacturer ?? '',
+                    'dosage_unit' => $medicine->dosage_unit,
+                    'unit_price' => $medicine->unit_price,
+                    'purchase_price' => $medicine->purchase_price,
+                    'alert_quantity' => $medicine->alert_quantity,
+                    'barcode' => $medicine->barcode ?? '',
+                ];
+            }
+        }
+
+        return view('livewire.admin.bulk-edit-medicine', [
+            'medicines' => $medicines
+        ]);
     }
 }

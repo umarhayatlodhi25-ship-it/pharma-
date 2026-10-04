@@ -139,8 +139,11 @@
                 </table>
             </div>
             
-            <div class="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex justify-end">
-                <button wire:click="saveAll" type="button" class="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-xs transition">
+            <div class="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="w-full md:w-auto overflow-x-auto">
+                    {{ $medicines->links() }}
+                </div>
+                <button wire:click="saveAll" type="button" class="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-xs transition whitespace-nowrap">
                     <i class="fa-solid fa-save text-xs"></i>
                     <span>Save All Changes</span>
                 </button>
