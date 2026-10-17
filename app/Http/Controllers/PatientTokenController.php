@@ -176,41 +176,61 @@ class PatientTokenController extends Controller
             }
         }
 
-        // Determine whether this visit is a doctor consultation or hospital procedure
-        $isConsultation = (!$service || $service->service_type === 'consultation' || in_array($service->code, ['SRV-CONSULT', 'DOC_CONSULT']));
-
-        if ($isConsultation) {
-            $consultationFee = (float) $doctor->consultation_fee;
-            $doctorSharePct = (float) ($doctor->doctor_share_percentage ?? 70.00);
-            $hospitalSharePct = round(100.00 - $doctorSharePct, 2);
-        } else {
-            $consultationFee = (float) $service->default_fee;
-            $doctorSharePct = (float) $service->doctor_share_percentage;
-            $hospitalSharePct = (float) $service->hospital_share_percentage;
+        // Safely validate that doctor has a configured consultation fee
+        if ($doctor->consultation_fee === null || !is_numeric($doctor->consultation_fee) || (float) $doctor->consultation_fee < 0) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['doctor_id' => 'The selected doctor does not have a configured consultation fee. Please update the doctor profile first.']);
         }
+
+        // Determine whether additional hospital service is selected
+        $isAdditionalService = ($service && $service->service_type !== 'consultation' && !in_array($service->code, ['SRV-CONSULT', 'DOC_CONSULT']));
+
+        $doctorConsultFee = (float) $doctor->consultation_fee;
+        $doctorConsultDocPct = (float) ($doctor->doctor_share_percentage ?? 70.00);
+
+        if ($isAdditionalService) {
+            $serviceFee = (float) $service->default_fee;
+            $serviceDocPct = (float) $service->doctor_share_percentage;
+        } else {
+            $serviceFee = 0.00;
+            $serviceDocPct = 0.00;
+        }
+
+        // Total gross fee = Doctor consultation fee + configured additional hospital service fee
+        $totalGrossFee = round($doctorConsultFee + $serviceFee, 2);
+
+        // Combined doctor share amount
+        $doctorShareFromConsultation = round($doctorConsultFee * ($doctorConsultDocPct / 100), 2);
+        $doctorShareFromService = $isAdditionalService ? round($serviceFee * ($serviceDocPct / 100), 2) : 0.00;
+        $combinedDoctorShare = round($doctorShareFromConsultation + $doctorShareFromService, 2);
+
+        // Effective combined percentages
+        $effectiveDoctorSharePct = ($totalGrossFee > 0) ? round(($combinedDoctorShare / $totalGrossFee) * 100, 2) : $doctorConsultDocPct;
+        $effectiveHospitalSharePct = round(100.00 - $effectiveDoctorSharePct, 2);
 
         $discountAmount = 0.00;
         if ($validated['payment_type'] === 'free') {
             $chargedAmount = 0.00;
-            $discountAmount = $consultationFee;
+            $discountAmount = $totalGrossFee;
             $doctorShareAmount = 0.00;
             $hospitalShareAmount = 0.00;
             $freeReason = $request->input('free_reason');
             $otherReason = ($freeReason === 'Other') ? $request->input('other_reason') : null;
         } elseif ($validated['payment_type'] === 'partial') {
             $chargedAmount = round(floatval($request->input('paid_amount')), 2);
-            if ($chargedAmount > $consultationFee) {
-                $chargedAmount = $consultationFee;
+            if ($chargedAmount > $totalGrossFee) {
+                $chargedAmount = $totalGrossFee;
             }
             // Revenue split recognized ONLY on the amount actually collected
-            $doctorShareAmount = round($chargedAmount * ($doctorSharePct / 100), 2);
+            $doctorShareAmount = round($chargedAmount * ($effectiveDoctorSharePct / 100), 2);
             $hospitalShareAmount = round($chargedAmount - $doctorShareAmount, 2);
             $freeReason = null;
             $otherReason = null;
         } else {
-            $chargedAmount = $consultationFee;
-            $doctorShareAmount = round($chargedAmount * ($doctorSharePct / 100), 2);
-            $hospitalShareAmount = round($chargedAmount - $doctorShareAmount, 2);
+            $chargedAmount = $totalGrossFee;
+            $doctorShareAmount = $combinedDoctorShare;
+            $hospitalShareAmount = round($totalGrossFee - $doctorShareAmount, 2);
             $freeReason = null;
             $otherReason = null;
         }
@@ -222,11 +242,11 @@ class PatientTokenController extends Controller
             $doctor,
             $serviceId,
             $today,
-            $consultationFee,
+            $totalGrossFee,
             $chargedAmount,
             $discountAmount,
-            $doctorSharePct,
-            $hospitalSharePct,
+            $effectiveDoctorSharePct,
+            $effectiveHospitalSharePct,
             $doctorShareAmount,
             $hospitalShareAmount,
             $freeReason,
@@ -272,11 +292,11 @@ class PatientTokenController extends Controller
                 'token_number'              => $nextTokenNumber,
                 'token_date'                => $today,
                 'payment_type'              => $request->input('payment_type'),
-                'consultation_fee'          => $consultationFee,
+                'consultation_fee'          => $totalGrossFee,
                 'charged_amount'            => $chargedAmount,
                 'discount_amount'           => $discountAmount,
-                'doctor_share_percentage'   => $doctorSharePct,
-                'hospital_share_percentage' => $hospitalSharePct,
+                'doctor_share_percentage'   => $effectiveDoctorSharePct,
+                'hospital_share_percentage' => $effectiveHospitalSharePct,
                 'doctor_share_amount'       => $doctorShareAmount,
                 'hospital_share_amount'     => $hospitalShareAmount,
                 'free_reason'               => $freeReason,
@@ -293,9 +313,9 @@ class PatientTokenController extends Controller
                 'doctor_id'                 => $doctor->id,
                 'hospital_service_id'       => $serviceId,
                 'patient_token_id'          => $createdToken->id,
-                'total_amount'              => $consultationFee,
+                'total_amount'              => $totalGrossFee,
                 'discount_amount'           => $discountAmount,
-                'doctor_share_percentage'   => $doctorSharePct,
+                'doctor_share_percentage'   => $effectiveDoctorSharePct,
                 'payment_type'              => $request->input('payment_type'),
                 'paid_amount'               => $chargedAmount,
                 'payment_method'            => $request->input('payment_method', 'cash'),

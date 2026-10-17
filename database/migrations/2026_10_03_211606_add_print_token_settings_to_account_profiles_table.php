@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::table('account_profiles', function (Blueprint $table) {
             $table->string('token_prefix', 10)->nullable();
             $table->integer('token_start_number')->default(1);
-            $table->boolean('daily_token_reset')->default(false);
+            $table->boolean('daily_token_reset')->default(true);
             $table->boolean('auto_print_token')->default(false);
             $table->string('default_token_status')->default('Waiting');
             $table->integer('thermal_paper_size')->default(80);

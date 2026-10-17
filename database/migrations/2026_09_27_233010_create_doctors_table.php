@@ -17,7 +17,7 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('specialization')->nullable();
-            $table->decimal('consultation_fee', 10, 2)->default(1000.00);
+            $table->decimal('consultation_fee', 10, 2)->nullable()->default(1000.00);
             $table->string('phone', 30)->nullable();
             $table->string('email', 100)->nullable();
             $table->boolean('is_active')->default(true);

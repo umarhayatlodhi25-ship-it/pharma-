@@ -99,19 +99,45 @@
                     >
                         <option value="">-- Choose Active Doctor --</option>
                         @foreach($doctors as $doc)
+                            @php
+                                $hasValidFee = ($doc->consultation_fee !== null && is_numeric($doc->consultation_fee) && $doc->consultation_fee >= 0);
+                            @endphp
                             <option 
                                 value="{{ $doc->id }}"
                                 data-name="{{ $doc->name }}"
                                 data-specialization="{{ $doc->specialization }}"
-                                data-fee="{{ (float) $doc->consultation_fee }}"
+                                data-fee="{{ $hasValidFee ? (float) $doc->consultation_fee : -1 }}"
+                                data-has-fee="{{ $hasValidFee ? '1' : '0' }}"
                                 data-doc-pct="{{ (float) ($doc->doctor_share_percentage ?? 70) }}"
                                 data-hosp-pct="{{ (float) ($doc->hospital_share_percentage ?? 30) }}"
                                 {{ (old('doctor_id', $selectedDoctor?->id) == $doc->id) ? 'selected' : '' }}
                             >
-                                {{ $doc->name }} — {{ $doc->specialization }} (PKR {{ number_format($doc->consultation_fee, 0) }} • {{ (float)($doc->doctor_share_percentage ?? 70) }}% / {{ (float)($doc->hospital_share_percentage ?? 30) }}%)
+                                {{ $doc->name }} — {{ $doc->specialization }} ({{ $hasValidFee ? 'Fee: PKR ' . number_format($doc->consultation_fee, 0) : 'Fee: Not Configured' }} • {{ (float)($doc->doctor_share_percentage ?? 70) }}% / {{ (float)($doc->hospital_share_percentage ?? 30) }}%)
                             </option>
                         @endforeach
                     </select>
+
+                    <!-- Doctor Consultation Fee Read-Only Input -->
+                    <div class="mt-3">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                            Doctor Consultation Fee <span class="text-slate-400 font-normal lowercase">(read-only)</span>
+                        </label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-xs font-bold text-slate-500">PKR</span>
+                            <input 
+                                type="text" 
+                                id="docReadOnlyFeeInput" 
+                                readonly 
+                                disabled 
+                                value="0.00" 
+                                class="w-full pl-12 pr-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 cursor-not-allowed shadow-2xs"
+                            />
+                        </div>
+                    </div>
+                    <div id="docMissingFeeAlert" class="mt-2 hidden p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center space-x-2">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                        <span>The selected doctor does not have a configured consultation fee. Please update the doctor profile first.</span>
+                    </div>
 
                     <!-- Doctor Quick Info Display (User Spec Section 4) -->
                     <div id="doctorInfoCard" class="mt-3 p-3.5 bg-blue-50/70 border border-blue-100 rounded-xl text-xs space-y-1.5 transition">
@@ -151,7 +177,7 @@
                 <!-- Hospital Service Selection Dropdown -->
                 <div>
                     <label for="hospital_service_id" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
-                        Hospital Service / Procedure
+                        Additional Hospital Service / Procedure
                     </label>
                     <select 
                         id="hospital_service_id" 
@@ -159,7 +185,20 @@
                         class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 transition cursor-pointer"
                         onchange="handleServiceChange()"
                     >
+                        <option 
+                            value=""
+                            data-name="Doctor Consultation Only"
+                            data-code="SRV-CONSULT"
+                            data-fee="0"
+                            data-doc-pct="70"
+                            data-hosp-pct="30"
+                        >
+                            -- None / Standard Consultation Only (No Extra Fee) --
+                        </option>
                         @foreach($services as $srv)
+                            @php
+                                $isBaseConsult = ($srv->service_type === 'consultation' || in_array($srv->code, ['SRV-CONSULT', 'DOC_CONSULT']));
+                            @endphp
                             <option 
                                 value="{{ $srv->id }}"
                                 data-name="{{ $srv->name }}"
@@ -167,9 +206,14 @@
                                 data-fee="{{ (float) $srv->default_fee }}"
                                 data-doc-pct="{{ $srv->doctor_share_percentage }}"
                                 data-hosp-pct="{{ $srv->hospital_share_percentage }}"
-                                {{ old('hospital_service_id', (in_array($srv->code, ['SRV-CONSULT', 'DOC_CONSULT']) ? $srv->id : '')) == $srv->id ? 'selected' : '' }}
+                                {{ old('hospital_service_id') == $srv->id ? 'selected' : '' }}
                             >
-                                {{ $srv->name }} ({{ $srv->doctor_share_percentage }}% Doc / {{ $srv->hospital_share_percentage }}% Hosp)
+                                {{ $srv->name }} 
+                                @if($isBaseConsult)
+                                    (Standard Consultation - Included in Doctor Fee)
+                                @else
+                                    (+PKR {{ number_format($srv->default_fee, 0) }} • {{ $srv->doctor_share_percentage }}% Doc / {{ $srv->hospital_share_percentage }}% Hosp)
+                                @endif
                             </option>
                         @endforeach
                     </select>
@@ -744,14 +788,14 @@
     let currentDoctorDocPct = 70;
     let currentDoctorHospPct = 30;
     let currentServiceFee = 0;
-    let currentDocPct = 70;
-    let currentHospPct = 30;
+    let currentServiceDocPct = 0;
+    let currentServiceHospPct = 0;
     let isConsultService = true;
     let searchDebounceTimer = null;
 
     document.addEventListener('DOMContentLoaded', function () {
-        handleServiceChange();
         handleDoctorChange();
+        handleServiceChange();
         
         // Initial payment state
         const initialPayment = document.querySelector('input[name="payment_type"]:checked')?.value || 'paid';
@@ -786,22 +830,26 @@
             isConsultService = (code === 'SRV-CONSULT' || code === 'DOC_CONSULT' || !code);
 
             if (isConsultService) {
-                // Consultation split is strictly determined once in Doctor Profile
-                currentDocPct = currentDoctorDocPct;
-                currentHospPct = currentDoctorHospPct;
+                currentServiceDocPct = currentDoctorDocPct;
+                currentServiceHospPct = currentDoctorHospPct;
+                currentServiceFee = 0;
             } else {
-                // Hospital procedures use procedure-specific split
-                currentDocPct = parseFloat(opt.getAttribute('data-doc-pct')) || 0;
-                currentHospPct = parseFloat(opt.getAttribute('data-hosp-pct')) || 0;
+                currentServiceDocPct = parseFloat(opt.getAttribute('data-doc-pct')) || 0;
+                currentServiceHospPct = parseFloat(opt.getAttribute('data-hosp-pct')) || 0;
+                currentServiceFee = fee;
             }
 
-            currentServiceFee = fee;
-
             document.getElementById('srvDispName').textContent = name;
-            document.getElementById('srvDispSplit').textContent = `${currentDocPct}% Doc / ${currentHospPct}% Hosp`;
-            const splitBadge = document.getElementById('splitBadge');
-            if (splitBadge) splitBadge.textContent = `${currentDocPct}/${currentHospPct} Split`;
-            document.getElementById('srvDispFee').textContent = isConsultService ? 'Uses Doctor Fee' : `PKR ${fee.toLocaleString('en-US')}`;
+            document.getElementById('srvDispSplit').textContent = `${currentServiceDocPct}% Doc / ${currentServiceHospPct}% Hosp`;
+            document.getElementById('srvDispFee').textContent = isConsultService ? 'Included in Doctor Fee' : `+PKR ${fee.toLocaleString('en-US')}`;
+        } else {
+            isConsultService = true;
+            currentServiceFee = 0;
+            currentServiceDocPct = 0;
+            currentServiceHospPct = 0;
+            document.getElementById('srvDispName').textContent = 'Doctor Consultation Only';
+            document.getElementById('srvDispSplit').textContent = `${currentDoctorDocPct}% Doc / ${currentDoctorHospPct}% Hosp`;
+            document.getElementById('srvDispFee').textContent = 'Included in Doctor Fee';
         }
         updateBillingBreakdown();
     }
@@ -809,24 +857,36 @@
     function handleDoctorChange() {
         const doctorSelect = document.getElementById('doctor_id');
         const selectedOption = doctorSelect.options[doctorSelect.selectedIndex];
+        const missingAlert = document.getElementById('docMissingFeeAlert');
+        const readOnlyInput = document.getElementById('docReadOnlyFeeInput');
 
         if (selectedOption && selectedOption.value) {
             const name = selectedOption.getAttribute('data-name');
             const spec = selectedOption.getAttribute('data-specialization');
+            const hasFee = selectedOption.getAttribute('data-has-fee') === '1';
             const fee = parseFloat(selectedOption.getAttribute('data-fee')) || 0;
             const docPct = parseFloat(selectedOption.getAttribute('data-doc-pct')) || 70;
             const hospPct = parseFloat(selectedOption.getAttribute('data-hosp-pct')) || Math.round((100 - docPct) * 100) / 100;
 
-            currentDoctorFee = fee;
+            if (!hasFee || fee < 0) {
+                currentDoctorFee = 0;
+                if (missingAlert) missingAlert.classList.remove('hidden');
+                if (readOnlyInput) readOnlyInput.value = 'Not Configured';
+            } else {
+                currentDoctorFee = fee;
+                if (missingAlert) missingAlert.classList.add('hidden');
+                if (readOnlyInput) readOnlyInput.value = fee.toLocaleString('en-US', { minimumFractionDigits: 2 });
+            }
+
             currentDoctorDocPct = docPct;
             currentDoctorHospPct = hospPct;
 
-            const docAmount = Math.round(fee * (docPct / 100) * 100) / 100;
-            const hospAmount = Math.round((fee - docAmount) * 100) / 100;
+            const docAmount = Math.round(currentDoctorFee * (docPct / 100) * 100) / 100;
+            const hospAmount = Math.round((currentDoctorFee - docAmount) * 100) / 100;
 
             document.getElementById('docDispName').textContent = name;
             document.getElementById('docDispSpec').textContent = spec;
-            document.getElementById('docDispFee').textContent = 'PKR ' + fee.toLocaleString('en-US', { minimumFractionDigits: 0 });
+            document.getElementById('docDispFee').textContent = hasFee ? ('PKR ' + currentDoctorFee.toLocaleString('en-US', { minimumFractionDigits: 0 })) : 'Not Configured';
             document.getElementById('docDispDocPct').textContent = docPct + '%';
             document.getElementById('docDispHospPct').textContent = hospPct + '% (Automatic)';
             document.getElementById('docDispDocAmount').textContent = 'PKR ' + docAmount.toLocaleString('en-US');
@@ -834,15 +894,10 @@
 
             const billingDoc = document.getElementById('billingDocName');
             if (billingDoc) billingDoc.textContent = name;
-
-            if (isConsultService) {
-                currentDocPct = docPct;
-                currentHospPct = hospPct;
-                const splitBadge = document.getElementById('splitBadge');
-                if (splitBadge) splitBadge.textContent = `${docPct}/${hospPct} Split`;
-            }
         } else {
             currentDoctorFee = 0;
+            if (missingAlert) missingAlert.classList.add('hidden');
+            if (readOnlyInput) readOnlyInput.value = '0.00';
             document.getElementById('docDispName').textContent = 'Please select doctor';
             document.getElementById('docDispSpec').textContent = '—';
             document.getElementById('docDispFee').textContent = 'PKR 0';
@@ -1088,9 +1143,19 @@
         const hospShareLabel = document.getElementById('previewHospShareLabel');
         const rowRemaining = document.getElementById('rowRemainingDue');
         const remainingDisp = document.getElementById('billRemainingDisplay');
+        const splitBadge = document.getElementById('splitBadge');
 
-        const baseFee = isConsultService ? currentDoctorFee : (currentServiceFee > 0 ? currentServiceFee : currentDoctorFee);
-        feeDisp.textContent = 'PKR ' + baseFee.toLocaleString('en-US', { minimumFractionDigits: 0 });
+        const isAddService = (!isConsultService && currentServiceFee > 0);
+        const totalGrossFee = currentDoctorFee + (isAddService ? currentServiceFee : 0);
+
+        const docConsultShare = Math.round(currentDoctorFee * (currentDoctorDocPct / 100) * 100) / 100;
+        const serviceDocShare = isAddService ? Math.round(currentServiceFee * (currentServiceDocPct / 100) * 100) / 100 : 0;
+        const combinedDocShare = docConsultShare + serviceDocShare;
+        const effectiveDocPct = totalGrossFee > 0 ? Math.round((combinedDocShare / totalGrossFee) * 100) : currentDoctorDocPct;
+        const effectiveHospPct = 100 - effectiveDocPct;
+
+        if (splitBadge) splitBadge.textContent = `${effectiveDocPct}/${effectiveHospPct} Split`;
+        if (feeDisp) feeDisp.textContent = 'PKR ' + totalGrossFee.toLocaleString('en-US', { minimumFractionDigits: 0 });
 
         let collectedAmount = 0;
         let remainingAmount = 0;
@@ -1104,8 +1169,8 @@
             if (rowRemaining) rowRemaining.classList.add('hidden');
         } else if (paymentType === 'partial') {
             const paidVal = parseFloat(document.getElementById('paid_amount')?.value) || 0;
-            collectedAmount = Math.max(0, Math.min(paidVal, baseFee));
-            remainingAmount = Math.max(0, baseFee - collectedAmount);
+            collectedAmount = Math.max(0, Math.min(paidVal, totalGrossFee));
+            remainingAmount = Math.max(0, totalGrossFee - collectedAmount);
             statusDisp.textContent = 'PARTIAL';
             statusDisp.className = 'font-bold text-[10px] text-amber-800 bg-amber-100 px-2 py-0.5 rounded';
             chargedDisp.textContent = 'PKR ' + collectedAmount.toLocaleString('en-US');
@@ -1114,20 +1179,20 @@
                 if (remainingDisp) remainingDisp.textContent = 'PKR ' + remainingAmount.toLocaleString('en-US');
             }
         } else {
-            collectedAmount = baseFee;
+            collectedAmount = totalGrossFee;
             remainingAmount = 0;
             statusDisp.textContent = 'FULL PAID';
             statusDisp.className = 'font-bold text-[10px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded';
-            chargedDisp.textContent = 'PKR ' + baseFee.toLocaleString('en-US');
+            chargedDisp.textContent = 'PKR ' + totalGrossFee.toLocaleString('en-US');
             if (rowRemaining) rowRemaining.classList.add('hidden');
         }
 
         // Revenue split calculation
-        const docShare = Math.round(collectedAmount * (currentDocPct / 100) * 100) / 100;
+        const docShare = Math.round(collectedAmount * (effectiveDocPct / 100) * 100) / 100;
         const hospShare = Math.round((collectedAmount - docShare) * 100) / 100;
 
-        if (docShareLabel) docShareLabel.textContent = `Doctor Share (${currentDocPct}%)`;
-        if (hospShareLabel) hospShareLabel.textContent = `Hospital Share (${currentHospPct}%)`;
+        if (docShareLabel) docShareLabel.textContent = `Doctor Share (${effectiveDocPct}%)`;
+        if (hospShareLabel) hospShareLabel.textContent = `Hospital Share (${effectiveHospPct}%)`;
 
         if (docShareDisp) docShareDisp.textContent = 'PKR ' + docShare.toLocaleString('en-US');
         if (hospShareDisp) hospShareDisp.textContent = 'PKR ' + hospShare.toLocaleString('en-US');

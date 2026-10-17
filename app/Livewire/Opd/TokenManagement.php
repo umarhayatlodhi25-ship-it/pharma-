@@ -261,37 +261,58 @@ class TokenManagement extends Component
         $this->validate($rules, $messages);
 
         $doctor = Doctor::findOrFail($this->doctor_id);
-        $service = !empty($this->hospital_service_id) ? \App\Models\HospitalService::find($this->hospital_service_id) : null;
-        $isConsultation = (!$service || $service->service_type === 'consultation' || in_array($service->code, ['SRV-CONSULT', 'DOC_CONSULT']));
 
-        if ($isConsultation) {
-            $doctorFee = (float) $doctor->consultation_fee;
-            $doctorSharePct = (float) ($doctor->doctor_share_percentage ?? 70.00);
-            $hospitalSharePct = round(100.00 - $doctorSharePct, 2);
-        } else {
-            $doctorFee = (float) $service->default_fee;
-            $doctorSharePct = (float) $service->doctor_share_percentage;
-            $hospitalSharePct = (float) $service->hospital_share_percentage;
+        // Safely validate that doctor has a configured consultation fee
+        if ($doctor->consultation_fee === null || !is_numeric($doctor->consultation_fee) || (float) $doctor->consultation_fee < 0) {
+            $this->addError('doctor_id', 'The selected doctor does not have a configured consultation fee. Please update the doctor profile first.');
+            $this->isSubmitting = false;
+            return;
         }
+
+        $service = !empty($this->hospital_service_id) ? \App\Models\HospitalService::find($this->hospital_service_id) : null;
+        $isAdditionalService = ($service && $service->service_type !== 'consultation' && !in_array($service->code, ['SRV-CONSULT', 'DOC_CONSULT']));
+
+        $doctorConsultationFee = (float) $doctor->consultation_fee;
+        $doctorConsultSharePct = (float) ($doctor->doctor_share_percentage ?? 70.00);
+
+        if ($isAdditionalService) {
+            $serviceFee = (float) $service->default_fee;
+            $serviceDoctorSharePct = (float) $service->doctor_share_percentage;
+        } else {
+            $serviceFee = 0.00;
+            $serviceDoctorSharePct = 0.00;
+        }
+
+        // Total gross fee = Doctor consultation fee + configured additional hospital service fee
+        $totalGrossFee = round($doctorConsultationFee + $serviceFee, 2);
+
+        // Combined doctor share amount
+        $doctorShareFromConsultation = round($doctorConsultationFee * ($doctorConsultSharePct / 100), 2);
+        $doctorShareFromService = $isAdditionalService ? round($serviceFee * ($serviceDoctorSharePct / 100), 2) : 0.00;
+        $combinedDoctorShare = round($doctorShareFromConsultation + $doctorShareFromService, 2);
+
+        // Effective combined percentages
+        $effectiveDoctorSharePct = ($totalGrossFee > 0) ? round(($combinedDoctorShare / $totalGrossFee) * 100, 2) : $doctorConsultSharePct;
+        $effectiveHospitalSharePct = round(100.00 - $effectiveDoctorSharePct, 2);
 
         $discountAmount = 0.00;
         if ($this->fee_type === 'free') {
             $finalAmount = 0.00;
-            $discountAmount = $doctorFee;
+            $discountAmount = $totalGrossFee;
             $doctorShareAmount = 0.00;
             $hospitalShareAmount = 0.00;
         } elseif ($this->fee_type === 'partial') {
             $finalAmount = round(floatval($this->paid_amount), 2);
-            if ($finalAmount > $doctorFee) {
-                $finalAmount = $doctorFee;
+            if ($finalAmount > $totalGrossFee) {
+                $finalAmount = $totalGrossFee;
             }
             // Revenue split recognized ONLY on the amount actually collected
-            $doctorShareAmount = round($finalAmount * ($doctorSharePct / 100), 2);
+            $doctorShareAmount = round($finalAmount * ($effectiveDoctorSharePct / 100), 2);
             $hospitalShareAmount = round($finalAmount - $doctorShareAmount, 2);
         } else {
-            $finalAmount = $doctorFee;
-            $doctorShareAmount = round($finalAmount * ($doctorSharePct / 100), 2);
-            $hospitalShareAmount = round($finalAmount - $doctorShareAmount, 2);
+            $finalAmount = $totalGrossFee;
+            $doctorShareAmount = $combinedDoctorShare;
+            $hospitalShareAmount = round($totalGrossFee - $doctorShareAmount, 2);
         }
 
         $freeReason = ($this->fee_type === 'free') ? $this->free_reason : null;
@@ -302,11 +323,11 @@ class TokenManagement extends Component
             $token = DB::transaction(function () use (
                 $doctor,
                 $service,
-                $doctorFee,
+                $totalGrossFee,
                 $finalAmount,
                 $discountAmount,
-                $doctorSharePct,
-                $hospitalSharePct,
+                $effectiveDoctorSharePct,
+                $effectiveHospitalSharePct,
                 $doctorShareAmount,
                 $hospitalShareAmount,
                 $freeReason,
@@ -341,11 +362,11 @@ class TokenManagement extends Component
                     'token_number'              => $nextTokenNumber,
                     'token_date'                => $today,
                     'payment_type'              => $this->fee_type,
-                    'consultation_fee'          => $doctorFee,
+                    'consultation_fee'          => $totalGrossFee,
                     'charged_amount'            => $finalAmount,
                     'discount_amount'           => $discountAmount,
-                    'doctor_share_percentage'   => $doctorSharePct,
-                    'hospital_share_percentage' => $hospitalSharePct,
+                    'doctor_share_percentage'   => $effectiveDoctorSharePct,
+                    'hospital_share_percentage' => $effectiveHospitalSharePct,
                     'doctor_share_amount'       => $doctorShareAmount,
                     'hospital_share_amount'     => $hospitalShareAmount,
                     'free_reason'               => $freeReason,
@@ -362,9 +383,9 @@ class TokenManagement extends Component
                     'doctor_id'                 => $doctor->id,
                     'hospital_service_id'       => $service ? $service->id : null,
                     'patient_token_id'          => $createdToken->id,
-                    'total_amount'              => $doctorFee,
+                    'total_amount'              => $totalGrossFee,
                     'discount_amount'           => $discountAmount,
-                    'doctor_share_percentage'   => $doctorSharePct,
+                    'doctor_share_percentage'   => $effectiveDoctorSharePct,
                     'payment_type'              => $this->fee_type,
                     'paid_amount'               => $finalAmount,
                     'payment_method'            => $this->payment_method,

@@ -109,9 +109,15 @@
                         Select Doctor <span class="text-rose-500">*</span>
                     </label>
                     @if($selectedDoctor)
-                        <span class="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                            Fee: PKR {{ number_format($selectedDoctor->consultation_fee, 0) }}
-                        </span>
+                        @if($selectedDoctor->consultation_fee !== null && is_numeric($selectedDoctor->consultation_fee) && $selectedDoctor->consultation_fee >= 0)
+                            <span class="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                                Fee: PKR {{ number_format($selectedDoctor->consultation_fee, 2) }}
+                            </span>
+                        @else
+                            <span class="text-xs font-semibold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
+                                Fee Not Configured
+                            </span>
+                        @endif
                     @endif
                 </div>
 
@@ -124,7 +130,12 @@
                         <option value="">-- Choose Doctor --</option>
                         @foreach($doctors as $doc)
                             <option value="{{ $doc->id }}">
-                                {{ $doc->name }} {{ $doc->specialization ? '— ' . $doc->specialization : '' }} (Fee: PKR {{ number_format($doc->consultation_fee, 0) }})
+                                {{ $doc->name }} {{ $doc->specialization ? '— ' . $doc->specialization : '' }} 
+                                @if($doc->consultation_fee !== null && is_numeric($doc->consultation_fee))
+                                    (Fee: PKR {{ number_format($doc->consultation_fee, 0) }})
+                                @else
+                                    (Fee: Not Configured)
+                                @endif
                             </option>
                         @endforeach
                     </select>
@@ -134,19 +145,29 @@
                 @enderror
 
                 @if($selectedDoctor)
-                    <div class="mt-2.5 p-3 rounded-xl bg-blue-50/70 border border-blue-100 flex items-center justify-between text-xs">
-                        <div class="flex items-center space-x-2">
-                            <i class="fa-solid fa-user-doctor text-blue-600 text-sm"></i>
-                            <span class="font-bold text-slate-800">{{ $selectedDoctor->name }}</span>
-                            @if($selectedDoctor->specialization)
-                                <span class="text-slate-500">({{ $selectedDoctor->specialization }})</span>
-                            @endif
+                    @if($selectedDoctor->consultation_fee !== null && is_numeric($selectedDoctor->consultation_fee) && $selectedDoctor->consultation_fee >= 0)
+                        <div class="mt-2.5 p-3 rounded-xl bg-blue-50/70 border border-blue-100 flex items-center justify-between text-xs">
+                            <div class="flex items-center space-x-2">
+                                <i class="fa-solid fa-user-doctor text-blue-600 text-sm"></i>
+                                <span class="font-bold text-slate-800">{{ $selectedDoctor->name }}</span>
+                                @if($selectedDoctor->specialization)
+                                    <span class="text-slate-500">({{ $selectedDoctor->specialization }})</span>
+                                @endif
+                            </div>
+                            <div class="text-right">
+                                <span class="text-slate-500">Registered Consultation Fee:</span>
+                                <span class="font-bold text-blue-700 ml-1">PKR {{ number_format($selectedDoctor->consultation_fee, 2) }}</span>
+                            </div>
                         </div>
-                        <div class="text-right">
-                            <span class="text-slate-500">Standard Consultation:</span>
-                            <span class="font-bold text-blue-700 ml-1">PKR {{ number_format($selectedDoctor->consultation_fee, 0) }}</span>
+                    @else
+                        <div class="mt-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center space-x-2 text-xs text-amber-800">
+                            <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base shrink-0"></i>
+                            <div>
+                                <span class="font-bold block">Missing Consultation Fee</span>
+                                <span>The selected doctor does not have a consultation fee configured. Please set a consultation fee in doctor settings.</span>
+                            </div>
                         </div>
-                    </div>
+                    @endif
                 @endif
             </div>
 
@@ -471,51 +492,117 @@
                     </div>
                 </div>
 
-                <!-- Hospital Service Dropdown -->
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Select Hospital Service <span class="text-rose-500">*</span></label>
-                    <select 
-                        wire:model.live="hospital_service_id" 
-                        class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 shadow-2xs font-medium"
-                    >
-                        @foreach($services as $srv)
-                            <option value="{{ $srv->id }}">
-                                {{ $srv->name }} (Fee: PKR {{ number_format($srv->default_fee, 0) }}) - Doc: {{ number_format($srv->doctor_share_percentage, 0) }}% / Hosp: {{ number_format($srv->hospital_share_percentage, 0) }}%
-                            </option>
-                        @endforeach
-                    </select>
+                <!-- Doctor Consultation Fee (Read-Only) & Additional Hospital Service -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Doctor Consultation Fee (Read-Only) -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">
+                            Doctor Consultation Fee <span class="text-slate-400 font-normal">(Auto-fetched &bull; Read-Only)</span>
+                        </label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-xs font-bold text-slate-500">PKR</span>
+                            <input 
+                                type="text" 
+                                readonly 
+                                disabled 
+                                value="{{ $selectedDoctor && $selectedDoctor->consultation_fee !== null && is_numeric($selectedDoctor->consultation_fee) ? number_format($selectedDoctor->consultation_fee, 2) : '0.00' }}"
+                                class="w-full pl-12 pr-3 py-2.5 bg-slate-100 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-800 cursor-not-allowed shadow-2xs"
+                            />
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1">Configured during Doctor Registration &bull; Read-only</p>
+                    </div>
+
+                    <!-- Additional Hospital Service Dropdown -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">
+                            Additional Hospital Service / Procedure <span class="text-slate-400 font-normal">(Optional)</span>
+                        </label>
+                        <select 
+                            wire:model.live="hospital_service_id" 
+                            class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 shadow-2xs font-medium"
+                        >
+                            <option value="">-- None / Standard Consultation Only (No Extra Fee) --</option>
+                            @foreach($services as $srv)
+                                @php
+                                    $isBaseConsult = ($srv->service_type === 'consultation' || in_array($srv->code, ['SRV-CONSULT', 'DOC_CONSULT']));
+                                @endphp
+                                <option value="{{ $srv->id }}">
+                                    {{ $srv->name }} 
+                                    @if($isBaseConsult)
+                                        (Standard Consultation - Included in Doctor Fee)
+                                    @else
+                                        (+PKR {{ number_format($srv->default_fee, 2) }}) - Doc: {{ number_format($srv->doctor_share_percentage, 0) }}% / Hosp: {{ number_format($srv->hospital_share_percentage, 0) }}%
+                                    @endif
+                                </option>
+                            @endforeach
+                        </select>
+                        <p class="text-[11px] text-slate-400 mt-1">Configured procedure fee adds automatically to doctor fee</p>
+                    </div>
                 </div>
 
                 @php
                     $actDoc = $selectedDoctor;
                     $actSrv = $selectedService;
-                    $baseFee = (float)($actSrv && $actSrv->service_type !== 'consultation' ? $actSrv->default_fee : ($actDoc ? $actDoc->consultation_fee : 500));
-                    $docPct = (float)($actSrv ? $actSrv->doctor_share_percentage : 70);
-                    $hospPct = (float)($actSrv ? $actSrv->hospital_share_percentage : 30);
-                    $collectedAmt = ($fee_type === 'free') ? 0.0 : (($fee_type === 'partial') ? (float)$paid_amount : $baseFee);
-                    $calcDocShare = ($fee_type === 'free') ? 0.0 : round($collectedAmt * ($docPct / 100), 2);
-                    $calcHospShare = ($fee_type === 'free') ? 0.0 : round($collectedAmt - $calcDocShare, 2);
-                    $remDue = max(0.0, round($baseFee - $collectedAmt, 2));
+                    $isAddSrv = ($actSrv && $actSrv->service_type !== 'consultation' && !in_array($actSrv->code, ['SRV-CONSULT', 'DOC_CONSULT']));
+                    
+                    $docConsultFee = (float)($actDoc && $actDoc->consultation_fee !== null && is_numeric($actDoc->consultation_fee) ? $actDoc->consultation_fee : 0.00);
+                    $docConsultPct = (float)($actDoc ? ($actDoc->doctor_share_percentage ?? 70.00) : 70.00);
+                    $srvAddFee = $isAddSrv ? (float)$actSrv->default_fee : 0.00;
+                    $srvDocPct = $isAddSrv ? (float)$actSrv->doctor_share_percentage : 0.00;
+
+                    $totalGrossFee = round($docConsultFee + $srvAddFee, 2);
+                    $docShareConsult = round($docConsultFee * ($docConsultPct / 100), 2);
+                    $docShareSrv = $isAddSrv ? round($srvAddFee * ($srvDocPct / 100), 2) : 0.00;
+                    $combinedDocShare = round($docShareConsult + $docShareSrv, 2);
+
+                    $effectiveDocPct = ($totalGrossFee > 0) ? round(($combinedDocShare / $totalGrossFee) * 100, 2) : $docConsultPct;
+                    $effectiveHospPct = round(100.00 - $effectiveDocPct, 2);
+
+                    if ($fee_type === 'free') {
+                        $collectedAmt = 0.00;
+                        $calcDocShare = 0.00;
+                        $calcHospShare = 0.00;
+                        $remDue = 0.00;
+                    } elseif ($fee_type === 'partial') {
+                        $collectedAmt = min($totalGrossFee, max(0.0, floatval($paid_amount)));
+                        $calcDocShare = round($collectedAmt * ($effectiveDocPct / 100), 2);
+                        $calcHospShare = round($collectedAmt - $calcDocShare, 2);
+                        $remDue = max(0.0, round($totalGrossFee - $collectedAmt, 2));
+                    } else {
+                        $collectedAmt = $totalGrossFee;
+                        $calcDocShare = $combinedDocShare;
+                        $calcHospShare = round($totalGrossFee - $calcDocShare, 2);
+                        $remDue = 0.00;
+                    }
                 @endphp
 
                 <!-- Live Revenue Split Cards -->
                 <div class="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
                         <div class="p-2.5 bg-white rounded-lg border border-slate-200">
-                            <span class="text-[10px] text-slate-500 block uppercase font-bold">Total Service Fee</span>
-                            <span class="font-bold text-slate-900 font-mono text-sm">PKR {{ number_format($baseFee, 2) }}</span>
+                            <span class="text-[10px] text-slate-500 block uppercase font-bold">Doctor Consultation</span>
+                            <span class="font-bold text-slate-900 font-mono text-sm">PKR {{ number_format($docConsultFee, 2) }}</span>
+                            <span class="text-[10px] text-slate-400 block font-semibold">Read-Only Fee</span>
                         </div>
                         <div class="p-2.5 bg-white rounded-lg border border-slate-200">
-                            <span class="text-[10px] text-emerald-600 block uppercase font-bold">Hospital Receives</span>
-                            <span class="font-bold text-emerald-700 font-mono text-sm">PKR {{ number_format($collectedAmt, 2) }}</span>
+                            <span class="text-[10px] text-slate-500 block uppercase font-bold">Extra Service</span>
+                            <span class="font-bold text-slate-900 font-mono text-sm">+PKR {{ number_format($srvAddFee, 2) }}</span>
+                            <span class="text-[10px] text-slate-400 block truncate">{{ $isAddSrv ? $actSrv->name : 'None' }}</span>
+                        </div>
+                        <div class="p-2.5 bg-white rounded-lg border border-slate-200">
+                            <span class="text-[10px] text-emerald-600 block uppercase font-bold">Total Service Fee</span>
+                            <span class="font-bold text-emerald-700 font-mono text-sm">PKR {{ number_format($totalGrossFee, 2) }}</span>
+                            <span class="text-[10px] text-emerald-600 block font-semibold">Calculated Total</span>
                         </div>
                         <div class="p-2.5 bg-blue-50/80 rounded-lg border border-blue-200">
-                            <span class="text-[10px] text-blue-700 block uppercase font-bold">Doctor Share ({{ number_format($docPct, 0) }}%)</span>
+                            <span class="text-[10px] text-blue-700 block uppercase font-bold">Doctor Share ({{ number_format($effectiveDocPct, 0) }}%)</span>
                             <span class="font-bold text-blue-700 font-mono text-sm">PKR {{ number_format($calcDocShare, 2) }}</span>
+                            <span class="text-[10px] text-blue-500 block">Split Earned</span>
                         </div>
                         <div class="p-2.5 bg-emerald-50/80 rounded-lg border border-emerald-200">
-                            <span class="text-[10px] text-emerald-700 block uppercase font-bold">Hospital Share ({{ number_format($hospPct, 0) }}%)</span>
+                            <span class="text-[10px] text-emerald-700 block uppercase font-bold">Hospital Share ({{ number_format($effectiveHospPct, 0) }}%)</span>
                             <span class="font-bold text-emerald-700 font-mono text-sm">PKR {{ number_format($calcHospShare, 2) }}</span>
+                            <span class="text-[10px] text-emerald-500 block">Split Retained</span>
                         </div>
                     </div>
 

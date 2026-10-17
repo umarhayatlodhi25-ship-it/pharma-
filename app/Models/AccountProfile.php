@@ -82,6 +82,7 @@ class AccountProfile extends Model
                 'currency'            => 'PKR',
                 'timezone'            => 'Asia/Karachi',
                 'footer_text'         => 'Thank you for choosing our healthcare services.',
+                'daily_token_reset'   => true,
             ]);
         }
 

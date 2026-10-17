@@ -322,7 +322,7 @@
 
         <!-- TOKEN NO -->
         <div class="token-hero">
-            <div class="token-label">TOKEN</div>
+            <div class="token-label">TOKEN NO.</div>
             <div class="token-num">{{ $token->formatted_token_number }}</div>
         </div>
 
@@ -382,6 +382,7 @@
 
         <!-- FOOTER -->
         <div class="footer">
+            <div class="footer-wait">Please wait for your token to be called.</div>
             @if(!empty($profile->footer_text))
                 {!! nl2br(e($profile->footer_text)) !!}
             @else
