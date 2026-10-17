@@ -64,12 +64,12 @@ class MedicinePackaging extends Model
 
     public function scopeForSale($query)
     {
-        return $query->where('allow_sale', true)->where('status', 'active');
+        return $query->whereRaw('allow_sale is true')->where('status', 'active');
     }
 
     public function scopeForPurchase($query)
     {
-        return $query->where('allow_purchase', true)->where('status', 'active');
+        return $query->whereRaw('allow_purchase is true')->where('status', 'active');
     }
 
     /**

@@ -111,7 +111,7 @@ class Doctor extends Model
     public function scopeActive($query)
     {
         return $query->where(function ($q) {
-            $q->where('status', 'active')->where('is_active', true);
+            $q->where('status', 'active')->whereRaw('is_active is true');
         });
     }
 
@@ -121,7 +121,7 @@ class Doctor extends Model
     public function scopeInactive($query)
     {
         return $query->where(function ($q) {
-            $q->where('status', 'inactive')->orWhere('is_active', false);
+            $q->where('status', 'inactive')->orWhereRaw('is_active is false');
         });
     }
 

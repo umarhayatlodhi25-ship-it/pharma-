@@ -31,9 +31,9 @@ class HospitalServiceController extends Controller
         }
 
         if ($status === 'active') {
-            $query->where('is_active', true);
+            $query->whereRaw('is_active is true');
         } elseif ($status === 'inactive') {
-            $query->where('is_active', false);
+            $query->whereRaw('is_active is false');
         }
 
         $services = $query->orderBy('name')->paginate(15)->withQueryString();

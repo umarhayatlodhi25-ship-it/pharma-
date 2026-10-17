@@ -39,10 +39,13 @@ class ReportController extends Controller
         $totalMedicines = Medicine::count();
         $totalStockUnits = MedicineBatch::sum('quantity');
         
-        $expiredCount = MedicineBatch::whereDate('expiry_date', '<', Carbon::today())->count();
+        $expiredCount = MedicineBatch::whereDate('expiry_date', '<', Carbon::today())
+            ->whereHas('medicine', fn($q) => $q->whereRaw('has_expiry is true'))
+            ->count();
         $expiring30DaysCount = MedicineBatch::whereDate('expiry_date', '>=', Carbon::today())
-                                            ->whereDate('expiry_date', '<=', Carbon::now()->addDays(30))
-                                            ->count();
+            ->whereDate('expiry_date', '<=', Carbon::now()->addDays(30))
+            ->whereHas('medicine', fn($q) => $q->whereRaw('has_expiry is true'))
+            ->count();
 
         $lowStockCount = DB::table('medicines')
             ->join('medicine_batches', 'medicines.id', '=', 'medicine_batches.medicine_id')
@@ -205,7 +208,7 @@ class ReportController extends Controller
 
         $query = MedicineBatch::with('medicine')
             ->whereHas('medicine', function($q) {
-                $q->where('has_expiry', true);
+                $q->whereRaw('has_expiry is true');
             });
 
         $today = Carbon::today();
@@ -228,7 +231,7 @@ class ReportController extends Controller
         $batches = $query->orderBy('expiry_date', 'asc')->get();
 
         $expiredBatches = MedicineBatch::whereDate('expiry_date', '<', $today)
-            ->whereHas('medicine', fn($q) => $q->where('has_expiry', true))
+            ->whereHas('medicine', fn($q) => $q->whereRaw('has_expiry is true'))
             ->get();
         $expiredValue = $expiredBatches->sum(function ($b) {
             return $b->quantity * $b->purchase_price;
@@ -236,7 +239,7 @@ class ReportController extends Controller
 
         $expiring30DaysBatches = MedicineBatch::whereDate('expiry_date', '>=', $today)
             ->whereDate('expiry_date', '<=', $today->copy()->addDays(30))
-            ->whereHas('medicine', fn($q) => $q->where('has_expiry', true))
+            ->whereHas('medicine', fn($q) => $q->whereRaw('has_expiry is true'))
             ->get();
         $atRiskValue = $expiring30DaysBatches->sum(function ($b) {
             return $b->quantity * $b->purchase_price;
