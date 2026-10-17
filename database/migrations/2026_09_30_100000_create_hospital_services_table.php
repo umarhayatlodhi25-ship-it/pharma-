@@ -12,21 +12,23 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('hospital_services', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('code', 50)->nullable();
-            $table->string('service_type', 50)->default('consultation'); // consultation, procedure, diagnostic, nursing, other
-            $table->decimal('default_fee', 10, 2)->default(0.00);
-            $table->decimal('doctor_share_percentage', 5, 2)->default(0.00);
-            $table->decimal('hospital_share_percentage', 5, 2)->default(100.00);
-            $table->boolean('is_active')->default(true);
-            $table->text('description')->nullable();
-            $table->timestamps();
+        if (!Schema::hasTable('hospital_services')) {
+            Schema::create('hospital_services', function (Blueprint $table) {
+                $table->id();
+                $table->string('name');
+                $table->string('code', 50)->nullable();
+                $table->string('service_type', 50)->default('consultation'); // consultation, procedure, diagnostic, nursing, other
+                $table->decimal('default_fee', 10, 2)->default(0.00);
+                $table->decimal('doctor_share_percentage', 5, 2)->default(0.00);
+                $table->decimal('hospital_share_percentage', 5, 2)->default(100.00);
+                $table->boolean('is_active')->default(true);
+                $table->text('description')->nullable();
+                $table->timestamps();
 
-            $table->index('service_type');
-            $table->index('is_active');
-        });
+                $table->index('service_type');
+                $table->index('is_active');
+            });
+        }
 
         // Seed initial default hospital services
         $now = now();
@@ -38,7 +40,7 @@ return new class extends Migration
                 'default_fee' => 500.00,
                 'doctor_share_percentage' => 70.00,
                 'hospital_share_percentage' => 30.00,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'description' => 'General / Specialist OPD Doctor Consultation',
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -50,7 +52,7 @@ return new class extends Migration
                 'default_fee' => 100.00,
                 'doctor_share_percentage' => 0.00,
                 'hospital_share_percentage' => 100.00,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'description' => 'Random Blood Sugar (RBS) Fasting / Glucometer Test',
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -62,7 +64,7 @@ return new class extends Migration
                 'default_fee' => 50.00,
                 'doctor_share_percentage' => 0.00,
                 'hospital_share_percentage' => 100.00,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'description' => 'Vital Signs BP Measurement',
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -74,7 +76,7 @@ return new class extends Migration
                 'default_fee' => 500.00,
                 'doctor_share_percentage' => 30.00,
                 'hospital_share_percentage' => 70.00,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'description' => 'Intravenous (IV) Infusion Administration',
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -86,7 +88,7 @@ return new class extends Migration
                 'default_fee' => 100.00,
                 'doctor_share_percentage' => 0.00,
                 'hospital_share_percentage' => 100.00,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'description' => 'IM / IV / SC Injection Administration',
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -98,7 +100,7 @@ return new class extends Migration
                 'default_fee' => 200.00,
                 'doctor_share_percentage' => 20.00,
                 'hospital_share_percentage' => 80.00,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'description' => 'Wound Cleaning & Bandaging',
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -110,7 +112,7 @@ return new class extends Migration
                 'default_fee' => 250.00,
                 'doctor_share_percentage' => 0.00,
                 'hospital_share_percentage' => 100.00,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'description' => 'Respiratory Nebulizer Therapy',
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -122,14 +124,16 @@ return new class extends Migration
                 'default_fee' => 0.00,
                 'doctor_share_percentage' => 50.00,
                 'hospital_share_percentage' => 50.00,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'description' => 'General / Miscellaneous Hospital Procedure',
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
         ];
 
-        DB::table('hospital_services')->insert($defaults);
+        if (DB::table('hospital_services')->count() === 0) {
+            DB::table('hospital_services')->insert($defaults);
+        }
     }
 
     /**
