@@ -13,18 +13,22 @@ return new class extends Migration
     {
         $defaultEmails = ['admin@pharmacy.com', 'admin@gmail.com'];
 
-        // Find custom / user-added accounts
-        $customUsers = DB::table('users')
+        // 1. Delete all fake/dummy example users
+        DB::table('users')->where('email', 'like', '%@example.%')->delete();
+
+        // 2. Find real user-added accounts
+        $realUsers = DB::table('users')
             ->whereNotIn('email', $defaultEmails)
+            ->where('email', 'not like', '%@example.%')
             ->whereNull('deleted_at')
             ->orderBy('id')
             ->get();
 
-        if ($customUsers->isNotEmpty()) {
-            $primaryUser = $customUsers->first();
+        if ($realUsers->isNotEmpty()) {
+            $primaryUser = $realUsers->first();
 
-            // Ensure at least one remaining user has admin privileges
-            $hasAdmin = $customUsers->contains(fn($u) => $u->role === 'admin');
+            // Ensure at least one remaining real user has admin privileges
+            $hasAdmin = $realUsers->contains(fn($u) => $u->role === 'admin');
             if (!$hasAdmin) {
                 DB::table('users')
                     ->where('id', $primaryUser->id)

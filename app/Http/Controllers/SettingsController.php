@@ -48,7 +48,14 @@ class SettingsController extends Controller
                 $status = 'active';
             }
 
-            $query = \App\Models\User::query();
+            // Auto cleanup any leftover fake dummy/example users from database
+            try {
+                \App\Models\User::withTrashed()->where('email', 'like', '%@example.%')->forceDelete();
+            } catch (\Throwable $e) {
+                \App\Models\User::where('email', 'like', '%@example.%')->delete();
+            }
+
+            $query = \App\Models\User::query()->where('email', 'not like', '%@example.%');
 
             if ($status === 'trashed') {
                 $query->onlyTrashed();
@@ -59,7 +66,9 @@ class SettingsController extends Controller
             }
 
             $defaultEmails = ['admin@pharmacy.com', 'admin@gmail.com'];
-            $hasCustomUsers = \App\Models\User::whereNotIn('email', $defaultEmails)->exists();
+            $hasCustomUsers = \App\Models\User::where('email', 'not like', '%@example.%')
+                ->whereNotIn('email', $defaultEmails)
+                ->exists();
 
             if ($hasCustomUsers) {
                 \App\Models\User::whereIn('email', $defaultEmails)->delete();
@@ -73,7 +82,7 @@ class SettingsController extends Controller
                 $users = $query->orderByDesc('id')->paginate($limit)->withQueryString();
             }
 
-            $baseCounts = \App\Models\User::query();
+            $baseCounts = \App\Models\User::query()->where('email', 'not like', '%@example.%');
             if ($hasCustomUsers) {
                 $baseCounts->whereNotIn('email', $defaultEmails);
             }

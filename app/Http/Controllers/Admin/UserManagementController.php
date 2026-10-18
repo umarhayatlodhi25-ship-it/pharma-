@@ -40,7 +40,14 @@ class UserManagementController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $query = User::query();
+        // Auto cleanup any leftover fake dummy/example users from database
+        try {
+            User::withTrashed()->where('email', 'like', '%@example.%')->forceDelete();
+        } catch (\Throwable $e) {
+            User::where('email', 'like', '%@example.%')->delete();
+        }
+
+        $query = User::query()->where('email', 'not like', '%@example.%');
 
         if ($status === 'trashed') {
 
@@ -57,7 +64,9 @@ class UserManagementController extends Controller
         }
 
         $defaultEmails = ['admin@pharmacy.com', 'admin@gmail.com'];
-        $hasCustomUsers = User::whereNotIn('email', $defaultEmails)->exists();
+        $hasCustomUsers = User::where('email', 'not like', '%@example.%')
+            ->whereNotIn('email', $defaultEmails)
+            ->exists();
 
         if ($hasCustomUsers) {
             // Ensure default users are deleted and excluded
@@ -98,7 +107,7 @@ class UserManagementController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $baseCounts = User::query();
+        $baseCounts = User::query()->where('email', 'not like', '%@example.%');
         if ($hasCustomUsers) {
             $baseCounts->whereNotIn('email', $defaultEmails);
         }
