@@ -39,6 +39,14 @@ class HospitalService extends Model
     }
 
     /**
+     * Scope: Only inactive services.
+     */
+    public function scopeInactive($query)
+    {
+        return $query->whereRaw('is_active is false');
+    }
+
+    /**
      * Accessor alias for code / service_code.
      */
     public function getServiceCodeAttribute(): ?string

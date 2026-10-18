@@ -130,7 +130,7 @@
         <div class="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
             <div>
                 <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Active Services</p>
-                <h3 class="text-2xl font-black text-emerald-600 mt-1 font-mono">{{ \App\Models\HospitalService::where('is_active', true)->count() }}</h3>
+                <h3 class="text-2xl font-black text-emerald-600 mt-1 font-mono">{{ \App\Models\HospitalService::active()->count() }}</h3>
                 <span class="text-[11px] text-emerald-600 font-medium">Ready for billing & OPD</span>
             </div>
             <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
