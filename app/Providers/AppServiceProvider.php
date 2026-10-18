@@ -15,6 +15,10 @@ class AppServiceProvider extends ServiceProvider
         if (file_exists(app_path('helpers.php'))) {
             require_once app_path('helpers.php');
         }
+
+        \Illuminate\Database\Connection::resolverFor('pgsql', function ($connection, $database, $prefix = '', array $config = []) {
+            return new \App\Database\PostgresConnection($connection, $database, $prefix, $config);
+        });
     }
 
     /**
