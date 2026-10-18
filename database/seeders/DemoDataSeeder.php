@@ -13,24 +13,15 @@ class DemoDataSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Ensure Admin Users
-        User::firstOrCreate(
-            ['email' => 'admin@pharmacy.com'],
-            [
-                'name' => 'Muhammad Faizan Khan Lodhi',
-                'password' => Hash::make('admin123'),
-                'role' => 'admin',
-            ]
-        );
-
-        User::firstOrCreate(
-            ['email' => 'admin@gmail.com'],
-            [
+        // 1. Ensure Admin User only if no users exist
+        if (User::withTrashed()->count() === 0) {
+            User::create([
                 'name' => 'Admin User',
+                'email' => 'admin@pharmacy.com',
                 'password' => Hash::make('admin123'),
                 'role' => 'admin',
-            ]
-        );
+            ]);
+        }
 
         // 2. Standard Categories for Pharmacy & General Store
         $categories = [

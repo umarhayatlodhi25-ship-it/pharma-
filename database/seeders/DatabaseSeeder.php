@@ -16,24 +16,15 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // 1. Ensure Default Admin Users exist if not already present
-        \App\Models\User::firstOrCreate(
-            ['email' => 'admin@pharmacy.com'],
-            [
-                'name' => 'Muhammad Faizan Khan Lodhi',
-                'role' => 'admin',
-                'password' => 'admin123',
-            ]
-        );
-
-        \App\Models\User::firstOrCreate(
-            ['email' => 'admin@gmail.com'],
-            [
+        // 1. Only create initial admin if NO users exist in the system at all
+        if (\App\Models\User::withTrashed()->count() === 0) {
+            \App\Models\User::create([
                 'name' => 'Admin User',
+                'email' => 'admin@pharmacy.com',
                 'role' => 'admin',
                 'password' => 'admin123',
-            ]
-        );
+            ]);
+        }
 
         // 2. Seed Clean Master Categories & Units (NO demo medicines or transactions)
         $this->call([

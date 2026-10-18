@@ -56,6 +56,15 @@ class UserManagementController extends Controller
             $query->whereNull('deleted_at');
         }
 
+        $defaultEmails = ['admin@pharmacy.com', 'admin@gmail.com'];
+        $hasCustomUsers = User::whereNotIn('email', $defaultEmails)->exists();
+
+        if ($hasCustomUsers) {
+            // Ensure default users are deleted and excluded
+            User::whereIn('email', $defaultEmails)->delete();
+            $query->whereNotIn('email', $defaultEmails);
+        }
+
         /*
         |--------------------------------------------------------------------------
         | PAGINATION
@@ -89,12 +98,17 @@ class UserManagementController extends Controller
         |--------------------------------------------------------------------------
         */
 
+        $baseCounts = User::query();
+        if ($hasCustomUsers) {
+            $baseCounts->whereNotIn('email', $defaultEmails);
+        }
+
         $counts = [
-            'active' => User::whereNull('deleted_at')->count(),
+            'active' => (clone $baseCounts)->whereNull('deleted_at')->count(),
 
-            'trashed' => User::onlyTrashed()->count(),
+            'trashed' => (clone $baseCounts)->onlyTrashed()->count(),
 
-            'all' => User::withTrashed()->count(),
+            'all' => (clone $baseCounts)->withTrashed()->count(),
         ];
 
         return view(
@@ -300,7 +314,7 @@ class UserManagementController extends Controller
 
             return back()->with(
                 'error',
-                'You cannot delete your own logged-in account.'
+                'You cannot delete your own account.'
             );
         }
 
@@ -315,7 +329,7 @@ class UserManagementController extends Controller
             ->route('admin.settings.users.index')
             ->with(
                 'message',
-                "User '{$user->name}' moved to trash successfully."
+                'User deleted successfully.'
             );
     }
 

@@ -58,6 +58,14 @@ class SettingsController extends Controller
                 $query->whereNull('deleted_at');
             }
 
+            $defaultEmails = ['admin@pharmacy.com', 'admin@gmail.com'];
+            $hasCustomUsers = \App\Models\User::whereNotIn('email', $defaultEmails)->exists();
+
+            if ($hasCustomUsers) {
+                \App\Models\User::whereIn('email', $defaultEmails)->delete();
+                $query->whereNotIn('email', $defaultEmails);
+            }
+
             if ($perPage === 'all') {
                 $users = $query->orderByDesc('id')->paginate(1000)->withQueryString();
             } else {
@@ -65,14 +73,19 @@ class SettingsController extends Controller
                 $users = $query->orderByDesc('id')->paginate($limit)->withQueryString();
             }
 
+            $baseCounts = \App\Models\User::query();
+            if ($hasCustomUsers) {
+                $baseCounts->whereNotIn('email', $defaultEmails);
+            }
+
             $usersData = [
                 'users' => $users,
                 'status' => $status,
                 'perPage' => $perPage,
                 'counts' => [
-                    'active' => \App\Models\User::whereNull('deleted_at')->count(),
-                    'trashed' => \App\Models\User::onlyTrashed()->count(),
-                    'all' => \App\Models\User::withTrashed()->count(),
+                    'active' => (clone $baseCounts)->whereNull('deleted_at')->count(),
+                    'trashed' => (clone $baseCounts)->onlyTrashed()->count(),
+                    'all' => (clone $baseCounts)->withTrashed()->count(),
                 ]
             ];
         }

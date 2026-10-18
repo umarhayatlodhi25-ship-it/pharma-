@@ -42,14 +42,14 @@ class CleanDatabaseSeeder extends Seeder
 
         Schema::enableForeignKeyConstraints();
 
-        // Ensure Clean Admin Account exists without removing other users
-        User::firstOrCreate(
-            ['email' => 'admin@pharmacy.com'],
-            [
-                'name' => 'Muhammad Faizan Khan Lodhi',
+        // Ensure Admin Account exists if no other users exist
+        if (User::withTrashed()->count() === 0) {
+            User::create([
+                'name' => 'Admin User',
+                'email' => 'admin@pharmacy.com',
                 'password' => 'admin123',
                 'role' => 'admin',
-            ]
-        );
+            ]);
+        }
     }
 }

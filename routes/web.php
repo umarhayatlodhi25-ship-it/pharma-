@@ -158,14 +158,15 @@ Route::get('/create-roles-tables', function () {
 
 Route::get('/cleanup-dummy', function () {
     try {
-        $keepEmails = [
-            'admin@pharmacy.com', 
-            'admin@gmail.com', 
-            'faizanlodhi035@gmail.com'
-        ];
-        
-        // 1. Delete from Local DB
-        $deletedUsers = \App\Models\User::whereNotIn('email', $keepEmails)->forceDelete();
+        // 1. Delete default users from Local DB if custom users exist
+        if (\App\Models\User::whereNotIn('email', ['admin@pharmacy.com', 'admin@gmail.com'])->exists()) {
+            \App\Models\User::whereIn('email', ['admin@pharmacy.com', 'admin@gmail.com'])->delete();
+            \App\Services\FirebaseService::deleteUser('admin@pharmacy.com');
+            \App\Services\FirebaseService::deleteUser('admin@gmail.com');
+        }
+
+        // Keep real users and delete example dummy users
+        $deletedUsers = \App\Models\User::where('email', 'like', '%@example.%')->forceDelete();
 
         // 2. Delete from Firebase
         $deletedFromFirebase = 0;
