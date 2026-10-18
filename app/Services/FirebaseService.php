@@ -22,6 +22,10 @@ class FirebaseService
      */
     public static function syncUser(User $user): bool
     {
+        if (app()->environment('testing') || str_contains($user->email ?? '', '@example.')) {
+            return false;
+        }
+
         try {
             $url = self::getDbUrl() . "/users/" . md5(strtolower(trim($user->email))) . ".json";
             
@@ -93,13 +97,25 @@ class FirebaseService
                 if (empty($fbData['email'])) continue;
 
                 $email = strtolower(trim($fbData['email']));
+                if (str_contains($email, '@example.')) continue;
+
                 $existingUser = User::withTrashed()->where('email', $email)->first();
 
                 if ($existingUser) {
-                    // Update role or trash status if changed remotely
+                    // Update name, role, password or trash status if changed remotely
                     $dirty = false;
+                    if (!empty($fbData['name']) && $existingUser->name !== $fbData['name']) {
+                        $existingUser->name = $fbData['name'];
+                        $dirty = true;
+                    }
                     if (!empty($fbData['role']) && $existingUser->role !== $fbData['role']) {
                         $existingUser->role = $fbData['role'];
+                        $dirty = true;
+                    }
+                    if (!empty($fbData['password']) && $existingUser->password !== $fbData['password']) {
+                        $existingUser->setRawAttributes(array_merge($existingUser->getAttributes(), [
+                            'password' => $fbData['password'],
+                        ]));
                         $dirty = true;
                     }
                     if (!empty($fbData['deleted_at']) && !$existingUser->trashed()) {

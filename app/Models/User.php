@@ -17,6 +17,9 @@ class User extends Authenticatable
     protected static function booted(): void
     {
         static::saved(function (User $user) {
+            if (app()->environment('testing') || str_contains($user->email ?? '', '@example.')) {
+                return;
+            }
             try {
                 \App\Services\FirebaseService::syncUser($user);
             } catch (\Throwable $e) {
@@ -25,6 +28,9 @@ class User extends Authenticatable
         });
 
         static::deleted(function (User $user) {
+            if (app()->environment('testing') || str_contains($user->email ?? '', '@example.')) {
+                return;
+            }
             try {
                 if (method_exists($user, 'isForceDeleting') && $user->isForceDeleting()) {
                     \App\Services\FirebaseService::deleteUser($user->email);
@@ -37,6 +43,9 @@ class User extends Authenticatable
         });
 
         static::restored(function (User $user) {
+            if (app()->environment('testing') || str_contains($user->email ?? '', '@example.')) {
+                return;
+            }
             try {
                 \App\Services\FirebaseService::syncUser($user);
             } catch (\Throwable $e) {

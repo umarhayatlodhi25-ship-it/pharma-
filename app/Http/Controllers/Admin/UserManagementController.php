@@ -44,6 +44,10 @@ class UserManagementController extends Controller
 
     public function store(Request $request)
     {
+        $normalizedEmail = strtolower(trim((string)$request->input('email', '')));
+        $request->merge(['email' => $normalizedEmail]);
+        $existing = !empty($normalizedEmail) ? User::withTrashed()->where('email', $normalizedEmail)->first() : null;
+
         $validated = $request->validate([
             'name' => [
                 'required',
@@ -55,7 +59,9 @@ class UserManagementController extends Controller
                 'required',
                 'email',
                 'max:255',
-                'unique:users,email',
+                Rule::unique('users', 'email')
+                    ->ignore(optional($existing)->id)
+                    ->whereNull('deleted_at'),
             ],
 
             'role' => [
@@ -71,22 +77,26 @@ class UserManagementController extends Controller
             ],
         ]);
 
-
-        $user = DB::transaction(function () use ($validated) {
+        $user = DB::transaction(function () use ($validated, $existing) {
+            if ($existing) {
+                $existing->name = trim($validated['name']);
+                $existing->role = $validated['role'];
+                $existing->password = $validated['password'];
+                if ($existing->trashed()) {
+                    $existing->restore();
+                } else {
+                    $existing->save();
+                }
+                return $existing;
+            }
 
             return User::create([
                 'name' => trim($validated['name']),
-
-                'email' => strtolower(
-                    trim($validated['email'])
-                ),
-
+                'email' => strtolower(trim($validated['email'])),
                 'role' => $validated['role'],
-
                 'password' => $validated['password'],
             ]);
         });
-
 
         return redirect()
             ->route('admin.settings.users.index')

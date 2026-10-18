@@ -16,41 +16,58 @@ class AuthController extends Controller
         return view('auth.login');
     }
 
+    /**
+     * Get redirect path based on user role.
+     */
+    public function redirectForUser(User $user): string
+    {
+        return match ($user->role) {
+            'cashier' => '/pos',
+            'hospital' => '/opd/tokens',
+            default => '/dashboard',
+        };
+    }
+
     // Login Process
     public function login(Request $request)
     {
         \App\Services\FirebaseService::ensureDatabaseSeeded();
 
-        $credentials = $request->validate([
+        $request->merge([
+            'email' => strtolower(trim((string)$request->input('email'))),
+        ]);
+
+        $request->validate([
             'email' => 'required|email',
             'password' => 'required',
         ]);
 
-        if (Auth::attempt($credentials)) {
-            $request->session()->regenerate();
-            
-            $user = Auth::user();
-            if ($user->role === 'cashier') {
-                return redirect('/pos');
-            } else {
-                return redirect('/dashboard');
+        $email = $request->input('email');
+        $password = $request->input('password');
+        $remember = $request->boolean('remember');
+
+        $credentials = [
+            'email' => $email,
+            'password' => $password,
+        ];
+
+        if (Auth::attempt($credentials, $remember)) {
+            if ($request->hasSession()) {
+                $request->session()->regenerate();
             }
+            return redirect($this->redirectForUser(Auth::user()));
         }
 
         // Retry after syncing from Firebase
         \App\Services\FirebaseService::syncFirebaseUsersToLocal();
-        if (Auth::attempt($credentials)) {
-            $request->session()->regenerate();
-            
-            $user = Auth::user();
-            if ($user->role === 'cashier') {
-                return redirect('/pos');
-            } else {
-                return redirect('/dashboard');
+        if (Auth::attempt($credentials, $remember)) {
+            if ($request->hasSession()) {
+                $request->session()->regenerate();
             }
+            return redirect($this->redirectForUser(Auth::user()));
         }
 
-        return back()->withErrors([
+        return back()->withInput($request->only('email', 'remember'))->withErrors([
             'email' => 'The provided credentials do not match our records.',
         ]);
     }
@@ -72,19 +89,15 @@ class AuthController extends Controller
         ]);
 
         $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
+            'name' => trim($request->name),
+            'email' => strtolower(trim($request->email)),
             'password' => $request->password,
             'role' => $request->role,
         ]);
 
         Auth::login($user);
 
-        if ($user->role === 'admin') {
-            return redirect('/dashboard');
-        } else {
-            return redirect('/pos');
-        }
+        return redirect($this->redirectForUser($user));
     }
 
     // Firebase Google Auth Login
@@ -96,7 +109,7 @@ class AuthController extends Controller
             'uid' => 'nullable|string',
         ]);
 
-        $email = $request->email;
+        $email = strtolower(trim($request->email));
         $name = $request->name ?: explode('@', $email)[0];
 
         $user = User::withTrashed()->where('email', $email)->first();
@@ -117,7 +130,7 @@ class AuthController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
 
-        $redirectUrl = ($user->role === 'admin') ? '/dashboard' : '/pos';
+        $redirectUrl = $this->redirectForUser($user);
 
         return response()->json([
             'success' => true,

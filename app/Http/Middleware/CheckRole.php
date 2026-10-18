@@ -29,10 +29,18 @@ class CheckRole
             return $next($request);
         }
 
-        if ($user->role === 'cashier') {
-            return redirect('/pos')->with('error', "Access Restricted: Cashiers only have access to POS Counter.");
+        // Determine safe fallback destination based on user role to avoid infinite redirect loops
+        $fallbackUrl = match ($user->role) {
+            'cashier' => '/pos',
+            'hospital' => '/opd/tokens',
+            default => '/dashboard',
+        };
+
+        // If user is already on their fallback URL and still unauthorized, abort to prevent loop
+        if ($request->is(ltrim($fallbackUrl, '/'))) {
+            abort(403, "Access Restricted: You do not have permission to access that section.");
         }
 
-        return redirect('/dashboard')->with('error', "Access Restricted: You do not have permission to access that section.");
+        return redirect($fallbackUrl)->with('error', "Access Restricted: You do not have permission to access that section.");
     }
 }

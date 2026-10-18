@@ -258,8 +258,8 @@ Route::middleware(['auth'])->group(function () {
             });
     });
 
-    // 2. ADMIN & PHARMACIST ROUTES (Dashboard, Medicines, Purchases, Suppliers, Reports)
-    Route::middleware(['role:admin,pharmacist'])->group(function () {
+    // 2. ADMIN & PHARMACIST & ASSISTANT ADMIN ROUTES (Dashboard, Medicines, Purchases, Suppliers, Reports)
+    Route::middleware(['role:admin,pharmacist,assistant_admin'])->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index']);
 
         // Medicines
@@ -312,8 +312,8 @@ Route::middleware(['auth'])->group(function () {
         });
     });
 
-    // 3. ADMIN, PHARMACIST & CASHIER ROUTES (POS, Sales, Returns, Expiry Alerts)
-    Route::middleware(['role:admin,pharmacist,cashier'])->group(function () {
+    // 3. ADMIN, PHARMACIST, CASHIER & ASSISTANT ADMIN ROUTES (POS, Sales, Returns, Expiry Alerts)
+    Route::middleware(['role:admin,pharmacist,cashier,assistant_admin'])->group(function () {
         Route::get('/pos', PosCounter::class);
         Route::get('/pos/receive-payment/{customerId?}', \App\Livewire\Admin\ReceivePayment::class)->name('pos.receive-payment');
         Route::get('/hold-invoices', HoldInvoiceList::class)->name('hold-invoices.index');
@@ -336,9 +336,10 @@ Route::middleware(['auth'])->group(function () {
     });
 
     // ============================================================
-    // 4. HOSPITAL MODULE (Phase 1: Patient Registration)
+    // 4. HOSPITAL MODULE (Phase 1: Patient Registration, Tokens, Doctors, Billing)
     // ============================================================
-    Route::get('/patients', [PatientController::class, 'index'])->name('patients.index');
+    Route::middleware(['role:admin,hospital,assistant_admin,pharmacist'])->group(function () {
+        Route::get('/patients', [PatientController::class, 'index'])->name('patients.index');
     Route::get('/patients/search', [PatientController::class, 'search'])->name('patients.search');
     Route::get('/patients/check-duplicate', [PatientController::class, 'checkDuplicate'])->name('patients.check-duplicate');
     Route::get('/patients/create', [PatientController::class, 'create'])->name('patients.create');
@@ -388,6 +389,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/doctors/{doctor}/ledger', [DoctorLedgerController::class, 'show'])->name('doctor-ledgers.show');
     Route::post('/doctors/{doctor}/settle', [DoctorLedgerController::class, 'settle'])->name('doctor-ledgers.settle');
     Route::get('/doctor-settlements/{settlement}/voucher', [DoctorLedgerController::class, 'printVoucher'])->name('doctor-settlements.voucher');
+    });
 });
 
 
