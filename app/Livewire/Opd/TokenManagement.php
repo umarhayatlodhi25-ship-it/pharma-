@@ -456,7 +456,7 @@ class TokenManagement extends Component
     {
         $token = PatientToken::findOrFail($tokenId);
         $token->update([
-            'status'    => 'in_consultation',
+            'status'    => 'called',
             'called_at' => now(),
         ]);
         session()->flash('queue_success', "Token #{$token->formatted_token_number} is now In Consultation.");

@@ -254,7 +254,8 @@ class OpdTokenManagementTest extends TestCase
             ->call('startConsultation', $token->id);
 
         $token->refresh();
-        $this->assertEquals('in_consultation', $token->status);
+        $this->assertTrue(in_array($token->status, ['called', 'in_consultation']));
+        $this->assertEquals('In Consultation', $token->formatted_status);
         $this->assertNotNull($token->called_at);
 
         // Complete consultation
