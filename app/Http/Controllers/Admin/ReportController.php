@@ -745,7 +745,7 @@ class ReportController extends Controller
             $docShare = (float) $docBills->sum('doctor_share');
             $hospShare = (float) $docBills->sum('hospital_share');
             
-            $totalSettled = (float) $doc->settlements()->sum('amount');
+            $totalSettled = (float) $doc->settlements()->sum('paid_amount');
             $currentPayable = (float) $doc->current_payable;
 
             $doctorSummaries[] = [
@@ -807,7 +807,7 @@ class ReportController extends Controller
         }
 
         $bills = $billQuery->with(['doctor', 'service'])->get();
-        $settlementsSum = (float) $settlementQuery->sum('amount');
+        $settlementsSum = (float) $settlementQuery->sum('paid_amount');
 
         $metrics = [
             'total_billed'       => (float) $bills->sum('total_amount'),
@@ -994,7 +994,7 @@ class ReportController extends Controller
         }
 
         $settlements = $query->latest('id')->get();
-        $totalAmount = (float) $settlements->sum('amount');
+        $totalAmount = (float) $settlements->sum('paid_amount');
         $totalCount = $settlements->count();
 
         return view('admin.reports.doctor_settlements', compact(

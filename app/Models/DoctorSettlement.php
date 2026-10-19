@@ -81,4 +81,28 @@ class DoctorSettlement extends Model
     {
         return $this->hasOne(DoctorLedger::class, 'doctor_settlement_id');
     }
+
+    /**
+     * Backward-compatibility accessor for amount.
+     */
+    public function getAmountAttribute(): float
+    {
+        return (float) ($this->paid_amount ?? 0.00);
+    }
+
+    /**
+     * Backward-compatibility accessor for reference_number.
+     */
+    public function getReferenceNumberAttribute(): ?string
+    {
+        return $this->reference_note;
+    }
+
+    /**
+     * Backward-compatibility accessor for notes.
+     */
+    public function getNotesAttribute(): ?string
+    {
+        return $this->reference_note;
+    }
 }

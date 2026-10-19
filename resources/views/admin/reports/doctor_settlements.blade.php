@@ -195,7 +195,7 @@
                             <span class="text-[10px] text-gray-400">{{ $set->doctor ? $set->doctor->specialization : '' }}</span>
                         </td>
                         <td class="p-3 text-right font-mono font-black text-emerald-700 text-sm">
-                            PKR {{ number_format($set->amount, 2) }}
+                            PKR {{ number_format($set->paid_amount ?? $set->amount, 2) }}
                         </td>
                         <td class="p-3 text-center">
                             <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-800 font-mono">
@@ -203,7 +203,7 @@
                             </span>
                         </td>
                         <td class="p-3 text-gray-600">
-                            {{ $set->reference_number ?: ($set->notes ?: '—') }}
+                            {{ $set->reference_note ?: ($set->reference_number ?: ($set->notes ?: '—')) }}
                         </td>
                         <td class="p-3 text-gray-800 font-medium">
                             {{ $set->createdBy ? $set->createdBy->name : 'Admin' }}

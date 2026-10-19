@@ -346,4 +346,52 @@ class OpdReportTest extends TestCase
         $this->assertCount(1, $tokens);
         $this->assertEquals($yesterday, $tokens->first()->token_date->toDateString());
     }
+
+    public function test_all_doctors_collection_report_loads_with_settlements(): void
+    {
+        \App\Models\DoctorSettlement::create([
+            'doctor_id'         => $this->doctorA->id,
+            'settlement_date'   => now()->toDateString(),
+            'previous_payable'  => 1000.00,
+            'paid_amount'       => 500.00,
+            'remaining_payable' => 500.00,
+            'payment_method'    => 'cash',
+        ]);
+
+        $response = $this->actingAs($this->admin)->get('/reports/all-doctors-collection');
+        $response->assertStatus(200);
+        $response->assertSee('All Doctors Collection');
+    }
+
+    public function test_hospital_collection_report_loads_with_settlements(): void
+    {
+        \App\Models\DoctorSettlement::create([
+            'doctor_id'         => $this->doctorA->id,
+            'settlement_date'   => now()->toDateString(),
+            'previous_payable'  => 1000.00,
+            'paid_amount'       => 500.00,
+            'remaining_payable' => 500.00,
+            'payment_method'    => 'cash',
+        ]);
+
+        $response = $this->actingAs($this->admin)->get('/reports/hospital-collection');
+        $response->assertStatus(200);
+        $response->assertSee('Hospital Collection');
+    }
+
+    public function test_doctor_settlements_report_loads(): void
+    {
+        \App\Models\DoctorSettlement::create([
+            'doctor_id'         => $this->doctorA->id,
+            'settlement_date'   => now()->toDateString(),
+            'previous_payable'  => 1000.00,
+            'paid_amount'       => 500.00,
+            'remaining_payable' => 500.00,
+            'payment_method'    => 'cash',
+        ]);
+
+        $response = $this->actingAs($this->admin)->get('/reports/doctor-settlements');
+        $response->assertStatus(200);
+        $response->assertSee('Doctor Settlements');
+    }
 }
