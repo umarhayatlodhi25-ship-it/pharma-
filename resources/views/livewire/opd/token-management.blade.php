@@ -835,7 +835,7 @@
                         <div>
                             <span class="text-xs uppercase tracking-wider text-slate-400 font-bold block">Next Sequential Token</span>
                             <span class="text-3xl font-black text-slate-800 font-mono">
-                                #{{ str_pad((string) ((int) \App\Models\PatientToken::where('token_date', now()->toDateString())->max('token_number') + 1), 3, '0', STR_PAD_LEFT) }}
+                                #{{ str_pad((string) \App\Models\PatientToken::generateNextTokenNumber(now()->toDateString()), 3, '0', STR_PAD_LEFT) }}
                             </span>
                         </div>
 

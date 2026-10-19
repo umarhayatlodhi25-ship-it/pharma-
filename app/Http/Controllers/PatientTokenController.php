@@ -268,16 +268,7 @@ class PatientTokenController extends Controller
             }
 
             $profile = \App\Models\AccountProfile::current();
-            
-            $query = PatientToken::query();
-            if ($profile->daily_token_reset) {
-                $query->where('token_date', $today);
-            }
-            
-            $maxToken = $query->lockForUpdate()->max('token_number');
-            $startNumber = (int) $profile->token_start_number > 0 ? (int) $profile->token_start_number : 1;
-            
-            $nextTokenNumber = $maxToken ? (intval($maxToken) + 1) : $startNumber;
+            $nextTokenNumber = PatientToken::generateNextTokenNumber($today, true);
 
             // Determine default status
             $defaultStatus = strtolower($profile->default_token_status ?? 'waiting');

@@ -223,7 +223,7 @@ class PatientToken extends Model
      * Generate next sequential integer token number for the given date.
      * Restarts at 1 for every new day.
      */
-    public static function generateNextTokenNumber(string $date): int
+    public static function generateNextTokenNumber(string $date, bool $lock = false): int
     {
         $profile = \App\Models\AccountProfile::current();
         $query = self::query();
@@ -232,7 +232,15 @@ class PatientToken extends Model
             $query->where('token_date', $date);
         }
         
-        $max = $query->max('token_number');
+        if ($lock) {
+            // Using orderByDesc()->lockForUpdate()->first() avoids PostgreSQL ERROR:
+            // "FOR UPDATE is not allowed with aggregate functions"
+            $latest = (clone $query)->orderByDesc('token_number')->lockForUpdate()->first();
+            $max = $latest ? $latest->token_number : null;
+        } else {
+            $max = $query->max('token_number');
+        }
+
         $startNumber = (int) $profile->token_start_number > 0 ? (int) $profile->token_start_number : 1;
         
         return $max ? (intval($max) + 1) : $startNumber;

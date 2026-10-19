@@ -351,8 +351,7 @@ class TokenManagement extends Component
                 }
 
                 // 2. Compute Next Sequential Token Number for Today (resets daily to 001)
-                $maxToken = PatientToken::where('token_date', $today)->lockForUpdate()->max('token_number');
-                $nextTokenNumber = ($maxToken ? intval($maxToken) : 0) + 1;
+                $nextTokenNumber = PatientToken::generateNextTokenNumber($today, true);
 
                 // 3. Create Token record
                 $createdToken = PatientToken::create([
