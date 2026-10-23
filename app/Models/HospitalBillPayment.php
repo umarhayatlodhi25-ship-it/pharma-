@@ -14,6 +14,7 @@ class HospitalBillPayment extends Model
 
     protected $fillable = [
         'hospital_bill_id',
+        'patient_id',
         'payment_number',
         'payment_date',
         'amount',
@@ -36,8 +37,23 @@ class HospitalBillPayment extends Model
         return $this->belongsTo(HospitalBill::class, 'hospital_bill_id');
     }
 
+    public function patient(): BelongsTo
+    {
+        return $this->belongsTo(Patient::class, 'patient_id');
+    }
+
     public function receivedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'received_by');
+    }
+
+    public function allocations()
+    {
+        return $this->hasMany(HospitalBillPaymentAllocation::class, 'hospital_bill_payment_id');
+    }
+
+    public function hospitalLedger(): BelongsTo
+    {
+        return $this->belongsTo(HospitalAccountLedger::class, 'id', 'hospital_bill_payment_id');
     }
 }

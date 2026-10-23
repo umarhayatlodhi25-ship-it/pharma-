@@ -69,13 +69,17 @@
                 </div>
 
                 <div class="p-3 bg-white/10 rounded-xl backdrop-blur-xs">
-                    <span class="text-emerald-200 block text-[10px] uppercase font-semibold">Payment / Charged</span>
+                    <span class="text-emerald-200 block text-[10px] uppercase font-semibold">Payment / Status</span>
                     @if($token->payment_type === 'free')
                         <span class="text-sm font-black text-amber-300 block">FREE (PKR 0)</span>
                         <span class="text-[11px] text-emerald-200">{{ $token->free_reason }}</span>
                     @else
-                        <span class="text-sm font-black text-white block">PAID (PKR {{ number_format($token->charged_amount, 0) }})</span>
-                        <span class="text-[11px] text-emerald-200">Fee: PKR {{ number_format($token->consultation_fee, 0) }}</span>
+                        <span class="text-sm font-black text-white block">PAID: PKR {{ number_format($token->paid_today, 2) }}</span>
+                        @if($token->balance_due > 0)
+                            <span class="text-[11px] text-amber-300 font-bold">Remaining Due: PKR {{ number_format($token->balance_due, 2) }}</span>
+                        @else
+                            <span class="text-[11px] text-emerald-200">Fully Settled</span>
+                        @endif
                     @endif
                 </div>
             </div>
@@ -275,9 +279,43 @@
                     </div>
                 </div>
 
-                <div class="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex items-center justify-between text-xs">
-                    <span class="text-slate-600 font-medium">Total Cash Collected by Hospital:</span>
-                    <span class="font-mono font-black text-emerald-700 text-base">PKR {{ number_format($token->charged_amount ?? 0, 2) }}</span>
+                <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2 text-xs">
+                    <div class="flex items-center justify-between text-slate-600 font-medium">
+                        <span>Current Consultation Fee:</span>
+                        <span class="font-mono font-bold text-slate-800">PKR {{ number_format($token->consultation_fee ?? $token->charged_amount, 2) }}</span>
+                    </div>
+
+                    @if($token->previous_due > 0)
+                    <div class="flex items-center justify-between text-amber-700 font-medium">
+                        <span>Previous Pending Balance (Carried Forward):</span>
+                        <span class="font-mono font-bold">+ PKR {{ number_format($token->previous_due, 2) }}</span>
+                    </div>
+
+                    <div class="flex items-center justify-between font-bold text-slate-900 border-t border-dashed border-slate-200 pt-1.5">
+                        <span>Total Amount Payable:</span>
+                        <span class="font-mono">PKR {{ number_format($token->total_due, 2) }}</span>
+                    </div>
+                    @endif
+
+                    <div class="flex items-center justify-between text-emerald-700 font-bold border-t border-dashed border-slate-200 pt-1.5">
+                        <span>Total Cash Received Today:</span>
+                        <span class="font-mono text-sm">PKR {{ number_format($token->paid_today, 2) }}</span>
+                    </div>
+
+                    <div class="flex items-center justify-between font-bold border-t border-dashed border-slate-200 pt-1.5">
+                        <span class="text-slate-700">Remaining Outstanding Balance:</span>
+                        @if($token->balance_due > 0)
+                            <span class="font-mono text-rose-600 text-sm flex items-center gap-1.5">
+                                PKR {{ number_format($token->balance_due, 2) }}
+                                <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">Unpaid Due</span>
+                            </span>
+                        @else
+                            <span class="font-mono text-emerald-600 text-sm flex items-center gap-1.5">
+                                PKR 0.00
+                                <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">Settled</span>
+                            </span>
+                        @endif
+                    </div>
                 </div>
 
                 <!-- If Free: Show Free Reason & Other Reason -->

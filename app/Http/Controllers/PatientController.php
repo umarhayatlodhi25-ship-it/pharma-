@@ -65,6 +65,11 @@ class PatientController extends Controller
      */
     public function show(Patient $patient)
     {
+        $patient->load([
+            'bills' => function ($q) {
+                $q->with(['doctor', 'service', 'token', 'payments.receivedBy'])->orderBy('id', 'desc');
+            }
+        ]);
         return view('admin.patients.show', compact('patient'));
     }
 
@@ -104,6 +109,8 @@ class PatientController extends Controller
                 'active_token_id'     => $activeToken?->id,
                 'active_token_number' => $activeToken?->formatted_token_number,
                 'active_token_status' => $activeToken?->status,
+                'pending_balance'     => $patient->pendingBalance(),
+                'unpaid_bills_count'  => $patient->unpaidBills()->count(),
             ];
         });
 
@@ -148,10 +155,39 @@ class PatientController extends Controller
                     'phone'               => $existing->phone ?? '',
                     'cnic'                => $existing->cnic ?? '',
                     'address'             => $existing->address ?? '',
+                    'pending_balance'     => $existing->pendingBalance(),
                 ]
             ]);
         }
 
         return response()->json(['found' => false]);
+    }
+
+    /**
+     * AJAX Get Patient Pending Balance and Breakdown of Unpaid Bills.
+     */
+    public function pendingBalance(Patient $patient): \Illuminate\Http\JsonResponse
+    {
+        $unpaidBills = $patient->unpaidBills()->with('doctor')->get();
+        return response()->json([
+            'patient_id'         => $patient->id,
+            'patient_number'     => $patient->patient_number,
+            'name'               => $patient->name,
+            'pending_balance'    => $patient->pendingBalance(),
+            'unpaid_bills'       => $unpaidBills->count(),
+            'unpaid_bills_count' => $unpaidBills->count(),
+            'unpaid_bills_list'  => $unpaidBills->map(function ($b) {
+                return [
+                    'id'             => $b->id,
+                    'bill_number'    => $b->bill_number,
+                    'bill_date'      => $b->bill_date ? $b->bill_date->format('d-M-Y') : '',
+                    'total_amount'   => (float) $b->total_amount,
+                    'paid_amount'    => (float) $b->paid_amount,
+                    'due_amount'     => (float) $b->due_amount,
+                    'doctor_name'    => $b->doctor ? $b->doctor->name : 'N/A',
+                    'payment_status' => $b->payment_status,
+                ];
+            }),
+        ]);
     }
 }

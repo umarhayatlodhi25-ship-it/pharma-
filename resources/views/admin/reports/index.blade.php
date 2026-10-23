@@ -266,6 +266,66 @@
             <p class="text-xs text-gray-500 mt-1">Disbursal history of hospital payouts to doctors with voucher numbers, references & printable vouchers.</p>
         </a>
 
+        <!-- 18. Hospital Service Collection Report -->
+        <a href="{{ route('reports.hospital-service-collections') }}" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-emerald-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-emerald-100 text-emerald-600 p-3 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-hand-holding-dollar text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">Report #18</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-emerald-600 transition">18. Hospital Service Collections</h3>
+            <p class="text-xs text-gray-500 mt-1">Cash-basis audit of payments collected for hospital procedures and services by cashier and channel.</p>
+        </a>
+
+        <!-- 19. Hospital Service Billing Report -->
+        <a href="{{ route('reports.hospital-service-billing') }}" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-blue-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-blue-100 text-blue-600 p-3 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-file-invoice text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full">Report #19</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-blue-600 transition">19. Hospital Service Billing</h3>
+            <p class="text-xs text-gray-500 mt-1">Invoices issued across Mode A (OPD) and Mode B (Direct), itemized fees, discounts, and payment statuses.</p>
+        </a>
+
+        <!-- 20. Hospital Outstanding Receivables -->
+        <a href="{{ route('reports.hospital-service-outstanding') }}" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-amber-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-amber-100 text-amber-600 p-3 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-clock-rotate-left text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full">Report #20</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-amber-600 transition">20. Hospital Outstanding Due</h3>
+            <p class="text-xs text-gray-500 mt-1">Unpaid receivables by patient, separating consultation debts from hospital procedure debts with quick-collect actions.</p>
+        </a>
+
+        <!-- 21. Hospital Payment Methods -->
+        <a href="{{ route('reports.hospital-payment-methods') }}" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-indigo-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-indigo-100 text-indigo-600 p-3 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-credit-card text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full">Report #21</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-indigo-600 transition">21. Payment Method Breakdown</h3>
+            <p class="text-xs text-gray-500 mt-1">Detailed channel matrix comparing cash counter collections, card POS, and online bank receipts.</p>
+        </a>
+
+        <!-- 22. Patient Service History -->
+        <a href="{{ route('reports.patient-service-history') }}" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:border-purple-500 hover:shadow-md transition group">
+            <div class="flex items-center justify-between mb-4">
+                <div class="bg-purple-100 text-purple-600 p-3 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition">
+                    <i class="fa-solid fa-hospital-user text-xl"></i>
+                </div>
+                <span class="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full">Report #22</span>
+            </div>
+            <h3 class="font-bold text-gray-800 text-lg group-hover:text-purple-600 transition">22. Patient Service History</h3>
+            <p class="text-xs text-gray-500 mt-1">Complete patient ledger timeline: OPD consultations, hospital procedures, payment receipts, and balance audits.</p>
+        </a>
+
     </div>
 </div>
 @endsection

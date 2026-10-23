@@ -178,6 +178,16 @@
                 </select>
             </div>
 
+            <!-- Billing Mode Filter -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Billing Mode</label>
+                <select name="billing_type" onchange="this.form.submit()" class="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:outline-hidden focus:border-blue-500">
+                    <option value="">All Modes</option>
+                    <option value="opd" {{ ($billingType ?? '') === 'opd' ? 'selected' : '' }}>Mode A: OPD Patient</option>
+                    <option value="direct" {{ ($billingType ?? '') === 'direct' ? 'selected' : '' }}>Mode B: Direct Service</option>
+                </select>
+            </div>
+
             <!-- Payment Status -->
             <div class="flex items-center space-x-2">
                 <div class="flex-1">
@@ -218,7 +228,10 @@
                     @forelse($bills as $b)
                     <tr class="hover:bg-slate-50/75 transition">
                         <td class="py-3 px-4">
-                            <div class="font-bold font-mono text-gray-900">{{ $b->bill_number }}</div>
+                            <div class="flex items-center space-x-1">
+                                <span class="font-bold font-mono text-gray-900">{{ $b->bill_number }}</span>
+                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase {{ $b->billing_type === 'opd' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800' }}">{{ $b->billing_type === 'opd' ? 'OPD' : 'Direct' }}</span>
+                            </div>
                             <div class="text-[11px] text-gray-500 flex items-center space-x-1 mt-0.5">
                                 <i class="fa-regular fa-calendar text-[10px]"></i>
                                 <span>{{ $b->bill_date->format('d M Y') }}</span>

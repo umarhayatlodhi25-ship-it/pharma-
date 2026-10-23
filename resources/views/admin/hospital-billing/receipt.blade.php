@@ -6,13 +6,15 @@
     <title>Receipt - #{{ $bill->bill_number }}</title>
     @php
         $profile = account_profile();
+        $paperWidth = (!empty($profile->thermal_paper_size) && $profile->thermal_paper_size === '58mm') ? '58mm' : '80mm';
+        $containerWidth = ($paperWidth === '58mm') ? '240px' : '320px';
     @endphp
     <style>
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Courier New', Courier, monospace, monospace;
+            font-family: 'Courier New', Courier, monospace;
         }
 
         body {
@@ -25,7 +27,7 @@
         }
 
         .no-print-bar {
-            width: 320px;
+            width: {{ $containerWidth }};
             margin-bottom: 16px;
             display: flex;
             justify-content: space-between;
@@ -63,9 +65,9 @@
         }
 
         .ticket {
-            width: 320px;
+            width: {{ $containerWidth }};
             background: #fff;
-            padding: 18px 16px;
+            padding: 16px 12px;
             border: 1px dashed #94a3b8;
             border-radius: 4px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
@@ -74,8 +76,8 @@
         .header {
             text-align: center;
             border-bottom: 2px dashed #000;
-            padding-bottom: 10px;
-            margin-bottom: 12px;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
         }
 
         .hospital-logo {
@@ -87,7 +89,7 @@
         }
 
         .hospital-name {
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 900;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -95,32 +97,41 @@
         }
 
         .hospital-meta {
-            font-size: 11px;
+            font-size: 10px;
             color: #333;
-            margin-top: 3px;
+            margin-top: 2px;
             line-height: 1.3;
         }
 
         .sub-header {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
-            letter-spacing: 2px;
+            letter-spacing: 1.5px;
             margin-top: 6px;
             display: inline-block;
             border: 1px solid #000;
-            padding: 2px 8px;
+            padding: 2px 6px;
             border-radius: 3px;
+            text-transform: uppercase;
+        }
+
+        .mode-badge {
+            font-size: 10px;
+            font-weight: bold;
+            margin-top: 4px;
+            display: block;
+            text-transform: uppercase;
         }
 
         .info-table {
             width: 100%;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             border-collapse: collapse;
         }
 
         .info-table tr td {
-            padding: 3px 0;
-            font-size: 12px;
+            padding: 2.5px 0;
+            font-size: 11px;
             vertical-align: top;
         }
 
@@ -136,6 +147,26 @@
             text-align: right;
         }
 
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 6px 0;
+            font-size: 11px;
+        }
+
+        .items-table th {
+            border-bottom: 1px dashed #000;
+            padding: 4px 0;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: #333;
+        }
+
+        .items-table td {
+            padding: 3px 0;
+            vertical-align: top;
+        }
+
         .divider {
             border-top: 1px dashed #000;
             margin: 8px 0;
@@ -143,21 +174,12 @@
 
         .divider-thick {
             border-top: 2px dashed #000;
-            margin: 10px 0;
-        }
-
-        .revenue-box {
-            background-color: #f8fafc;
-            border: 1px dashed #cbd5e1;
-            padding: 6px;
-            border-radius: 4px;
             margin: 8px 0;
-            font-size: 11px;
         }
 
         .footer {
             text-align: center;
-            font-size: 11px;
+            font-size: 10px;
             padding-top: 8px;
             line-height: 1.4;
             color: #333;
@@ -183,10 +205,10 @@
 
             .ticket {
                 width: 100%;
-                max-width: 80mm;
+                max-width: {{ $paperWidth }};
                 border: none;
                 box-shadow: none;
-                padding: 6px 2px;
+                padding: 4px 1px;
             }
         }
     </style>
@@ -203,7 +225,7 @@
         </button>
     </div>
 
-    <!-- Thermal Print Slip Container (80mm standard) -->
+    <!-- Thermal Print Slip Container (58mm/80mm compatible) -->
     <div class="ticket">
         <div class="header">
             @if($profile->hasLogo())
@@ -216,7 +238,10 @@
             @if($profile->phone)
                 <div class="hospital-meta">Tel: {{ $profile->phone }}</div>
             @endif
-            <div class="sub-header">OFFICIAL RECEIPT</div>
+            <div class="sub-header">Official Hospital Receipt</div>
+            <div class="mode-badge">
+                {{ $bill->billing_type === 'opd' ? 'OPD Patient Service' : 'Direct Hospital Service' }}
+            </div>
         </div>
 
         <table class="info-table">
@@ -225,7 +250,7 @@
                 <td>{{ $bill->bill_number }}</td>
             </tr>
             <tr>
-                <td>Date / Time:</td>
+                <td>Date & Time:</td>
                 <td>{{ $bill->bill_date->format('d-M-Y') }} {{ $bill->created_at ? $bill->created_at->format('h:i A') : '' }}</td>
             </tr>
             <tr>
@@ -238,40 +263,94 @@
             </tr>
             @if($bill->token)
             <tr>
-                <td>Token Number:</td>
+                <td>OPD Token #:</td>
                 <td>#{{ $bill->token->formatted_token_number }}</td>
             </tr>
+            <tr>
+                <td>Attending Doctor:</td>
+                <td>{{ $bill->doctor ? $bill->doctor->name : 'N/A' }}</td>
+            </tr>
+            @elseif($bill->doctor)
+            <tr>
+                <td>Referred Doctor:</td>
+                <td>{{ $bill->doctor->name }}</td>
+            </tr>
             @endif
-            <tr>
-                <td>Doctor:</td>
-                <td>{{ $bill->doctor ? $bill->doctor->name : 'Hospital Direct' }}</td>
-            </tr>
-            <tr>
-                <td>Service:</td>
-                <td>{{ $bill->service ? $bill->service->name : 'Consultation' }}</td>
-            </tr>
         </table>
+
+        <div class="divider"></div>
+
+        <!-- ITEMIZED SERVICES LIST -->
+        @if($bill->items->count() > 0)
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th align="left">Service Description</th>
+                    <th align="center" width="15%">Qty</th>
+                    <th align="right" width="22%">Price</th>
+                    <th align="right" width="26%">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($bill->items as $item)
+                <tr>
+                    <td align="left">
+                        {{ $item->service_name }}
+                    </td>
+                    <td align="center">{{ number_format($item->quantity, 0) }}</td>
+                    <td align="right">{{ number_format($item->unit_price, 2) }}</td>
+                    <td align="right"><strong>{{ number_format($item->total_price, 2) }}</strong></td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+        @else
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th align="left">Service Description</th>
+                    <th align="right" width="30%">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td align="left">{{ $bill->service ? $bill->service->name : 'Hospital Service' }}</td>
+                    <td align="right"><strong>{{ number_format($bill->total_amount, 2) }}</strong></td>
+                </tr>
+            </tbody>
+        </table>
+        @endif
 
         <div class="divider-thick"></div>
 
         <table class="info-table">
             <tr>
-                <td>Total Fee:</td>
+                <td>Current Services Total:</td>
                 <td>PKR {{ number_format($bill->total_amount, 2) }}</td>
             </tr>
             @if($bill->discount_amount > 0)
             <tr>
-                <td>Free / Discount:</td>
+                <td>Discount / Waiver:</td>
                 <td>- PKR {{ number_format($bill->discount_amount, 2) }}</td>
             </tr>
             @endif
+            @if($bill->previous_due > 0)
             <tr>
-                <td>Collected Amount:</td>
-                <td>PKR {{ number_format($bill->paid_amount, 2) }}</td>
+                <td>Previous Outstanding:</td>
+                <td>+ PKR {{ number_format($bill->previous_due, 2) }}</td>
             </tr>
             <tr>
-                <td>Remaining Due:</td>
-                <td>PKR {{ number_format($bill->due_amount, 2) }}</td>
+                <td>Total Due in Context:</td>
+                <td><strong>PKR {{ number_format($bill->net_amount + $bill->previous_due, 2) }}</strong></td>
+            </tr>
+            @endif
+            <tr>
+                <td>Amount Received:</td>
+                <td><strong>PKR {{ number_format($bill->paid_amount, 2) }}</strong></td>
+            </tr>
+            <tr>
+                <td>Remaining Balance:</td>
+                <td><strong>PKR {{ number_format($bill->due_amount, 2) }}</strong></td>
             </tr>
             <tr>
                 <td>Payment Method:</td>
@@ -286,13 +365,15 @@
         <div class="divider"></div>
 
         <div class="footer">
-            <p class="notice">Hospital Collects All Payments</p>
+            <p class="notice">Hospital Service Official Receipt</p>
             @if($profile->footer_text)
                 <p style="margin-top: 4px;">{{ $profile->footer_text }}</p>
             @else
                 <p style="margin-top: 4px;">Thank you for your visit. Get well soon!</p>
             @endif
-            <p style="font-size: 10px; color: #777; margin-top: 6px;">Cashier: {{ auth()->user()->name ?? 'System' }}</p>
+            <p style="font-size: 9px; color: #555; margin-top: 5px;">
+                Issued By: {{ $bill->createdBy ? $bill->createdBy->name : (auth()->user()->name ?? 'System Cashier') }}
+            </p>
         </div>
     </div>
 

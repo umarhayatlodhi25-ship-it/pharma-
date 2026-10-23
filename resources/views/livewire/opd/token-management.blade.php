@@ -334,6 +334,38 @@
                                     </div>
                                 </div>
                             @endif
+
+                            <!-- Previous Pending Balance Warning -->
+                            @if($previous_pending_balance > 0)
+                                <div class="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 space-y-2 text-xs">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center space-x-2">
+                                            <i class="fa-solid fa-triangle-exclamation text-rose-600 text-base"></i>
+                                            <span class="font-bold text-rose-900">Patient Has Previous Pending Balance:</span>
+                                        </div>
+                                        <span class="font-mono font-black text-sm text-rose-700 bg-white px-2.5 py-0.5 rounded border border-rose-300">
+                                            PKR {{ number_format($previous_pending_balance, 2) }}
+                                        </span>
+                                    </div>
+                                    <p class="text-[11px] text-rose-800">
+                                        This patient has {{ $unpaid_bills_count }} unpaid previous bill(s). This balance is automatically carried forward to today's bill.
+                                    </p>
+                                    @if(isset($patientUnpaidBills) && $patientUnpaidBills->count() > 0)
+                                        <div class="max-h-28 overflow-y-auto rounded-lg border border-rose-200 bg-white p-2 divide-y divide-slate-100 text-[11px]">
+                                            @foreach($patientUnpaidBills as $ub)
+                                                <div class="py-1 flex justify-between items-center">
+                                                    <div>
+                                                        <span class="font-mono font-bold text-slate-800">{{ $ub->bill_number }}</span>
+                                                        <span class="text-slate-400">({{ $ub->bill_date ? $ub->bill_date->format('d-M-Y') : '' }})</span>
+                                                        <span class="text-slate-500">• {{ $ub->doctor ? $ub->doctor->name : 'Hospital' }}</span>
+                                                    </div>
+                                                    <span class="text-rose-700 font-mono font-bold">Due: PKR {{ number_format($ub->due_amount, 2) }}</span>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
+                            @endif
                         </div>
                     @endif
 
@@ -551,6 +583,9 @@
                     $srvDocPct = $isAddSrv ? (float)$actSrv->doctor_share_percentage : 0.00;
 
                     $totalGrossFee = round($docConsultFee + $srvAddFee, 2);
+                    $prevBal = round(floatval($previous_pending_balance ?? 0.00), 2);
+                    $totalDueToday = round($totalGrossFee + $prevBal, 2);
+
                     $docShareConsult = round($docConsultFee * ($docConsultPct / 100), 2);
                     $docShareSrv = $isAddSrv ? round($srvAddFee * ($srvDocPct / 100), 2) : 0.00;
                     $combinedDocShare = round($docShareConsult + $docShareSrv, 2);
@@ -559,20 +594,22 @@
                     $effectiveHospPct = round(100.00 - $effectiveDocPct, 2);
 
                     if ($fee_type === 'free') {
-                        $collectedAmt = 0.00;
+                        $collectedAmt = isset($paid_amount) && is_numeric($paid_amount) ? min($prevBal, max(0.0, floatval($paid_amount))) : 0.00;
+                        $remDue = max(0.0, round($prevBal - $collectedAmt, 2));
                         $calcDocShare = 0.00;
                         $calcHospShare = 0.00;
-                        $remDue = 0.00;
                     } elseif ($fee_type === 'partial') {
-                        $collectedAmt = min($totalGrossFee, max(0.0, floatval($paid_amount)));
-                        $calcDocShare = round($collectedAmt * ($effectiveDocPct / 100), 2);
-                        $calcHospShare = round($collectedAmt - $calcDocShare, 2);
-                        $remDue = max(0.0, round($totalGrossFee - $collectedAmt, 2));
+                        $collectedAmt = isset($paid_amount) && is_numeric($paid_amount) ? min($totalDueToday, max(0.0, floatval($paid_amount))) : 0.00;
+                        $remDue = max(0.0, round($totalDueToday - $collectedAmt, 2));
+                        $amtForToday = max(0.0, $collectedAmt - $prevBal);
+                        $paidForCurrentBill = min($totalGrossFee, $amtForToday);
+                        $calcDocShare = round($paidForCurrentBill * ($effectiveDocPct / 100), 2);
+                        $calcHospShare = round($paidForCurrentBill - $calcDocShare, 2);
                     } else {
-                        $collectedAmt = $totalGrossFee;
+                        $collectedAmt = $totalDueToday;
+                        $remDue = 0.00;
                         $calcDocShare = $combinedDocShare;
                         $calcHospShare = round($totalGrossFee - $calcDocShare, 2);
-                        $remDue = 0.00;
                     }
                 @endphp
 
@@ -606,22 +643,58 @@
                         </div>
                     </div>
 
+                    <!-- Prompt Section 4: 5 Separate Line Items Card -->
+                    <div class="rounded-xl border border-slate-200 bg-white p-4 space-y-2.5 text-xs shadow-2xs">
+                        <div class="font-bold text-slate-800 uppercase tracking-wider text-[11px] pb-1 border-b border-slate-100 flex items-center justify-between">
+                            <span>Billing & Carry-Forward Summary</span>
+                            <span class="text-slate-400 font-normal lowercase">(live breakdown)</span>
+                        </div>
+                        <div class="flex justify-between items-center text-slate-600">
+                            <span>1. Current Consultation / Service Fee:</span>
+                            <span class="font-mono font-bold text-slate-900">PKR {{ number_format($totalGrossFee, 2) }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-slate-600">
+                            <span>2. Previous Pending Balance:</span>
+                            <span class="font-mono font-bold {{ $prevBal > 0 ? 'text-rose-600' : 'text-slate-900' }}">
+                                PKR {{ number_format($prevBal, 2) }}
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center pt-1.5 border-t border-dashed border-slate-200 text-sm font-bold text-slate-900">
+                            <span>3. Total Amount Due:</span>
+                            <span class="font-mono text-blue-700">PKR {{ number_format($totalDueToday, 2) }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-slate-700">
+                            <span>4. Amount Received Today:</span>
+                            <span class="font-mono font-bold text-emerald-700">PKR {{ number_format($collectedAmt, 2) }}</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-1.5 border-t border-slate-200 text-sm font-bold {{ $remDue > 0 ? 'text-amber-800 bg-amber-50/50 p-1.5 rounded-lg' : 'text-emerald-800' }}">
+                            <span>5. Remaining Outstanding Balance:</span>
+                            <span class="font-mono {{ $remDue > 0 ? 'text-amber-700 font-black' : 'text-emerald-700' }}">
+                                PKR {{ number_format($remDue, 2) }}
+                            </span>
+                        </div>
+                    </div>
+
                     <!-- Partial Payment input -->
                     @if($fee_type === 'partial')
                         <div class="pt-2 border-t border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div class="flex-1">
-                                <label class="block font-bold text-amber-900 mb-1">Paid Amount Now (PKR) <span class="text-rose-500">*</span></label>
+                                <label class="block font-bold text-amber-900 mb-1">
+                                    Amount Received Today (PKR) <span class="text-rose-500">*</span>
+                                    <span class="text-slate-500 font-normal lowercase">(max PKR {{ number_format($totalDueToday, 2) }})</span>
+                                </label>
                                 <input 
                                     type="number" 
                                     step="0.01" 
                                     wire:model.live="paid_amount" 
-                                    placeholder="e.g. 300"
+                                    placeholder="Enter amount paid today"
+                                    max="{{ $totalDueToday }}"
                                     class="w-full rounded-lg border border-amber-300 px-3 py-1.5 bg-white text-sm font-mono font-bold text-amber-900 focus:border-amber-500"
                                 >
                                 @error('paid_amount') <span class="text-rose-500 text-[11px] font-medium">{{ $message }}</span> @enderror
                             </div>
                             <div class="text-right">
-                                <span class="text-slate-500 text-[11px] block">Remaining Due:</span>
+                                <span class="text-slate-500 text-[11px] block">Remaining Outstanding Due:</span>
                                 <span class="font-bold text-amber-700 text-sm font-mono">PKR {{ number_format($remDue, 2) }}</span>
                             </div>
                         </div>
@@ -748,17 +821,49 @@
                                 </span>
                             </div>
 
-                            <div class="flex items-center justify-between pt-1">
-                                <span class="text-slate-500 font-medium">Fee:</span>
-                                @if(strtolower($generatedToken->payment_type) === 'free' || floatval($generatedToken->charged_amount) == 0)
-                                    <span class="font-black text-purple-700 text-base tracking-wide bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                                        FREE
+                            <div class="space-y-1.5 pt-2 border-t border-slate-200 text-xs">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-slate-500 font-medium">Consultation Fee:</span>
+                                    <span class="font-bold text-slate-800">
+                                        @if(strtolower($generatedToken->payment_type) === 'free' || floatval($generatedToken->charged_amount) == 0)
+                                            <span class="text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 font-black">FREE</span>
+                                        @else
+                                            PKR {{ number_format($generatedToken->charged_amount, 2) }}
+                                        @endif
                                     </span>
-                                @else
-                                    <span class="font-black text-emerald-700 text-base">
-                                        PKR {{ number_format($generatedToken->charged_amount, 0) }}
-                                    </span>
+                                </div>
+
+                                @if($generatedToken->previous_due > 0)
+                                <div class="flex items-center justify-between text-amber-700">
+                                    <span class="font-medium">Previous Balance:</span>
+                                    <span class="font-bold font-mono">PKR {{ number_format($generatedToken->previous_due, 2) }}</span>
+                                </div>
+
+                                <div class="flex items-center justify-between font-bold text-slate-900 border-t border-dashed border-slate-200 pt-1">
+                                    <span>Total Due:</span>
+                                    <span class="font-mono">PKR {{ number_format($generatedToken->total_due, 2) }}</span>
+                                </div>
                                 @endif
+
+                                <div class="flex items-center justify-between text-emerald-700 font-bold">
+                                    <span>Amount Paid:</span>
+                                    <span class="font-mono">PKR {{ number_format($generatedToken->paid_today, 2) }}</span>
+                                </div>
+
+                                <div class="flex items-center justify-between pt-1 border-t border-dashed border-slate-200">
+                                    <span class="text-slate-600 font-medium">Remaining Due:</span>
+                                    @if($generatedToken->balance_due > 0)
+                                        <span class="font-black text-rose-600 font-mono">
+                                            PKR {{ number_format($generatedToken->balance_due, 2) }}
+                                            <span class="text-[9px] uppercase px-1 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 ml-1">Unpaid</span>
+                                        </span>
+                                    @else
+                                        <span class="font-black text-emerald-600 font-mono">
+                                            PKR 0.00
+                                            <span class="text-[9px] uppercase px-1 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 ml-1">Settled</span>
+                                        </span>
+                                    @endif
+                                </div>
                             </div>
 
                             @if($generatedToken->bill)
@@ -1176,7 +1281,32 @@
                         @if(strtolower($printToken->payment_type) === 'free' || floatval($printToken->charged_amount) == 0)
                             FREE
                         @else
-                            PKR {{ number_format($printToken->charged_amount, 0) }}
+                            PKR {{ number_format($printToken->charged_amount, 2) }}
+                        @endif
+                    </td>
+                </tr>
+                @if($printToken->previous_due > 0)
+                <tr>
+                    <td style="font-weight: bold; color: #b45309;">Previous Balance:</td>
+                    <td style="font-weight: bold; font-family: monospace;">PKR {{ number_format($printToken->previous_due, 2) }}</td>
+                </tr>
+                <tr style="border-top: 1px dashed #666;">
+                    <td style="font-weight: bold;">Total Due:</td>
+                    <td style="font-weight: bold; font-family: monospace;">PKR {{ number_format($printToken->total_due, 2) }}</td>
+                </tr>
+                @endif
+                <tr>
+                    <td style="font-weight: bold; color: #047857;">Paid:</td>
+                    <td style="font-weight: bold; font-family: monospace; color: #047857;">PKR {{ number_format($printToken->paid_today, 2) }}</td>
+                </tr>
+                <tr style="border-top: 1px dashed #666;">
+                    <td style="font-weight: bold;">Remaining Due:</td>
+                    <td style="font-weight: bold; font-family: monospace; {{ $printToken->balance_due > 0 ? 'color: #b91c1c;' : 'color: #047857;' }}">
+                        PKR {{ number_format($printToken->balance_due, 2) }}
+                        @if($printToken->balance_due > 0)
+                            (DUE)
+                        @else
+                            (PAID)
                         @endif
                     </td>
                 </tr>

@@ -6,6 +6,7 @@ use App\Models\Doctor;
 use App\Models\HospitalBill;
 use App\Models\HospitalService;
 use App\Models\Patient;
+use App\Models\PatientToken;
 use App\Services\HospitalBillingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -32,6 +33,7 @@ class HospitalBillingController extends Controller
         $serviceId = $request->input('hospital_service_id');
         $paymentStatus = $request->input('payment_status');
         $paymentMethod = $request->input('payment_method');
+        $billingType = $request->input('billing_type');
         $search = $request->input('search');
 
         // Resolve Date Range
@@ -54,7 +56,7 @@ class HospitalBillingController extends Controller
             $endDate = Carbon::today()->toDateString();
         }
 
-        $query = HospitalBill::with(['patient', 'doctor', 'service', 'token', 'payments'])
+        $query = HospitalBill::with(['patient', 'doctor', 'service', 'token', 'items', 'payments'])
             ->whereBetween('bill_date', [$startDate, $endDate]);
 
         if (!empty($doctorId)) {
@@ -62,7 +64,16 @@ class HospitalBillingController extends Controller
         }
 
         if (!empty($serviceId)) {
-            $query->where('hospital_service_id', $serviceId);
+            $query->where(function ($q) use ($serviceId) {
+                $q->where('hospital_service_id', $serviceId)
+                  ->orWhereHas('items', function ($iq) use ($serviceId) {
+                      $iq->where('hospital_service_id', $serviceId);
+                  });
+            });
+        }
+
+        if (!empty($billingType)) {
+            $query->where('billing_type', $billingType);
         }
 
         if (!empty($paymentStatus)) {
@@ -110,6 +121,7 @@ class HospitalBillingController extends Controller
             'serviceId',
             'paymentStatus',
             'paymentMethod',
+            'billingType',
             'search',
             'totalGross',
             'totalCollected',
@@ -132,37 +144,58 @@ class HospitalBillingController extends Controller
         $selectedPatientId = $request->input('patient_id');
         $selectedPatient = $selectedPatientId ? Patient::find($selectedPatientId) : null;
 
-        $selectedDoctorId = $request->input('doctor_id');
+        $selectedTokenId = $request->input('token_id');
+        $selectedToken = $selectedTokenId ? PatientToken::with(['doctor', 'service', 'hospitalBill'])->find($selectedTokenId) : null;
+        if ($selectedToken && !$selectedPatient) {
+            $selectedPatient = $selectedToken->patient;
+        }
+
+        $selectedDoctorId = $request->input('doctor_id') ?? ($selectedToken ? $selectedToken->doctor_id : null);
         $selectedDoctor = $selectedDoctorId ? Doctor::find($selectedDoctorId) : null;
 
         $selectedServiceId = $request->input('service_id');
         $selectedService = $selectedServiceId ? HospitalService::find($selectedServiceId) : null;
+
+        $initialMode = $request->input('mode', ($selectedToken ? 'opd' : 'direct'));
 
         return view('admin.hospital-billing.create', compact(
             'allDoctors',
             'allServices',
             'selectedPatient',
             'selectedDoctor',
-            'selectedService'
+            'selectedService',
+            'selectedToken',
+            'initialMode'
         ));
     }
 
     /**
-     * Store newly created bill with server-side revenue split.
+     * Store newly created bill supporting Mode A (OPD) and Mode B (Direct Service).
      */
     public function store(Request $request)
     {
-        $patientMode = $request->input('patient_mode', 'existing');
+        $billingMode = $request->input('billing_mode', 'direct'); // 'opd' or 'direct'
+        $patientMode = $request->input('patient_mode', 'existing'); // 'existing' or 'new'
 
         $rules = [
+            'billing_mode'              => 'required|in:opd,direct',
             'patient_mode'              => 'required|in:existing,new',
-            'hospital_service_id'       => 'nullable|exists:hospital_services,id',
+            'patient_token_id'          => 'nullable|exists:patient_tokens,id',
             'doctor_id'                 => 'nullable|exists:doctors,id',
+            'hospital_service_id'       => 'nullable|exists:hospital_services,id',
             'total_amount'              => 'required|numeric|min:0',
+            'discount_amount'           => 'nullable|numeric|min:0',
             'payment_type'              => 'required|in:paid,free,partial,pending',
             'payment_method'            => 'required|in:cash,card,bank_transfer,other',
             'notes'                     => 'nullable|string|max:500',
+            'free_reason'               => 'nullable|string|max:255',
+            'include_previous_balance'  => 'nullable|boolean',
+            'items'                     => 'nullable', // JSON string or array
         ];
+
+        if ($billingMode === 'opd') {
+            $rules['patient_token_id'] = 'required|exists:patient_tokens,id';
+        }
 
         if ($patientMode === 'existing') {
             $rules['patient_id'] = 'required|exists:patients,id';
@@ -180,14 +213,55 @@ class HospitalBillingController extends Controller
             $rules['free_reason'] = 'required|string|max:255';
         }
 
-        if ($request->input('payment_type') === 'partial') {
-            $rules['paid_amount'] = 'required|numeric|min:0.01|lte:total_amount';
-        }
-
         $validated = $request->validate($rules);
 
+        // Parse items if provided as JSON string
+        $rawItems = $request->input('items');
+        if (is_string($rawItems)) {
+            $decoded = json_decode($rawItems, true);
+            $parsedItems = is_array($decoded) ? $decoded : [];
+        } elseif (is_array($rawItems)) {
+            $parsedItems = $rawItems;
+        } else {
+            $parsedItems = [];
+        }
+
+        // Validate items server-side
+        $validatedItems = [];
+        $totalItemSum = 0.00;
+        foreach ($parsedItems as $itm) {
+            $srvId = !empty($itm['hospital_service_id']) ? intval($itm['hospital_service_id']) : null;
+            $srv = $srvId ? HospitalService::find($srvId) : null;
+            $name = $itm['service_name'] ?? ($srv ? $srv->name : 'Hospital Service');
+            $code = $itm['service_code'] ?? ($srv ? $srv->code : null);
+            $qty = max(0.01, round(floatval($itm['quantity'] ?? 1), 2));
+            $unitPrice = max(0.00, round(floatval($itm['unit_price'] ?? ($srv ? $srv->default_fee : 0)), 2));
+            $itemDiscount = max(0.00, round(floatval($itm['discount_amount'] ?? 0), 2));
+            $subtotal = round($qty * $unitPrice, 2);
+            if ($itemDiscount > $subtotal) {
+                $itemDiscount = $subtotal;
+            }
+            $lineTotal = max(0.00, round($subtotal - $itemDiscount, 2));
+            $totalItemSum += $lineTotal;
+
+            $validatedItems[] = [
+                'hospital_service_id' => $srvId,
+                'service_name'        => $name,
+                'service_code'        => $code,
+                'quantity'            => $qty,
+                'unit_price'          => $unitPrice,
+                'subtotal'            => $subtotal,
+                'discount_amount'     => $itemDiscount,
+                'total_price'         => $lineTotal,
+                'notes'               => $itm['notes'] ?? null,
+            ];
+        }
+
+        // Recalculate authoritative total
+        $effectiveGross = count($validatedItems) > 0 ? $totalItemSum : round(floatval($validated['total_amount']), 2);
+
         // Atomic transaction to create Patient (if new) and Bill
-        $bill = DB::transaction(function () use ($request, $patientMode, $validated) {
+        $bill = DB::transaction(function () use ($request, $patientMode, $billingMode, $validated, $validatedItems, $effectiveGross) {
             if ($patientMode === 'new') {
                 $patient = Patient::create([
                     'name'                => $request->input('patient_name'),
@@ -205,18 +279,28 @@ class HospitalBillingController extends Controller
 
             return $this->billingService->createBill([
                 'patient_id'                => $patientId,
+                'billing_type'              => $billingMode,
+                'patient_token_id'          => $validated['patient_token_id'] ?? null,
                 'doctor_id'                 => $validated['doctor_id'] ?? null,
                 'hospital_service_id'       => $validated['hospital_service_id'] ?? null,
-                'total_amount'              => $validated['total_amount'],
+                'total_amount'              => $effectiveGross,
+                'discount_amount'           => $request->input('discount_amount', 0),
                 'doctor_share_percentage'   => $request->input('doctor_share_percentage'),
                 'payment_type'              => $validated['payment_type'],
                 'paid_amount'               => $request->input('paid_amount'),
                 'payment_method'            => $validated['payment_method'],
                 'free_reason'               => $request->input('free_reason'),
                 'notes'                     => $request->input('notes'),
+                'include_previous_balance'  => $request->boolean('include_previous_balance'),
+                'items'                     => $validatedItems,
                 'created_by'                => auth()->id(),
             ]);
         });
+
+        if ($request->input('action') === 'print_receipt' || $request->has('print_after_save')) {
+            return redirect()->route('hospital-billing.receipt', $bill->id)
+                ->with('success', "Bill #{$bill->bill_number} generated successfully.");
+        }
 
         return redirect()->route('hospital-billing.show', $bill->id)
             ->with('success', "Bill #{$bill->bill_number} generated successfully.");
@@ -227,7 +311,7 @@ class HospitalBillingController extends Controller
      */
     public function show(HospitalBill $bill)
     {
-        $bill->load(['patient', 'doctor', 'service', 'token', 'payments.receivedBy', 'ledgerEntries']);
+        $bill->load(['patient', 'doctor', 'service', 'token', 'items.service', 'payments.receivedBy', 'ledgerEntries', 'hospitalLedgers']);
         return view('admin.hospital-billing.show', compact('bill'));
     }
 
@@ -263,7 +347,153 @@ class HospitalBillingController extends Controller
      */
     public function printReceipt(HospitalBill $bill)
     {
-        $bill->load(['patient', 'doctor', 'service', 'token', 'payments']);
+        $bill->load(['patient', 'doctor', 'service', 'token', 'items.service', 'payments.receivedBy']);
         return view('admin.hospital-billing.receipt', compact('bill'));
+    }
+
+    /**
+     * AJAX Search for OPD Tokens (Mode A)
+     * Search by token number, patient ID, name, or phone.
+     */
+    public function searchTokens(Request $request)
+    {
+        $query = trim($request->input('query', ''));
+        if (strlen($query) < 1) {
+            return response()->json([]);
+        }
+
+        $tokens = PatientToken::with(['patient', 'doctor', 'service', 'hospitalBill.payments'])
+            ->where(function ($q) use ($query) {
+                $q->where('token_number', 'like', "%{$query}%")
+                  ->orWhereHas('patient', function ($pq) use ($query) {
+                      $pq->where('name', 'like', "%{$query}%")
+                         ->orWhere('patient_number', 'like', "%{$query}%")
+                         ->orWhere('phone', 'like', "%{$query}%");
+                  });
+            })
+            ->latest('token_date')
+            ->latest('id')
+            ->take(15)
+            ->get();
+
+        $results = $tokens->map(function ($t) {
+            $patient = $t->patient;
+            $bill = $t->hospitalBill;
+            $consultationFee = (float)$t->consultation_fee;
+            $paidAgainstConsultation = $bill ? (float)$bill->paid_amount : (float)$t->charged_amount;
+            $consultationBalance = $bill ? (float)$bill->due_amount : (float)$t->balance_due;
+
+            return [
+                'token_id'                     => $t->id,
+                'token_number'                 => $t->token_number,
+                'formatted_token_number'       => $t->formatted_token_number,
+                'token_date'                   => $t->token_date->format('d-M-Y'),
+                'token_status'                 => ucfirst($t->status),
+                'patient_id'                   => $patient->id,
+                'patient_name'                 => $patient->name,
+                'patient_number'               => $patient->patient_number,
+                'patient_phone'                => $patient->phone,
+                'patient_age'                  => $patient->age,
+                'patient_gender'               => $patient->gender,
+                'doctor_id'                    => $t->doctor_id,
+                'doctor_name'                  => $t->doctor ? $t->doctor->name : 'N/A',
+                'consultation_fee'             => $consultationFee,
+                'consultation_paid'            => $paidAgainstConsultation,
+                'consultation_balance'         => $consultationBalance,
+                'consultation_outstanding'     => $patient ? $patient->consultation_outstanding : 0.00,
+                'hospital_service_outstanding' => $patient ? $patient->hospital_service_outstanding : 0.00,
+                'total_outstanding'            => $patient ? $patient->pending_balance : 0.00,
+            ];
+        });
+
+        return response()->json($results);
+    }
+
+    /**
+     * AJAX Search for Patients (Mode B & general lookup)
+     */
+    public function searchPatients(Request $request)
+    {
+        $query = trim($request->input('query', ''));
+        if (strlen($query) < 1) {
+            return response()->json([]);
+        }
+
+        $patients = Patient::where(function ($q) use ($query) {
+            $q->where('name', 'like', "%{$query}%")
+              ->orWhere('patient_number', 'like', "%{$query}%")
+              ->orWhere('phone', 'like', "%{$query}%")
+              ->orWhere('cnic', 'like', "%{$query}%");
+        })
+        ->take(15)
+        ->get();
+
+        $results = $patients->map(function ($p) {
+            return [
+                'id'                           => $p->id,
+                'name'                         => $p->name,
+                'patient_number'               => $p->patient_number,
+                'phone'                        => $p->phone,
+                'age'                          => $p->age,
+                'gender'                       => $p->gender,
+                'address'                      => $p->address,
+                'cnic'                         => $p->cnic,
+                'father_husband_name'          => $p->father_husband_name,
+                'consultation_outstanding'     => $p->consultation_outstanding,
+                'hospital_service_outstanding' => $p->hospital_service_outstanding,
+                'total_outstanding'            => $p->pending_balance,
+            ];
+        });
+
+        return response()->json($results);
+    }
+
+    /**
+     * AJAX Patient Context & History
+     */
+    public function patientContext(Patient $patient, Request $request)
+    {
+        $tokenId = $request->input('token_id');
+        $context = $this->billingService->getPatientBillingContext($patient->id, $tokenId ? intval($tokenId) : null);
+
+        return response()->json([
+            'patient'                      => [
+                'id'                           => $patient->id,
+                'name'                         => $patient->name,
+                'patient_number'               => $patient->patient_number,
+                'phone'                        => $patient->phone,
+                'age'                          => $patient->age,
+                'gender'                       => $patient->gender,
+                'address'                      => $patient->address,
+                'cnic'                         => $patient->cnic,
+            ],
+            'token'                        => $context['token'] ? [
+                'id'                     => $context['token']->id,
+                'token_number'           => $context['token']->token_number,
+                'formatted_token_number' => $context['token']->formatted_token_number,
+                'token_date'             => $context['token']->token_date->format('d-M-Y'),
+                'doctor_id'              => $context['token']->doctor_id,
+                'doctor_name'            => $context['token']->doctor ? $context['token']->doctor->name : 'N/A',
+                'consultation_fee'       => (float)$context['token']->consultation_fee,
+                'consultation_paid'      => $context['token']->hospitalBill ? (float)$context['token']->hospitalBill->paid_amount : (float)$context['token']->charged_amount,
+                'consultation_balance'   => $context['token']->hospitalBill ? (float)$context['token']->hospitalBill->due_amount : (float)$context['token']->balance_due,
+            ] : null,
+            'consultation_outstanding'     => $context['consultation_outstanding'],
+            'hospital_service_outstanding' => $context['hospital_service_outstanding'],
+            'total_outstanding'            => $context['total_outstanding'],
+            'existing_bills'               => $context['existing_bills']->map(function ($b) {
+                return [
+                    'id'             => $b->id,
+                    'bill_number'    => $b->bill_number,
+                    'bill_date'      => $b->bill_date->format('d-M-Y'),
+                    'billing_type'   => $b->billing_type ?? 'direct',
+                    'service_name'   => $b->service ? $b->service->name : ($b->items->first() ? $b->items->first()->service_name : 'Hospital Service'),
+                    'total_amount'   => (float)$b->total_amount,
+                    'paid_amount'    => (float)$b->paid_amount,
+                    'due_amount'     => (float)$b->due_amount,
+                    'payment_status' => $b->payment_status,
+                ];
+            }),
+        ]);
     }
 }

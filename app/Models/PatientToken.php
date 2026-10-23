@@ -43,6 +43,9 @@ class PatientToken extends Model
         'called_at',
         'completed_at',
         'notes',
+        'previous_due',
+        'paid_today',
+        'balance_due',
         // Aliases for Phase 3.2 schema
         'visit_date',
         'doctor_fee',
@@ -65,6 +68,9 @@ class PatientToken extends Model
         'doctor_share_amount'       => 'decimal:2',
         'hospital_share_amount'     => 'decimal:2',
         'discount_amount'           => 'decimal:2',
+        'previous_due'              => 'decimal:2',
+        'paid_today'                => 'decimal:2',
+        'balance_due'               => 'decimal:2',
         'called_at'                 => 'datetime',
         'completed_at'              => 'datetime',
     ];
@@ -163,10 +169,41 @@ class PatientToken extends Model
     public function getDisplayFeeAttribute(): string
     {
         $type = strtolower($this->payment_type ?? $this->fee_type ?? 'paid');
-        if ($type === 'free' || floatval($this->charged_amount) == 0) {
+        if ($type === 'free') {
             return 'FREE';
         }
-        return 'PKR ' . number_format($this->charged_amount ?? $this->consultation_fee, 0);
+        $fee = $this->consultation_fee ?? $this->charged_amount ?? 0;
+        return 'PKR ' . number_format((float)$fee, 0);
+    }
+
+    public function getPaidTodayAttribute($value)
+    {
+        if ($value !== null) {
+            return (float) $value;
+        }
+        return (float) ($this->charged_amount ?? 0.00);
+    }
+
+    public function getBalanceDueAttribute($value)
+    {
+        if ($value !== null) {
+            return (float) $value;
+        }
+        return (float) ($this->bill?->due_amount ?? 0.00);
+    }
+
+    public function getPreviousDueAttribute($value)
+    {
+        return $value !== null ? (float) $value : 0.00;
+    }
+
+    public function getTotalDueAttribute(): float
+    {
+        $fee = (float) ($this->consultation_fee ?? $this->charged_amount ?? 0);
+        if (strtolower($this->payment_type ?? $this->fee_type ?? '') === 'free') {
+            $fee = 0.00;
+        }
+        return round($fee + (float) ($this->previous_due ?? 0), 2);
     }
 
     public function getFormattedStatusAttribute(): string

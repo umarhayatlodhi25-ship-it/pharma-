@@ -309,6 +309,11 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/hospital-services', [ReportController::class, 'hospitalServices'])->name('hospital-services');
             Route::get('/doctor-payable', [ReportController::class, 'doctorPayable'])->name('doctor-payable');
             Route::get('/doctor-settlements', [ReportController::class, 'doctorSettlements'])->name('doctor-settlements');
+            Route::get('/hospital-service-collections', [ReportController::class, 'hospitalServiceCollections'])->name('hospital-service-collections');
+            Route::get('/hospital-service-billing', [ReportController::class, 'hospitalServiceBilling'])->name('hospital-service-billing');
+            Route::get('/hospital-service-outstanding', [ReportController::class, 'hospitalServiceOutstanding'])->name('hospital-service-outstanding');
+            Route::get('/hospital-payment-methods', [ReportController::class, 'hospitalPaymentMethods'])->name('hospital-payment-methods');
+            Route::get('/patient-service-history', [ReportController::class, 'patientServiceHistory'])->name('patient-service-history');
         });
     });
 
@@ -344,6 +349,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/patients/check-duplicate', [PatientController::class, 'checkDuplicate'])->name('patients.check-duplicate');
     Route::get('/patients/create', [PatientController::class, 'create'])->name('patients.create');
     Route::post('/patients', [PatientController::class, 'store'])->name('patients.store');
+    Route::get('/patients/{patient}/pending-balance', [PatientController::class, 'pendingBalance'])->name('patients.pending-balance');
     Route::get('/patients/{patient}', [PatientController::class, 'show'])->name('patients.show');
 
     // Patient Tokens (Phase 2 & Phase 3.1: Smart Token Management)
@@ -379,6 +385,9 @@ Route::middleware(['auth'])->group(function () {
     // Hospital Billing (Invoices, partial payments, receipts)
     Route::get('/hospital-billing', [HospitalBillingController::class, 'index'])->name('hospital-billing.index');
     Route::get('/hospital-billing/create', [HospitalBillingController::class, 'create'])->name('hospital-billing.create');
+    Route::get('/hospital-billing/search-tokens', [HospitalBillingController::class, 'searchTokens'])->name('hospital-billing.search-tokens');
+    Route::get('/hospital-billing/search-patients', [HospitalBillingController::class, 'searchPatients'])->name('hospital-billing.search-patients');
+    Route::get('/hospital-billing/patient-context/{patient}', [HospitalBillingController::class, 'patientContext'])->name('hospital-billing.patient-context');
     Route::post('/hospital-billing', [HospitalBillingController::class, 'store'])->name('hospital-billing.store');
     Route::get('/hospital-billing/{bill}', [HospitalBillingController::class, 'show'])->name('hospital-billing.show');
     Route::post('/hospital-billing/{bill}/payment', [HospitalBillingController::class, 'receivePayment'])->name('hospital-billing.payment');

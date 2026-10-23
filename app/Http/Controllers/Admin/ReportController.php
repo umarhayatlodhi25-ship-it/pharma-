@@ -22,6 +22,8 @@ use App\Models\HospitalBillPayment;
 use App\Models\HospitalService;
 use App\Models\DoctorSettlement;
 use App\Models\DoctorLedger;
+use App\Models\HospitalAccountLedger;
+use App\Models\HospitalBillItem;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -682,7 +684,7 @@ class ReportController extends Controller
             'total_collected'     => (float) $bills->sum('paid_amount'),
             'doctor_total_share'  => (float) $bills->sum('doctor_share'),
             'hospital_total_share'=> (float) $bills->sum('hospital_share'),
-            'remaining_unpaid'    => (float) $bills->sum('remaining_amount'),
+            'remaining_unpaid'    => (float) $bills->sum('due_amount'),
         ];
 
         $selectedDoctor = $doctorId ? Doctor::find($doctorId) : null;
@@ -814,7 +816,7 @@ class ReportController extends Controller
             'total_collected'    => (float) $bills->sum('paid_amount'),
             'doctor_share'       => (float) $bills->sum('doctor_share'),
             'hospital_share'     => (float) $bills->sum('hospital_share'),
-            'total_unpaid'       => (float) $bills->sum('remaining_amount'),
+            'total_unpaid'       => (float) $bills->sum('due_amount'),
             'total_settled'      => $settlementsSum,
             'cash_in_hand'       => (float) ($bills->sum('paid_amount') - $settlementsSum),
         ];
@@ -1009,4 +1011,294 @@ class ReportController extends Controller
             'totalCount'
         ));
     }
+
+    /**
+     * 18. Hospital Service Collection Report
+     * Based on actual payment records (HospitalBillPayment & HospitalAccountLedger).
+     */
+    public function hospitalServiceCollections(Request $request)
+    {
+        $filter = $request->get('filter', 'today');
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+        $paymentMethod = $request->get('payment_method');
+        $userId = $request->get('user_id');
+
+        $query = HospitalBillPayment::with(['bill.patient', 'bill.doctor', 'receivedBy']);
+
+        if ($filter == 'today') {
+            $query->whereDate('payment_date', Carbon::today());
+        } elseif ($filter == 'yesterday') {
+            $query->whereDate('payment_date', Carbon::yesterday());
+        } elseif ($filter == 'weekly') {
+            $query->whereBetween('payment_date', [Carbon::now()->startOfWeek()->toDateString(), Carbon::now()->endOfWeek()->toDateString()]);
+        } elseif ($filter == 'monthly') {
+            $query->whereMonth('payment_date', Carbon::now()->month)->whereYear('payment_date', Carbon::now()->year);
+        } elseif ($filter == 'custom' && $startDate && $endDate) {
+            $query->whereBetween('payment_date', [Carbon::parse($startDate)->toDateString(), Carbon::parse($endDate)->toDateString()]);
+        }
+
+        if ($paymentMethod) {
+            $query->where('payment_method', $paymentMethod);
+        }
+
+        if ($userId) {
+            $query->where('received_by', $userId);
+        }
+
+        $payments = $query->latest('id')->get();
+
+        $totalCollected = (float) $payments->sum('amount');
+        $totalHospitalShare = (float) $payments->sum('hospital_share');
+        $totalDoctorShare = (float) $payments->sum('doctor_share');
+        $totalCount = $payments->count();
+
+        $cashTotal = (float) $payments->where('payment_method', 'cash')->sum('amount');
+        $cardTotal = (float) $payments->where('payment_method', 'card')->sum('amount');
+        $bankTotal = (float) $payments->where('payment_method', 'bank_transfer')->sum('amount');
+        $otherTotal = (float) $payments->where('payment_method', 'other')->sum('amount');
+
+        $allUsers = User::orderBy('name')->get();
+
+        return view('admin.reports.hospital_service_collections', compact(
+            'payments',
+            'totalCollected',
+            'totalHospitalShare',
+            'totalDoctorShare',
+            'totalCount',
+            'cashTotal',
+            'cardTotal',
+            'bankTotal',
+            'otherTotal',
+            'filter',
+            'startDate',
+            'endDate',
+            'paymentMethod',
+            'userId',
+            'allUsers'
+        ));
+    }
+
+    /**
+     * 19. Hospital Service Billing Report
+     * Comprehensive audit of bills issued with breakdown of billed, collected, outstanding, and discounts.
+     */
+    public function hospitalServiceBilling(Request $request)
+    {
+        $filter = $request->get('filter', 'today');
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+        $billingMode = $request->get('billing_type');
+        $paymentStatus = $request->get('payment_status');
+        $doctorId = $request->get('doctor_id');
+
+        $query = HospitalBill::with(['patient', 'doctor', 'service', 'items', 'payments']);
+
+        if ($filter == 'today') {
+            $query->whereDate('bill_date', Carbon::today());
+        } elseif ($filter == 'yesterday') {
+            $query->whereDate('bill_date', Carbon::yesterday());
+        } elseif ($filter == 'weekly') {
+            $query->whereBetween('bill_date', [Carbon::now()->startOfWeek()->toDateString(), Carbon::now()->endOfWeek()->toDateString()]);
+        } elseif ($filter == 'monthly') {
+            $query->whereMonth('bill_date', Carbon::now()->month)->whereYear('bill_date', Carbon::now()->year);
+        } elseif ($filter == 'custom' && $startDate && $endDate) {
+            $query->whereBetween('bill_date', [Carbon::parse($startDate)->toDateString(), Carbon::parse($endDate)->toDateString()]);
+        }
+
+        if ($billingMode) {
+            $query->where('billing_type', $billingMode);
+        }
+
+        if ($paymentStatus) {
+            $query->where('payment_status', $paymentStatus);
+        }
+
+        if ($doctorId) {
+            $query->where('doctor_id', $doctorId);
+        }
+
+        $bills = $query->latest('id')->get();
+
+        $totalGross = (float) $bills->sum('total_amount');
+        $totalDiscount = (float) $bills->sum('discount_amount');
+        $totalNet = (float) $bills->sum('net_amount');
+        $totalCollected = (float) $bills->sum('paid_amount');
+        $totalOutstanding = (float) $bills->sum('due_amount');
+        $totalCount = $bills->count();
+
+        $allDoctors = Doctor::orderBy('name')->get();
+
+        return view('admin.reports.hospital_service_billing', compact(
+            'bills',
+            'totalGross',
+            'totalDiscount',
+            'totalNet',
+            'totalCollected',
+            'totalOutstanding',
+            'totalCount',
+            'filter',
+            'startDate',
+            'endDate',
+            'billingMode',
+            'paymentStatus',
+            'doctorId',
+            'allDoctors'
+        ));
+    }
+
+    /**
+     * 20. Hospital Outstanding / Receivables Report
+     * All unpaid or partially paid bills with aging and quick collection links.
+     */
+    public function hospitalServiceOutstanding(Request $request)
+    {
+        $doctorId = $request->get('doctor_id');
+        $billingMode = $request->get('billing_type');
+        $search = $request->get('search');
+
+        $query = HospitalBill::with(['patient', 'doctor', 'service', 'payments'])
+            ->where('due_amount', '>', 0);
+
+        if ($doctorId) {
+            $query->where('doctor_id', $doctorId);
+        }
+
+        if ($billingMode) {
+            $query->where('billing_type', $billingMode);
+        }
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('bill_number', 'like', "%{$search}%")
+                  ->orWhereHas('patient', function ($pq) use ($search) {
+                      $pq->where('name', 'like', "%{$search}%")
+                         ->orWhere('patient_number', 'like', "%{$search}%")
+                         ->orWhere('phone', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        $bills = $query->orderBy('due_amount', 'desc')->get();
+
+        $totalOutstanding = (float) $bills->sum('due_amount');
+        $totalGross = (float) $bills->sum('total_amount');
+        $totalPaid = (float) $bills->sum('paid_amount');
+        $totalPatientsCount = $bills->pluck('patient_id')->unique()->count();
+        $totalBillsCount = $bills->count();
+
+        $allDoctors = Doctor::orderBy('name')->get();
+
+        return view('admin.reports.hospital_service_outstanding', compact(
+            'bills',
+            'totalOutstanding',
+            'totalGross',
+            'totalPaid',
+            'totalPatientsCount',
+            'totalBillsCount',
+            'doctorId',
+            'billingMode',
+            'search',
+            'allDoctors'
+        ));
+    }
+
+    /**
+     * 21. Hospital Payment Method Report
+     * Matrix and charts of hospital service receipts across payment gateways and counters.
+     */
+    public function hospitalPaymentMethods(Request $request)
+    {
+        $filter = $request->get('filter', 'monthly');
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+
+        $query = HospitalBillPayment::query();
+
+        if ($filter == 'today') {
+            $query->whereDate('payment_date', Carbon::today());
+        } elseif ($filter == 'yesterday') {
+            $query->whereDate('payment_date', Carbon::yesterday());
+        } elseif ($filter == 'weekly') {
+            $query->whereBetween('payment_date', [Carbon::now()->startOfWeek()->toDateString(), Carbon::now()->endOfWeek()->toDateString()]);
+        } elseif ($filter == 'monthly') {
+            $query->whereMonth('payment_date', Carbon::now()->month)->whereYear('payment_date', Carbon::now()->year);
+        } elseif ($filter == 'custom' && $startDate && $endDate) {
+            $query->whereBetween('payment_date', [Carbon::parse($startDate)->toDateString(), Carbon::parse($endDate)->toDateString()]);
+        }
+
+        $payments = $query->get();
+
+        $methods = ['cash' => 'Cash Counter', 'card' => 'Debit/Credit Card', 'bank_transfer' => 'Bank Transfer', 'other' => 'Other / Cheque'];
+        $methodRows = [];
+        $grandTotalAmount = (float) $payments->sum('amount');
+        $grandTotalCount = $payments->count();
+
+        foreach ($methods as $key => $label) {
+            $mPayments = $payments->where('payment_method', $key);
+            $count = $mPayments->count();
+            $amount = (float) $mPayments->sum('amount');
+            $pct = $grandTotalAmount > 0 ? round(($amount / $grandTotalAmount) * 100, 1) : 0;
+
+            $methodRows[] = [
+                'key'        => $key,
+                'label'      => $label,
+                'count'      => $count,
+                'amount'     => $amount,
+                'percentage' => $pct,
+            ];
+        }
+
+        return view('admin.reports.hospital_payment_methods', compact(
+            'methodRows',
+            'grandTotalAmount',
+            'grandTotalCount',
+            'filter',
+            'startDate',
+            'endDate'
+        ));
+    }
+
+    /**
+     * 22. Patient Service History Report
+     * Complete lifecycle audit of all OPD tokens, procedures, payments, and ledger entries for any patient.
+     */
+    public function patientServiceHistory(Request $request)
+    {
+        $patientId = $request->get('patient_id');
+        $search = $request->get('search');
+
+        $selectedPatient = null;
+        if ($patientId) {
+            $selectedPatient = Patient::with([
+                'tokens.doctor',
+                'bills.items',
+                'bills.doctor',
+                'payments.receivedBy',
+                'hospitalLedgers'
+            ])->find($patientId);
+        } elseif ($search) {
+            $selectedPatient = Patient::with([
+                'tokens.doctor',
+                'bills.items',
+                'bills.doctor',
+                'payments.receivedBy',
+                'hospitalLedgers'
+            ])
+            ->where('name', 'like', "%{$search}%")
+            ->orWhere('patient_number', 'like', "%{$search}%")
+            ->orWhere('phone', 'like', "%{$search}%")
+            ->first();
+        }
+
+        $patients = Patient::orderBy('name')->take(30)->get();
+
+        return view('admin.reports.patient_service_history', compact(
+            'selectedPatient',
+            'patients',
+            'patientId',
+            'search'
+        ));
+    }
 }
+

@@ -16,6 +16,7 @@ class HospitalBill extends Model
 
     protected $fillable = [
         'bill_number',
+        'billing_type',
         'patient_id',
         'doctor_id',
         'hospital_service_id',
@@ -34,6 +35,7 @@ class HospitalBill extends Model
         'payment_status',
         'free_reason',
         'notes',
+        'previous_due',
         'created_by',
     ];
 
@@ -44,6 +46,7 @@ class HospitalBill extends Model
         'net_amount'                => 'decimal:2',
         'paid_amount'               => 'decimal:2',
         'due_amount'                => 'decimal:2',
+        'previous_due'              => 'decimal:2',
         'doctor_share_percentage'   => 'decimal:2',
         'hospital_share_percentage' => 'decimal:2',
         'doctor_share'              => 'decimal:2',
@@ -91,6 +94,11 @@ class HospitalBill extends Model
         return $billNo;
     }
 
+    public function getRemainingAmountAttribute(): float
+    {
+        return (float) ($this->due_amount ?? 0.00);
+    }
+
     /**
      * Record a payment installment against this bill with cash-basis revenue recognition.
      *
@@ -113,24 +121,30 @@ class HospitalBill extends Model
             throw new \InvalidArgumentException('Payment amount must be greater than zero.');
         }
 
-        if ($amount > (float)$this->due_amount) {
-            throw new \InvalidArgumentException("Payment amount (PKR {$amount}) cannot exceed outstanding remaining balance (PKR {$this->due_amount}).");
-        }
-
         return DB::transaction(function () use ($amount, $paymentMethod, $referenceNote, $userId) {
+            $bill = self::where('id', $this->id)->lockForUpdate()->first();
+            if (!$bill) {
+                throw new \RuntimeException('Bill not found.');
+            }
+
+            if ($amount > (float)$bill->due_amount) {
+                throw new \InvalidArgumentException("Payment amount (PKR {$amount}) cannot exceed outstanding remaining balance (PKR {$bill->due_amount}).");
+            }
+
             // Incremental share calculation for this payment
-            $docSharePct = (float)$this->doctor_share_percentage;
-            $hospSharePct = (float)$this->hospital_share_percentage;
+            $docSharePct = (float)$bill->doctor_share_percentage;
+            $hospSharePct = (float)$bill->hospital_share_percentage;
 
             $incDocShare = round($amount * ($docSharePct / 100), 2);
             $incHospShare = round($amount - $incDocShare, 2);
 
             // Create payment transaction
-            $paymentCount = $this->payments()->count() + 1;
-            $paymentNumber = 'RCPT-' . $this->bill_number . '-' . $paymentCount;
+            $paymentCount = $bill->payments()->count() + 1;
+            $paymentNumber = 'RCPT-' . $bill->bill_number . '-' . $paymentCount;
 
             $payment = HospitalBillPayment::create([
-                'hospital_bill_id' => $this->id,
+                'hospital_bill_id' => $bill->id,
+                'patient_id'       => $bill->patient_id,
                 'payment_number'   => $paymentNumber,
                 'payment_date'     => now()->toDateString(),
                 'amount'           => $amount,
@@ -141,42 +155,114 @@ class HospitalBill extends Model
                 'received_by'      => $userId ?? auth()->id(),
             ]);
 
+            // Create explicit payment allocation record
+            HospitalBillPaymentAllocation::create([
+                'hospital_bill_payment_id' => $payment->id,
+                'hospital_bill_id'         => $bill->id,
+                'allocated_amount'         => $amount,
+                'allocation_type'          => 'current_bill',
+            ]);
+
             // Update bill totals
-            $newPaid = round((float)$this->paid_amount + $amount, 2);
-            $newDue = max(0.00, round((float)$this->net_amount - $newPaid, 2));
+            $newPaid = round((float)$bill->paid_amount + $amount, 2);
+            $newDue = max(0.00, round((float)$bill->net_amount - $newPaid, 2));
             $newStatus = ($newDue <= 0.00) ? 'paid' : 'partial';
 
-            $this->update([
+            $newDoctorShare = round((float)$bill->doctor_share + $incDocShare, 2);
+            $newHospitalShare = round((float)$bill->hospital_share + $incHospShare, 2);
+
+            $bill->update([
                 'paid_amount'    => $newPaid,
                 'due_amount'     => $newDue,
-                'doctor_share'   => round((float)$this->doctor_share + $incDocShare, 2),
-                'hospital_share' => round((float)$this->hospital_share + $incHospShare, 2),
+                'doctor_share'   => $newDoctorShare,
+                'hospital_share' => $newHospitalShare,
                 'payment_status' => $newStatus,
             ]);
 
-            // Post credit to Doctor Ledger if doctor is assigned and earned a share
-            if ($this->doctor_id && $incDocShare > 0) {
-                $doctor = Doctor::find($this->doctor_id);
+            // Post collection entry to Hospital Account Ledger
+            $patientName = $bill->patient ? $bill->patient->name : 'Patient';
+            HospitalAccountLedger::create([
+                'entry_date'               => now()->toDateString(),
+                'patient_id'               => $bill->patient_id,
+                'hospital_bill_id'         => $bill->id,
+                'hospital_bill_payment_id' => $payment->id,
+                'patient_token_id'         => $bill->patient_token_id,
+                'transaction_type'         => 'collection',
+                'description'              => "Payment received for Bill #{$bill->bill_number} (Patient: {$patientName})",
+                'gross_amount'             => (float)$bill->total_amount,
+                'discount_amount'          => (float)$bill->discount_amount,
+                'amount_received'          => $amount,
+                'outstanding_balance'      => $newDue,
+                'payment_method'           => $paymentMethod,
+                'status'                   => 'posted',
+                'created_by'               => $userId ?? auth()->id(),
+            ]);
+
+            // If linked to an OPD token, keep token balance_due in sync
+            if ($bill->patient_token_id) {
+                PatientToken::where('id', $bill->patient_token_id)->update([
+                    'balance_due' => $newDue,
+                ]);
+            }
+
+            // Post credit to Doctor Ledger ONLY if doctor is assigned and earned a share
+            if ($bill->doctor_id && $incDocShare > 0) {
+                $doctor = Doctor::find($bill->doctor_id);
                 if ($doctor) {
                     $currPayable = (float)$doctor->current_payable;
                     $balanceAfter = round($currPayable + $incDocShare, 2);
 
                     DoctorLedger::create([
-                        'doctor_id'                => $this->doctor_id,
-                        'hospital_bill_id'         => $this->id,
+                        'doctor_id'                => $bill->doctor_id,
+                        'hospital_bill_id'         => $bill->id,
                         'hospital_bill_payment_id' => $payment->id,
                         'entry_date'               => now()->toDateString(),
                         'transaction_type'         => 'credit',
                         'amount'                   => $incDocShare,
                         'balance_after'            => $balanceAfter,
-                        'description'              => "Doctor share earned from Bill #{$this->bill_number} (Patient: {$this->patient->name})",
+                        'description'              => "Doctor share earned from Bill #{$bill->bill_number} (Patient: {$patientName})",
                         'created_by'               => $userId ?? auth()->id(),
                     ]);
                 }
             }
 
+            // Sync current instance attributes
+            $this->paid_amount = $newPaid;
+            $this->due_amount = $newDue;
+            $this->doctor_share = $newDoctorShare;
+            $this->hospital_share = $newHospitalShare;
+            $this->payment_status = $newStatus;
+
             return $payment;
         });
+    }
+
+    /**
+     * Scope: Filter by unpaid or partially paid bills.
+     */
+    public function scopeUnpaid($query)
+    {
+        return $query->where('due_amount', '>', 0);
+    }
+
+    public function scopeDirect($query)
+    {
+        return $query->where('billing_type', 'direct');
+    }
+
+    public function scopeOpd($query)
+    {
+        return $query->where('billing_type', 'opd');
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(HospitalBillItem::class, 'hospital_bill_id');
+    }
+
+    public function allocations(): HasMany
+    {
+        return $this->hasMany(HospitalBillPaymentAllocation::class, 'hospital_bill_id');
     }
 
     public function patient(): BelongsTo
@@ -207,6 +293,11 @@ class HospitalBill extends Model
     public function ledgerEntries(): HasMany
     {
         return $this->hasMany(DoctorLedger::class, 'hospital_bill_id');
+    }
+
+    public function hospitalLedgers(): HasMany
+    {
+        return $this->hasMany(HospitalAccountLedger::class, 'hospital_bill_id');
     }
 
     public function createdBy(): BelongsTo

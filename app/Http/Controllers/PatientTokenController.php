@@ -121,10 +121,24 @@ class PatientTokenController extends Controller
             $rules['free_reason']  = 'required|string|max:100';
             $rules['other_reason'] = 'required_if:free_reason,Other|nullable|string|max:255';
         } elseif ($request->input('payment_type') === 'partial') {
-            $rules['paid_amount'] = 'required|numeric|min:0.01';
+            $rules['paid_amount'] = 'required|numeric|min:0';
         }
 
         $validated = $request->validate($rules);
+
+        $submitKey = 'token_submit_' . (auth()->id() ?? 'guest') . '_' . md5(json_encode([
+            $patientMode,
+            $patientMode === 'existing' ? $request->input('patient_id') : $request->input('patient_name'),
+            $request->input('doctor_id'),
+            $request->input('payment_type'),
+            $request->input('paid_amount'),
+        ]));
+
+        if (\Illuminate\Support\Facades\Cache::has($submitKey)) {
+            return redirect()->route('patient-tokens.index')
+                ->with('warning', 'A token generation request was already submitted. Please avoid double-clicking.');
+        }
+        \Illuminate\Support\Facades\Cache::put($submitKey, true, now()->addSeconds(3));
 
         $today = now()->toDateString();
         $doctor = Doctor::findOrFail($validated['doctor_id']);
@@ -168,7 +182,7 @@ class PatientTokenController extends Controller
                 ->whereIn('status', ['waiting', 'called'])
                 ->first();
 
-            if ($existingActiveToken) {
+            if ($existingActiveToken && !$request->boolean('confirm_active_token')) {
                 return redirect()->back()
                     ->withInput()
                     ->with('warning', "This patient already has an active token today (Token #{$existingActiveToken->formatted_token_number} - " . ucfirst($existingActiveToken->status) . ').')
@@ -185,54 +199,21 @@ class PatientTokenController extends Controller
 
         // Determine whether additional hospital service is selected
         $isAdditionalService = ($service && $service->service_type !== 'consultation' && !in_array($service->code, ['SRV-CONSULT', 'DOC_CONSULT']));
-
         $doctorConsultFee = (float) $doctor->consultation_fee;
-        $doctorConsultDocPct = (float) ($doctor->doctor_share_percentage ?? 70.00);
-
-        if ($isAdditionalService) {
-            $serviceFee = (float) $service->default_fee;
-            $serviceDocPct = (float) $service->doctor_share_percentage;
-        } else {
-            $serviceFee = 0.00;
-            $serviceDocPct = 0.00;
-        }
-
-        // Total gross fee = Doctor consultation fee + configured additional hospital service fee
+        $serviceFee = $isAdditionalService ? (float) $service->default_fee : 0.00;
         $totalGrossFee = round($doctorConsultFee + $serviceFee, 2);
 
-        // Combined doctor share amount
-        $doctorShareFromConsultation = round($doctorConsultFee * ($doctorConsultDocPct / 100), 2);
-        $doctorShareFromService = $isAdditionalService ? round($serviceFee * ($serviceDocPct / 100), 2) : 0.00;
-        $combinedDoctorShare = round($doctorShareFromConsultation + $doctorShareFromService, 2);
+        $patientIdForCheck = ($patientMode === 'existing') ? $validated['patient_id'] : null;
+        $previousDue = $patientIdForCheck ? (Patient::find($patientIdForCheck)?->pendingBalance() ?? 0.0) : 0.0;
+        $totalDue = round($totalGrossFee + $previousDue, 2);
 
-        // Effective combined percentages
-        $effectiveDoctorSharePct = ($totalGrossFee > 0) ? round(($combinedDoctorShare / $totalGrossFee) * 100, 2) : $doctorConsultDocPct;
-        $effectiveHospitalSharePct = round(100.00 - $effectiveDoctorSharePct, 2);
-
-        $discountAmount = 0.00;
-        if ($validated['payment_type'] === 'free') {
-            $chargedAmount = 0.00;
-            $discountAmount = $totalGrossFee;
-            $doctorShareAmount = 0.00;
-            $hospitalShareAmount = 0.00;
-            $freeReason = $request->input('free_reason');
-            $otherReason = ($freeReason === 'Other') ? $request->input('other_reason') : null;
-        } elseif ($validated['payment_type'] === 'partial') {
-            $chargedAmount = round(floatval($request->input('paid_amount')), 2);
-            if ($chargedAmount > $totalGrossFee) {
-                $chargedAmount = $totalGrossFee;
+        if ($validated['payment_type'] === 'partial') {
+            $paidAmtInput = floatval($request->input('paid_amount'));
+            if ($paidAmtInput > $totalDue) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['paid_amount' => "Payment amount (PKR {$paidAmtInput}) cannot exceed total outstanding amount (PKR {$totalDue})."]);
             }
-            // Revenue split recognized ONLY on the amount actually collected
-            $doctorShareAmount = round($chargedAmount * ($effectiveDoctorSharePct / 100), 2);
-            $hospitalShareAmount = round($chargedAmount - $doctorShareAmount, 2);
-            $freeReason = null;
-            $otherReason = null;
-        } else {
-            $chargedAmount = $totalGrossFee;
-            $doctorShareAmount = $combinedDoctorShare;
-            $hospitalShareAmount = round($totalGrossFee - $doctorShareAmount, 2);
-            $freeReason = null;
-            $otherReason = null;
         }
 
         // Database transaction to create patient (if new), token, and hospital bill atomically
@@ -241,16 +222,7 @@ class PatientTokenController extends Controller
             $request,
             $doctor,
             $serviceId,
-            $today,
-            $totalGrossFee,
-            $chargedAmount,
-            $discountAmount,
-            $effectiveDoctorSharePct,
-            $effectiveHospitalSharePct,
-            $doctorShareAmount,
-            $hospitalShareAmount,
-            $freeReason,
-            $otherReason
+            $today
         ) {
             if ($patientMode === 'new') {
                 $patient = Patient::create([
@@ -267,59 +239,21 @@ class PatientTokenController extends Controller
                 $patientId = $request->input('patient_id');
             }
 
-            $profile = \App\Models\AccountProfile::current();
-            $nextTokenNumber = PatientToken::generateNextTokenNumber($today, true);
-
-            // Determine default status
-            $defaultStatus = strtolower($profile->default_token_status ?? 'waiting');
-            if (!in_array($defaultStatus, ['waiting', 'called', 'completed'])) {
-                $defaultStatus = 'waiting';
-            }
-
-            $createdToken = PatientToken::create([
-                'patient_id'                => $patientId,
-                'doctor_id'                 => $doctor->id,
-                'hospital_service_id'       => $serviceId,
-                'token_number'              => $nextTokenNumber,
-                'token_date'                => $today,
-                'payment_type'              => $request->input('payment_type'),
-                'consultation_fee'          => $totalGrossFee,
-                'charged_amount'            => $chargedAmount,
-                'discount_amount'           => $discountAmount,
-                'doctor_share_percentage'   => $effectiveDoctorSharePct,
-                'hospital_share_percentage' => $effectiveHospitalSharePct,
-                'doctor_share_amount'       => $doctorShareAmount,
-                'hospital_share_amount'     => $hospitalShareAmount,
-                'free_reason'               => $freeReason,
-                'other_reason'              => $otherReason,
-                'status'                    => $defaultStatus,
-                'notes'                     => $request->input('notes'),
-            ]);
-
-            // Create Hospital Bill & Revenue Split atomically
             $billingService = app(\App\Services\HospitalBillingService::class);
 
-            $bill = $billingService->createBill([
-                'patient_id'                => $patientId,
-                'doctor_id'                 => $doctor->id,
-                'hospital_service_id'       => $serviceId,
-                'patient_token_id'          => $createdToken->id,
-                'total_amount'              => $totalGrossFee,
-                'discount_amount'           => $discountAmount,
-                'doctor_share_percentage'   => $effectiveDoctorSharePct,
-                'payment_type'              => $request->input('payment_type'),
-                'paid_amount'               => $chargedAmount,
-                'payment_method'            => $request->input('payment_method', 'cash'),
-                'free_reason'               => $freeReason,
-                'notes'                     => $request->input('notes'),
-                'created_by'                => auth()->id(),
+            return $billingService->generateOpdTokenWithBilling([
+                'patient_id'          => $patientId,
+                'doctor_id'           => $doctor->id,
+                'hospital_service_id' => $serviceId,
+                'fee_type'            => $request->input('payment_type'),
+                'paid_amount'         => $request->input('paid_amount'),
+                'payment_method'      => $request->input('payment_method', 'cash'),
+                'free_reason'         => $request->input('free_reason'),
+                'other_reason'        => $request->input('other_reason'),
+                'notes'               => $request->input('notes'),
+                'token_date'          => $today,
+                'created_by'          => auth()->id(),
             ]);
-
-            $createdToken->update([
-                'hospital_bill_id' => $bill->id,
-            ]);
-
-            return $createdToken;
         });
 
         if (\App\Models\AccountProfile::current()->auto_print_token) {

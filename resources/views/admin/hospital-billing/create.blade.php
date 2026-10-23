@@ -2,82 +2,301 @@
 
 @section('content')
 <div class="space-y-6" x-data="{
-    patientMode: 'existing',
-    selectedPatientId: '{{ $selectedPatient->id ?? '' }}',
-    patientSearch: '',
-    patients: [],
-    isSearchingPatients: false,
+    billingMode: '{{ $initialMode }}', // 'opd' or 'direct'
+    patientMode: '{{ $selectedPatient ? 'existing' : 'existing' }}', // 'existing' or 'new'
+    
+    // Search state
+    searchQuery: '',
+    searchResults: [],
+    isSearching: false,
+    searchTimeout: null,
+    
+    // Selected entities
+    selectedPatient: {{ $selectedPatient ? json_encode([
+        'id'                           => $selectedPatient->id,
+        'name'                         => $selectedPatient->name,
+        'patient_number'               => $selectedPatient->patient_number,
+        'phone'                        => $selectedPatient->phone,
+        'age'                          => $selectedPatient->age,
+        'gender'                       => $selectedPatient->gender,
+        'address'                      => $selectedPatient->address,
+        'cnic'                         => $selectedPatient->cnic,
+        'father_husband_name'          => $selectedPatient->father_husband_name,
+    ]) : 'null' }},
 
-    doctorId: '{{ $selectedDoctor->id ?? '' }}',
-    serviceId: '{{ $selectedService->id ?? '' }}',
-    servicesList: {{ json_encode($allServices) }},
-    doctorsList: {{ json_encode($allDoctors) }},
+    selectedToken: {{ $selectedToken ? json_encode([
+        'id'                     => $selectedToken->id,
+        'token_number'           => $selectedToken->token_number,
+        'formatted_token_number' => $selectedToken->formatted_token_number,
+        'token_date'             => $selectedToken->token_date->format('d-M-Y'),
+        'doctor_id'              => $selectedToken->doctor_id,
+        'doctor_name'            => $selectedToken->doctor ? $selectedToken->doctor->name : 'N/A',
+        'consultation_fee'       => (float)$selectedToken->consultation_fee,
+        'consultation_paid'      => $selectedToken->hospitalBill ? (float)$selectedToken->hospitalBill->paid_amount : (float)$selectedToken->charged_amount,
+        'consultation_balance'   => $selectedToken->hospitalBill ? (float)$selectedToken->hospitalBill->due_amount : (float)$selectedToken->balance_due,
+    ]) : 'null' }},
 
-    totalFee: {{ $selectedService ? $selectedService->default_fee : ($selectedDoctor ? $selectedDoctor->consultation_fee : 500) }},
-    doctorSharePct: {{ $selectedService ? $selectedService->doctor_share_percentage : 70 }},
-    hospitalSharePct: {{ $selectedService ? $selectedService->hospital_share_percentage : 30 }},
+    consultationOutstanding: {{ $selectedPatient ? $selectedPatient->consultation_outstanding : 0.00 }},
+    hospitalServiceOutstanding: {{ $selectedPatient ? $selectedPatient->hospital_service_outstanding : 0.00 }},
+    totalOutstanding: {{ $selectedPatient ? $selectedPatient->pending_balance : 0.00 }},
+    existingBills: [],
 
-    paymentType: 'paid', // paid, partial, free, pending
-    paidAmount: {{ $selectedService ? $selectedService->default_fee : ($selectedDoctor ? $selectedDoctor->consultation_fee : 500) }},
-    freeReason: '',
+    // Service catalog & items
+    servicesCatalog: {{ json_encode($allServices) }},
+    items: [
+        @if($selectedService)
+        {
+            hospital_service_id: '{{ $selectedService->id }}',
+            service_name: '{{ addslashes($selectedService->name) }}',
+            service_code: '{{ addslashes($selectedService->code) }}',
+            quantity: 1,
+            unit_price: {{ $selectedService->default_fee }},
+            discount_amount: 0,
+            notes: ''
+        }
+        @else
+        {
+            hospital_service_id: '',
+            service_name: '',
+            service_code: '',
+            quantity: 1,
+            unit_price: 0,
+            discount_amount: 0,
+            notes: ''
+        }
+        @endif
+    ],
+
+    // Calculation states
+    includePreviousBalance: false,
+    discountAmount: 0,
+    paymentType: 'paid', // 'paid', 'partial', 'pending', 'free'
     paymentMethod: 'cash',
+    paidAmount: 0,
+    freeReason: '',
     notes: '',
+    submitting: false,
 
     init() {
-        if (this.serviceId) {
-            this.onServiceChange();
-        } else if (this.doctorId) {
-            this.onDoctorChange();
+        if (this.selectedPatient) {
+            this.fetchPatientContext(this.selectedPatient.id, this.selectedToken ? this.selectedToken.id : null);
         }
+        this.recalculateTotals();
     },
 
-    onServiceChange() {
-        let srv = this.servicesList.find(s => s.id == this.serviceId);
-        if (srv) {
-            this.totalFee = parseFloat(srv.default_fee) || 0;
-            this.doctorSharePct = parseFloat(srv.doctor_share_percentage) || 0;
-            this.hospitalSharePct = parseFloat(srv.hospital_share_percentage) || 0;
-            this.recalculate();
-        }
+    addItem() {
+        this.items.push({
+            hospital_service_id: '',
+            service_name: '',
+            service_code: '',
+            quantity: 1,
+            unit_price: 0,
+            discount_amount: 0,
+            notes: ''
+        });
+        this.recalculateTotals();
     },
 
-    onDoctorChange() {
-        let doc = this.doctorsList.find(d => d.id == this.doctorId);
-        if (doc && (!this.serviceId || this.serviceId == '1')) {
-            this.totalFee = parseFloat(doc.consultation_fee) || 500;
-            this.recalculate();
+    removeItem(index) {
+        if (this.items.length > 1) {
+            this.items.splice(index, 1);
+        } else {
+            this.items[0] = {
+                hospital_service_id: '',
+                service_name: '',
+                service_code: '',
+                quantity: 1,
+                unit_price: 0,
+                discount_amount: 0,
+                notes: ''
+            };
         }
+        this.recalculateTotals();
     },
 
-    recalculate() {
+    onServiceSelect(index) {
+        let sId = this.items[index].hospital_service_id;
+        if (sId) {
+            let srv = this.servicesCatalog.find(s => s.id == sId);
+            if (srv) {
+                this.items[index].service_name = srv.name;
+                this.items[index].service_code = srv.code;
+                this.items[index].unit_price = parseFloat(srv.default_fee) || 0;
+            }
+        }
+        this.recalculateTotals();
+    },
+
+    lineTotal(item) {
+        let qty = parseFloat(item.quantity) || 0;
+        let price = parseFloat(item.unit_price) || 0;
+        let disc = parseFloat(item.discount_amount) || 0;
+        let sub = qty * price;
+        return Math.max(0, Math.round((sub - disc) * 100) / 100);
+    },
+
+    get itemsGrossTotal() {
+        return Math.round(this.items.reduce((sum, itm) => {
+            let qty = parseFloat(itm.quantity) || 0;
+            let price = parseFloat(itm.unit_price) || 0;
+            return sum + (qty * price);
+        }, 0) * 100) / 100;
+    },
+
+    get itemsDiscountSum() {
+        return Math.round(this.items.reduce((sum, itm) => {
+            return sum + (parseFloat(itm.discount_amount) || 0);
+        }, 0) * 100) / 100;
+    },
+
+    get newServicesTotal() {
+        return Math.round(this.items.reduce((sum, itm) => sum + this.lineTotal(itm), 0) * 100) / 100;
+    },
+
+    get eligiblePreviousDue() {
+        if (!this.includePreviousBalance) return 0;
+        return Math.round((parseFloat(this.totalOutstanding) || 0) * 100) / 100;
+    },
+
+    get totalDue() {
+        if (this.paymentType === 'free') {
+            return this.includePreviousBalance ? this.eligiblePreviousDue : 0;
+        }
+        return Math.round((this.newServicesTotal + this.eligiblePreviousDue) * 100) / 100;
+    },
+
+    get remainingBalance() {
+        if (this.paymentType === 'free') return 0;
+        let due = this.totalDue;
+        let paid = parseFloat(this.paidAmount) || 0;
+        return Math.max(0, Math.round((due - paid) * 100) / 100);
+    },
+
+    recalculateTotals() {
         if (this.paymentType === 'paid') {
-            this.paidAmount = this.totalFee;
-        } else if (this.paymentType === 'free' || this.paymentType === 'pending') {
+            this.paidAmount = this.totalDue;
+        } else if (this.paymentType === 'pending' || this.paymentType === 'free') {
             this.paidAmount = 0;
         } else if (this.paymentType === 'partial') {
-            if (this.paidAmount > this.totalFee) {
-                this.paidAmount = this.totalFee;
+            if (this.paidAmount > this.totalDue) {
+                this.paidAmount = this.totalDue;
             }
         }
     },
 
-    get doctorShare() {
-        if (this.paymentType === 'free') return 0;
-        let base = (this.paymentType === 'partial') ? (parseFloat(this.paidAmount) || 0) : (parseFloat(this.totalFee) || 0);
-        return Math.round((base * (this.doctorSharePct / 100)) * 100) / 100;
+    onPaymentTypeChange() {
+        this.recalculateTotals();
     },
 
-    get hospitalShare() {
-        if (this.paymentType === 'free') return 0;
-        let base = (this.paymentType === 'partial') ? (parseFloat(this.paidAmount) || 0) : (parseFloat(this.totalFee) || 0);
-        return Math.round((base - this.doctorShare) * 100) / 100;
+    toggleIncludePrevious() {
+        this.recalculateTotals();
     },
 
-    get remainingDue() {
-        if (this.paymentType === 'free') return 0;
-        let fee = parseFloat(this.totalFee) || 0;
-        let paid = parseFloat(this.paidAmount) || 0;
-        return Math.max(0, Math.round((fee - paid) * 100) / 100);
+    // Debounced Search Handler
+    onSearchInput() {
+        clearTimeout(this.searchTimeout);
+        if (this.searchQuery.trim().length < 1) {
+            this.searchResults = [];
+            return;
+        }
+
+        this.searchTimeout = setTimeout(() => {
+            this.performSearch();
+        }, 300);
+    },
+
+    performSearch() {
+        this.isSearching = true;
+        let endpoint = this.billingMode === 'opd' 
+            ? '{{ route('hospital-billing.search-tokens') }}' 
+            : '{{ route('hospital-billing.search-patients') }}';
+
+        fetch(`${endpoint}?query=${encodeURIComponent(this.searchQuery)}`)
+            .then(res => res.json())
+            .then(data => {
+                this.searchResults = data;
+                this.isSearching = false;
+            })
+            .catch(() => {
+                this.searchResults = [];
+                this.isSearching = false;
+            });
+    },
+
+    selectSearchResult(item) {
+        if (this.billingMode === 'opd') {
+            this.selectedToken = {
+                id: item.token_id,
+                token_number: item.token_number,
+                formatted_token_number: item.formatted_token_number,
+                token_date: item.token_date,
+                doctor_id: item.doctor_id,
+                doctor_name: item.doctor_name,
+                consultation_fee: item.consultation_fee,
+                consultation_paid: item.consultation_paid,
+                consultation_balance: item.consultation_balance,
+            };
+            this.selectedPatient = {
+                id: item.patient_id,
+                name: item.patient_name,
+                patient_number: item.patient_number,
+                phone: item.patient_phone,
+                age: item.patient_age,
+                gender: item.patient_gender,
+            };
+            this.consultationOutstanding = item.consultation_outstanding;
+            this.hospitalServiceOutstanding = item.hospital_service_outstanding;
+            this.totalOutstanding = item.total_outstanding;
+            this.fetchPatientContext(item.patient_id, item.token_id);
+        } else {
+            this.selectedPatient = item;
+            this.selectedToken = null;
+            this.consultationOutstanding = item.consultation_outstanding;
+            this.hospitalServiceOutstanding = item.hospital_service_outstanding;
+            this.totalOutstanding = item.total_outstanding;
+            this.fetchPatientContext(item.id, null);
+        }
+        this.searchResults = [];
+        this.searchQuery = '';
+        this.recalculateTotals();
+    },
+
+    fetchPatientContext(patientId, tokenId) {
+        let url = `/hospital-billing/patient-context/${patientId}`;
+        if (tokenId) url += `?token_id=${tokenId}`;
+
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                this.consultationOutstanding = data.consultation_outstanding || 0;
+                this.hospitalServiceOutstanding = data.hospital_service_outstanding || 0;
+                this.totalOutstanding = data.total_outstanding || 0;
+                this.existingBills = data.existing_bills || [];
+                if (data.token && !this.selectedToken) {
+                    this.selectedToken = data.token;
+                }
+                this.recalculateTotals();
+            });
+    },
+
+    clearSelection() {
+        this.selectedPatient = null;
+        this.selectedToken = null;
+        this.consultationOutstanding = 0;
+        this.hospitalServiceOutstanding = 0;
+        this.totalOutstanding = 0;
+        this.existingBills = [];
+        this.recalculateTotals();
+    },
+
+    switchBillingMode(mode) {
+        this.billingMode = mode;
+        this.searchResults = [];
+        this.searchQuery = '';
+        if (mode === 'direct') {
+            this.selectedToken = null;
+        }
+        this.recalculateTotals();
     }
 }">
 
@@ -85,21 +304,21 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-gray-200">
         <div>
             <div class="flex items-center space-x-2 text-xs text-blue-600 font-semibold mb-1">
-                <a href="/hospital-billing" class="hover:underline">Hospital Billing</a>
+                <a href="{{ route('hospital-billing.index') }}" class="hover:underline">Hospital Billing</a>
                 <span>/</span>
-                <span>New Bill</span>
+                <span>Generate Bill</span>
             </div>
             <h1 class="text-2xl font-bold text-gray-800 flex items-center space-x-2">
                 <i class="fa-solid fa-file-invoice-dollar text-blue-600"></i>
-                <span>Generate Hospital Bill & Revenue Split</span>
+                <span>Hospital Billing & Service Cashier</span>
             </h1>
-            <p class="text-xs text-gray-500 mt-1">Receive patient payments, calculate doctor/hospital revenue shares and issue official receipt</p>
+            <p class="text-xs text-gray-500 mt-1">Process OPD prescribed procedures, direct hospital walk-in services, and partial collections</p>
         </div>
 
-        <div>
+        <div class="flex items-center space-x-3">
             <a href="{{ route('hospital-billing.index') }}" class="inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition">
                 <i class="fa-solid fa-arrow-left mr-1.5"></i>
-                <span>Back to Invoices</span>
+                <span>Billing Invoices</span>
             </a>
         </div>
     </div>
@@ -119,352 +338,608 @@
         </div>
     @endif
 
-    <form action="{{ route('hospital-billing.store') }}" method="POST">
+    <!-- MAIN FORM -->
+    <form action="{{ route('hospital-billing.store') }}" method="POST" @submit="submitting = true">
         @csrf
+        <input type="hidden" name="billing_mode" :value="billingMode">
         <input type="hidden" name="patient_mode" :value="patientMode">
-        <input type="hidden" name="doctor_share_percentage" :value="doctorSharePct">
+        <input type="hidden" name="patient_id" :value="selectedPatient ? selectedPatient.id : ''">
+        <input type="hidden" name="patient_token_id" :value="selectedToken ? selectedToken.id : ''">
+        <input type="hidden" name="doctor_id" :value="selectedToken ? selectedToken.doctor_id : ''">
+        <input type="hidden" name="total_amount" :value="newServicesTotal">
+        <input type="hidden" name="items" :value="JSON.stringify(items)">
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-            <!-- LEFT 2 COLUMNS: PATIENT & SERVICE SELECTION -->
+            <!-- LEFT 2 COLUMNS: MODE, PATIENT, SERVICES -->
             <div class="lg:col-span-2 space-y-6">
 
-                <!-- 1. PATIENT SELECTION CARD -->
-                <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-                    <div class="flex items-center justify-between border-b border-gray-100 pb-3">
-                        <h3 class="font-bold text-sm text-gray-800 flex items-center space-x-2">
+                <!-- 1. BILLING MODE SELECTOR CARD -->
+                <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 pb-3">
+                        <div class="flex items-center space-x-2">
                             <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-600 text-xs flex items-center justify-center font-black">1</span>
-                            <span>Patient Information</span>
-                        </h3>
+                            <h3 class="font-bold text-sm text-gray-800">Select Hospital Billing Mode</h3>
+                        </div>
 
-                        <!-- Patient Mode Toggle -->
-                        <div class="inline-flex bg-gray-100 p-0.5 rounded-lg text-xs font-semibold">
+                        <!-- Mode Toggle Tabs -->
+                        <div class="inline-flex bg-gray-100 p-1 rounded-xl text-xs font-semibold">
                             <button 
                                 type="button" 
-                                @click="patientMode = 'existing'" 
-                                :class="patientMode === 'existing' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-500 hover:text-gray-900'"
-                                class="px-3 py-1 rounded-md transition"
+                                @click="switchBillingMode('opd')" 
+                                :class="billingMode === 'opd' ? 'bg-white text-blue-600 shadow-xs font-bold' : 'text-gray-500 hover:text-gray-900'"
+                                class="px-4 py-1.5 rounded-lg transition flex items-center space-x-1.5"
                             >
-                                Existing Patient
+                                <i class="fa-solid fa-hospital-user"></i>
+                                <span>Mode A: OPD Patient Billing</span>
                             </button>
                             <button 
                                 type="button" 
-                                @click="patientMode = 'new'" 
-                                :class="patientMode === 'new' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-500 hover:text-gray-900'"
-                                class="px-3 py-1 rounded-md transition"
+                                @click="switchBillingMode('direct')" 
+                                :class="billingMode === 'direct' ? 'bg-white text-emerald-600 shadow-xs font-bold' : 'text-gray-500 hover:text-gray-900'"
+                                class="px-4 py-1.5 rounded-lg transition flex items-center space-x-1.5"
                             >
-                                + New Patient
+                                <i class="fa-solid fa-hand-holding-medical"></i>
+                                <span>Mode B: Direct Service Billing</span>
                             </button>
                         </div>
                     </div>
 
-                    <!-- EXISTING PATIENT SELECT -->
-                    <div x-show="patientMode === 'existing'" class="space-y-3">
-                        <div>
-                            <label class="block text-xs font-bold text-gray-700 mb-1">Search & Select Patient <span class="text-red-500">*</span></label>
-                            <select 
-                                name="patient_id" 
-                                x-model="selectedPatientId" 
-                                class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:outline-hidden focus:bg-white focus:border-blue-500"
-                            >
-                                <option value="">-- Choose Existing Patient --</option>
-                                @foreach(\App\Models\Patient::orderBy('name')->get() as $p)
-                                    <option value="{{ $p->id }}" {{ (old('patient_id') == $p->id || (isset($selectedPatient) && $selectedPatient->id == $p->id)) ? 'selected' : '' }}>
-                                        {{ $p->name }} ({{ $p->patient_number }}) - {{ $p->phone ?: 'No phone' }} - Age: {{ $p->age }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- NEW PATIENT REGISTRATION FORM -->
-                    <div x-show="patientMode === 'new'" class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs" style="display: none;">
-                        <div class="sm:col-span-2">
-                            <label class="block font-bold text-gray-700 mb-1">Patient Full Name <span class="text-red-500">*</span></label>
-                            <input type="text" name="patient_name" value="{{ old('patient_name') }}" placeholder="Full Name" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-medium focus:bg-white focus:border-blue-500">
-                        </div>
-
-                        <div>
-                            <label class="block font-bold text-gray-700 mb-1">Father / Husband Name</label>
-                            <input type="text" name="father_husband_name" value="{{ old('father_husband_name') }}" placeholder="Father / Husband Name" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-medium focus:bg-white focus:border-blue-500">
-                        </div>
-
-                        <div>
-                            <label class="block font-bold text-gray-700 mb-1">Phone Number</label>
-                            <input type="text" name="phone" value="{{ old('phone') }}" placeholder="03XXXXXXXXX" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-mono focus:bg-white focus:border-blue-500">
-                        </div>
-
-                        <div>
-                            <label class="block font-bold text-gray-700 mb-1">Age <span class="text-red-500">*</span></label>
-                            <input type="number" name="age" value="{{ old('age', 25) }}" min="0" max="150" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-mono focus:bg-white focus:border-blue-500">
-                        </div>
-
-                        <div>
-                            <label class="block font-bold text-gray-700 mb-1">Gender <span class="text-red-500">*</span></label>
-                            <select name="gender" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-medium focus:bg-white focus:border-blue-500">
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-
-                        <div class="sm:col-span-2">
-                            <label class="block font-bold text-gray-700 mb-1">Address</label>
-                            <input type="text" name="address" value="{{ old('address') }}" placeholder="Residential address / City" class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-medium focus:bg-white focus:border-blue-500">
-                        </div>
+                    <div class="text-xs text-gray-500">
+                        <template x-if="billingMode === 'opd'">
+                            <p class="flex items-center space-x-1.5 text-blue-700 bg-blue-50/70 p-2.5 rounded-lg border border-blue-100">
+                                <i class="fa-solid fa-info-circle"></i>
+                                <span><strong>Mode A (OPD Patient):</strong> For patients who already have an OPD token. Preserves consultation fee history and attaches procedure charges to the patient without charging consultation again.</span>
+                            </p>
+                        </template>
+                        <template x-if="billingMode === 'direct'">
+                            <p class="flex items-center space-x-1.5 text-emerald-700 bg-emerald-50/70 p-2.5 rounded-lg border border-emerald-100">
+                                <i class="fa-solid fa-info-circle"></i>
+                                <span><strong>Mode B (Direct Service):</strong> For direct walk-in/private patients (Drip, BP check, Sugar test, Injections, Dressing). No doctor or OPD token required. 100% hospital service revenue.</span>
+                            </p>
+                        </template>
                     </div>
                 </div>
 
-                <!-- 2. SERVICE & DOCTOR SELECTION CARD -->
-                <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-                    <div class="border-b border-gray-100 pb-3">
-                        <h3 class="font-bold text-sm text-gray-800 flex items-center space-x-2">
-                            <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-xs flex items-center justify-center font-black">2</span>
-                            <span>Hospital Service & Doctor</span>
-                        </h3>
+                <!-- 2. PATIENT / TOKEN LOOKUP CARD -->
+                <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-600 text-xs flex items-center justify-center font-black">2</span>
+                            <h3 class="font-bold text-sm text-gray-800" x-text="billingMode === 'opd' ? 'Search OPD Token & Patient' : 'Select or Register Patient'"></h3>
+                        </div>
+
+                        <!-- In Direct Mode: Toggle Existing / New Patient -->
+                        <template x-if="billingMode === 'direct'">
+                            <div class="inline-flex bg-gray-100 p-0.5 rounded-lg text-xs font-semibold">
+                                <button 
+                                    type="button" 
+                                    @click="patientMode = 'existing'" 
+                                    :class="patientMode === 'existing' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-500 hover:text-gray-900'"
+                                    class="px-3 py-1 rounded-md transition"
+                                >
+                                    Existing Patient
+                                </button>
+                                <button 
+                                    type="button" 
+                                    @click="patientMode = 'new'; clearSelection()" 
+                                    :class="patientMode === 'new' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-500 hover:text-gray-900'"
+                                    class="px-3 py-1 rounded-md transition"
+                                >
+                                    + New Patient
+                                </button>
+                            </div>
+                        </template>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                        <!-- Service Selection -->
-                        <div>
-                            <label class="block font-bold text-gray-700 mb-1">Select Service <span class="text-red-500">*</span></label>
-                            <select 
-                                name="hospital_service_id" 
-                                x-model="serviceId" 
-                                @change="onServiceChange()" 
-                                class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-medium focus:bg-white focus:border-blue-500"
-                            >
-                                <option value="">-- Choose Hospital Service --</option>
-                                @foreach($allServices as $srv)
-                                    <option value="{{ $srv->id }}">
-                                        {{ $srv->name }} (Fee: PKR {{ number_format($srv->default_fee, 0) }}) - Doc: {{ number_format($srv->doctor_share_percentage, 0) }}% / Hosp: {{ number_format($srv->hospital_share_percentage, 0) }}%
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-
-                        <!-- Doctor Selection -->
-                        <div>
-                            <label class="block font-bold text-gray-700 mb-1">Attending Doctor (Optional for lab/procedure)</label>
-                            <select 
-                                name="doctor_id" 
-                                x-model="doctorId" 
-                                @change="onDoctorChange()" 
-                                class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-medium focus:bg-white focus:border-blue-500"
-                            >
-                                <option value="">-- Hospital Direct / No Doctor --</option>
-                                @foreach($allDoctors as $doc)
-                                    <option value="{{ $doc->id }}">
-                                        {{ $doc->name }} (Fee: PKR {{ number_format($doc->consultation_fee, 0) }})
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-
-                        <!-- Editable Total Fee -->
-                        <div>
-                            <label class="block font-bold text-gray-700 mb-1">Total Service Fee (PKR) <span class="text-red-500">*</span></label>
-                            <input 
-                                type="number" 
-                                step="0.01" 
-                                min="0" 
-                                name="total_amount" 
-                                x-model.number="totalFee" 
-                                @input="recalculate()" 
-                                required 
-                                class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-mono font-bold text-gray-900 focus:bg-white focus:border-blue-500"
-                            >
-                        </div>
-
-                        <!-- Payment Method -->
-                        <div>
-                            <label class="block font-bold text-gray-700 mb-1">Payment Method <span class="text-red-500">*</span></label>
-                            <select 
-                                name="payment_method" 
-                                x-model="paymentMethod" 
-                                class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-medium focus:bg-white focus:border-blue-500"
-                            >
-                                <option value="cash">Cash Counter</option>
-                                <option value="card">Debit / Credit Card</option>
-                                <option value="bank_transfer">Bank Transfer / Online</option>
-                                <option value="other">Other / Cheque</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Payment Status Selectors: Paid / Partial / Free / Pending -->
-                    <div class="pt-2">
-                        <label class="block font-bold text-gray-700 mb-2 text-xs">Payment Collection Status <span class="text-red-500">*</span></label>
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                            <label 
-                                :class="paymentType === 'paid' ? 'border-emerald-500 bg-emerald-50/50 text-emerald-900 ring-2 ring-emerald-500' : 'border-gray-200 bg-gray-50 hover:bg-white text-gray-700'"
-                                class="p-3 border rounded-xl cursor-pointer transition flex flex-col items-center justify-center text-center space-y-1"
-                            >
-                                <input type="radio" name="payment_type" value="paid" x-model="paymentType" @change="recalculate()" class="sr-only">
-                                <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i>
-                                <span class="font-bold">Full Paid</span>
-                                <span class="text-[10px] text-gray-500">100% Collected</span>
+                    <!-- SEARCH BAR (When using existing patient or token) -->
+                    <template x-if="patientMode === 'existing' && !selectedPatient">
+                        <div class="relative space-y-2">
+                            <label class="block text-xs font-bold text-gray-700">
+                                <span x-text="billingMode === 'opd' ? 'Search by Token Number, Patient Name, ID, or Phone' : 'Search Patient by Name, Patient ID, CNIC or Phone'"></span>
+                                <span class="text-red-500">*</span>
                             </label>
 
-                            <label 
-                                :class="paymentType === 'partial' ? 'border-amber-500 bg-amber-50/50 text-amber-900 ring-2 ring-amber-500' : 'border-gray-200 bg-gray-50 hover:bg-white text-gray-700'"
-                                class="p-3 border rounded-xl cursor-pointer transition flex flex-col items-center justify-center text-center space-y-1"
-                            >
-                                <input type="radio" name="payment_type" value="partial" x-model="paymentType" @change="recalculate()" class="sr-only">
-                                <i class="fa-solid fa-clock-rotate-left text-amber-600 text-base"></i>
-                                <span class="font-bold">Partial Paid</span>
-                                <span class="text-[10px] text-gray-500">Part received, rest due</span>
-                            </label>
+                            <div class="relative">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-gray-400 text-xs"></i>
+                                <input 
+                                    type="text" 
+                                    x-model="searchQuery" 
+                                    @input="onSearchInput"
+                                    :placeholder="billingMode === 'opd' ? 'Type token number (e.g. 12), patient name, or phone...' : 'Type patient name, phone number, or ID...'" 
+                                    class="w-full pl-9 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+                                    autocomplete="off"
+                                >
+                                <template x-if="isSearching">
+                                    <i class="fa-solid fa-circle-notch fa-spin absolute right-3 top-3 text-blue-600 text-xs"></i>
+                                </template>
+                            </div>
 
-                            <label 
-                                :class="paymentType === 'free' ? 'border-purple-500 bg-purple-50/50 text-purple-900 ring-2 ring-purple-500' : 'border-gray-200 bg-gray-50 hover:bg-white text-gray-700'"
-                                class="p-3 border rounded-xl cursor-pointer transition flex flex-col items-center justify-center text-center space-y-1"
+                            <!-- Live Search Results Dropdown -->
+                            <div 
+                                x-show="searchResults.length > 0" 
+                                class="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto divide-y divide-gray-100"
                             >
-                                <input type="radio" name="payment_type" value="free" x-model="paymentType" @change="recalculate()" class="sr-only">
-                                <i class="fa-solid fa-hand-holding-heart text-purple-600 text-base"></i>
-                                <span class="font-bold">Free Patient</span>
-                                <span class="text-[10px] text-gray-500">100% Discounted</span>
-                            </label>
+                                <template x-for="result in searchResults" :key="result.token_id || result.id">
+                                    <div 
+                                        @click="selectSearchResult(result)" 
+                                        class="p-3 hover:bg-blue-50 cursor-pointer flex items-center justify-between text-xs transition"
+                                    >
+                                        <div class="space-y-0.5">
+                                            <div class="font-bold text-gray-800 flex items-center space-x-2">
+                                                <span x-text="result.patient_name || result.name"></span>
+                                                <span class="text-[10px] text-gray-400" x-text="result.patient_number || ''"></span>
+                                                <template x-if="result.token_number">
+                                                    <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-black text-[10px]" x-text="'Token #' + result.token_number"></span>
+                                                </template>
+                                            </div>
+                                            <div class="text-[11px] text-gray-500 flex items-center space-x-3">
+                                                <span><i class="fa-solid fa-phone text-[10px] mr-1"></i><span x-text="result.patient_phone || result.phone || 'No phone'"></span></span>
+                                                <template x-if="result.doctor_name">
+                                                    <span><i class="fa-solid fa-user-doctor text-[10px] mr-1"></i><span x-text="result.doctor_name"></span></span>
+                                                </template>
+                                                <template x-if="result.token_date">
+                                                    <span class="text-gray-400" x-text="result.token_date"></span>
+                                                </template>
+                                            </div>
+                                        </div>
 
-                            <label 
-                                :class="paymentType === 'pending' ? 'border-gray-500 bg-gray-100 text-gray-900 ring-2 ring-gray-500' : 'border-gray-200 bg-gray-50 hover:bg-white text-gray-700'"
-                                class="p-3 border rounded-xl cursor-pointer transition flex flex-col items-center justify-center text-center space-y-1"
-                            >
-                                <input type="radio" name="payment_type" value="pending" x-model="paymentType" @change="recalculate()" class="sr-only">
-                                <i class="fa-solid fa-hourglass-half text-gray-600 text-base"></i>
-                                <span class="font-bold">Pending Due</span>
-                                <span class="text-[10px] text-gray-500">Unpaid Bill</span>
-                            </label>
+                                        <div class="text-right">
+                                            <template x-if="result.total_outstanding > 0">
+                                                <span class="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full" x-text="'Due: PKR ' + result.total_outstanding"></span>
+                                            </template>
+                                            <div class="text-[10px] text-blue-600 font-semibold mt-1">Select &rarr;</div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
                         </div>
-                    </div>
+                    </template>
 
-                    <!-- Partial Payment Input -->
-                    <div x-show="paymentType === 'partial'" class="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2 text-xs" style="display: none;">
-                        <label class="block font-bold text-amber-900">Paid Amount Now (PKR) <span class="text-red-500">*</span></label>
-                        <div class="relative max-w-xs">
-                            <input 
-                                type="number" 
-                                step="0.01" 
-                                min="0.01" 
-                                :max="totalFee" 
-                                name="paid_amount" 
-                                x-model.number="paidAmount" 
-                                @input="recalculate()" 
-                                class="w-full p-2.5 bg-white border border-amber-300 rounded-lg font-mono font-bold text-amber-900 focus:outline-hidden focus:border-amber-500"
-                            >
+                    <!-- SELECTED PATIENT & TOKEN SUMMARY CARD -->
+                    <template x-if="selectedPatient">
+                        <div class="p-4 rounded-xl bg-blue-50/60 border border-blue-100 space-y-3">
+                            <div class="flex items-start justify-between">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                                        <i class="fa-solid fa-user"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold text-sm text-gray-800" x-text="selectedPatient.name"></h4>
+                                        <p class="text-[11px] text-gray-500 flex items-center space-x-2">
+                                            <span x-text="selectedPatient.patient_number || 'PT-XXXXX'"></span>
+                                            <span>&bull;</span>
+                                            <span x-text="(selectedPatient.gender || '') + (selectedPatient.age ? ', ' + selectedPatient.age + ' yrs' : '')"></span>
+                                            <span>&bull;</span>
+                                            <span x-text="selectedPatient.phone || 'No Phone'"></span>
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <button type="button" @click="clearSelection()" class="text-xs text-red-600 hover:text-red-800 font-semibold flex items-center space-x-1">
+                                    <i class="fa-solid fa-xmark"></i>
+                                    <span>Change</span>
+                                </button>
+                            </div>
+
+                            <!-- OPD TOKEN DETAILS (If Mode A) -->
+                            <template x-if="selectedToken">
+                                <div class="p-3 bg-white rounded-lg border border-blue-100 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                    <div>
+                                        <span class="text-[10px] text-gray-400 block font-semibold">OPD Token</span>
+                                        <span class="font-bold text-blue-600" x-text="'#' + selectedToken.token_number + ' (' + selectedToken.token_date + ')'"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-[10px] text-gray-400 block font-semibold">Assigned Doctor</span>
+                                        <span class="font-bold text-gray-800" x-text="selectedToken.doctor_name"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-[10px] text-gray-400 block font-semibold">Consultation Paid</span>
+                                        <span class="font-bold text-emerald-600" x-text="'PKR ' + selectedToken.consultation_paid"></span>
+                                    </div>
+                                    <div>
+                                        <span class="text-[10px] text-gray-400 block font-semibold">Consultation Balance</span>
+                                        <span class="font-bold" :class="selectedToken.consultation_balance > 0 ? 'text-amber-600' : 'text-gray-500'" x-text="'PKR ' + selectedToken.consultation_balance"></span>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- SEPARATE DEBT BREAKDOWN -->
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-xs">
+                                <div class="p-2.5 rounded-lg bg-white border border-gray-100">
+                                    <span class="text-[10px] text-gray-400 block uppercase font-bold">Consultation Debt</span>
+                                    <span class="text-xs font-bold" :class="consultationOutstanding > 0 ? 'text-amber-600' : 'text-gray-700'" x-text="'PKR ' + consultationOutstanding"></span>
+                                    <p class="text-[9px] text-gray-400 mt-0.5">Doctor OPD visits</p>
+                                </div>
+                                <div class="p-2.5 rounded-lg bg-white border border-gray-100">
+                                    <span class="text-[10px] text-gray-400 block uppercase font-bold">Hospital Service Debt</span>
+                                    <span class="text-xs font-bold" :class="hospitalServiceOutstanding > 0 ? 'text-red-600' : 'text-gray-700'" x-text="'PKR ' + hospitalServiceOutstanding"></span>
+                                    <p class="text-[9px] text-gray-400 mt-0.5">Procedures & tests</p>
+                                </div>
+                                <div class="p-2.5 rounded-lg bg-white border border-gray-100">
+                                    <span class="text-[10px] text-gray-400 block uppercase font-bold">Total Patient Due</span>
+                                    <span class="text-xs font-bold" :class="totalOutstanding > 0 ? 'text-red-700' : 'text-emerald-700'" x-text="'PKR ' + totalOutstanding"></span>
+                                    <p class="text-[9px] text-gray-400 mt-0.5">All outstanding balances</p>
+                                </div>
+                            </div>
+
+                            <!-- Carry-Forward Checkbox -->
+                            <template x-if="totalOutstanding > 0">
+                                <div class="pt-2 border-t border-blue-100 flex items-center justify-between">
+                                    <label class="flex items-center space-x-2 cursor-pointer text-xs font-bold text-gray-700">
+                                        <input 
+                                            type="checkbox" 
+                                            name="include_previous_balance" 
+                                            value="1" 
+                                            x-model="includePreviousBalance" 
+                                            @change="toggleIncludePrevious"
+                                            class="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                                        >
+                                        <span>Include Eligible Previous Outstanding Balance (PKR <span x-text="totalOutstanding"></span>) in this Bill</span>
+                                    </label>
+                                    <span class="text-[10px] text-gray-500">FIFO auto-allocation</span>
+                                </div>
+                            </template>
                         </div>
-                        <p class="text-[11px] text-amber-800">
-                            Remaining Due to be paid later: <strong class="font-mono font-bold" x-text="'PKR ' + remainingDue.toFixed(2)"></strong>
-                        </p>
+                    </template>
+
+                    <!-- NEW PATIENT FORM (In Direct Service Mode) -->
+                    <template x-if="patientMode === 'new' && billingMode === 'direct'">
+                        <div class="space-y-4 p-4 rounded-xl bg-gray-50 border border-gray-200 text-xs">
+                            <h4 class="font-bold text-gray-800 flex items-center space-x-2">
+                                <i class="fa-solid fa-user-plus text-blue-600"></i>
+                                <span>Register New Direct Patient</span>
+                            </h4>
+
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-gray-700 mb-1">Full Name <span class="text-red-500">*</span></label>
+                                    <input type="text" name="patient_name" placeholder="Patient Name" class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs" :required="patientMode === 'new'">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-gray-700 mb-1">Father / Husband Name</label>
+                                    <input type="text" name="father_husband_name" placeholder="Father/Husband Name" class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-gray-700 mb-1">Phone Number</label>
+                                    <input type="text" name="phone" placeholder="0300-1234567" class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-gray-700 mb-1">Age (Years) <span class="text-red-500">*</span></label>
+                                    <input type="number" name="age" min="0" max="150" placeholder="e.g. 30" class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs" :required="patientMode === 'new'">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-gray-700 mb-1">Gender <span class="text-red-500">*</span></label>
+                                    <select name="gender" class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs" :required="patientMode === 'new'">
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-gray-700 mb-1">CNIC (Optional)</label>
+                                    <input type="text" name="cnic" placeholder="xxxxx-xxxxxxx-x" class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-[11px] font-bold text-gray-700 mb-1">Address</label>
+                                <input type="text" name="address" placeholder="Residential address / city" class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs">
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- 3. MULTI-SERVICE ENTRY TABLE CARD -->
+                <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-600 text-xs flex items-center justify-center font-black">3</span>
+                            <h3 class="font-bold text-sm text-gray-800">Hospital Services & Procedures</h3>
+                        </div>
+
+                        <button 
+                            type="button" 
+                            @click="addItem()" 
+                            class="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-xs"
+                        >
+                            <i class="fa-solid fa-plus mr-1.5"></i>
+                            <span>Add Service</span>
+                        </button>
                     </div>
 
-                    <!-- Free Patient Reason -->
-                    <div x-show="paymentType === 'free'" class="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-2 text-xs" style="display: none;">
-                        <label class="block font-bold text-purple-900">Reason for Free Billing <span class="text-red-500">*</span></label>
-                        <select name="free_reason" x-model="freeReason" class="w-full p-2.5 bg-white border border-purple-300 rounded-lg font-medium focus:border-purple-500">
-                            <option value="Poor Patient">Poor / Needy Patient</option>
-                            <option value="Doctor Reference">Doctor Personal Reference</option>
-                            <option value="Hospital Staff">Hospital Employee / Staff Relative</option>
-                            <option value="Emergency Welfare">Emergency / Welfare Case</option>
-                            <option value="Other">Other Reason</option>
-                        </select>
+                    <!-- Items Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50 text-gray-600 font-bold border-b border-gray-200">
+                                    <th class="py-2.5 px-3">Hospital Service</th>
+                                    <th class="py-2.5 px-3 w-20 text-center">Qty</th>
+                                    <th class="py-2.5 px-3 w-28 text-right">Unit Price (PKR)</th>
+                                    <th class="py-2.5 px-3 w-24 text-right">Discount</th>
+                                    <th class="py-2.5 px-3 w-28 text-right">Line Total</th>
+                                    <th class="py-2.5 px-2 w-10 text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <template x-for="(item, index) in items" :key="index">
+                                    <tr class="hover:bg-gray-50/50 transition">
+                                        <!-- Service Dropdown -->
+                                        <td class="py-2 px-3">
+                                            <select 
+                                                x-model="item.hospital_service_id" 
+                                                @change="onServiceSelect(index)" 
+                                                class="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500"
+                                            >
+                                                <option value="">-- Choose Hospital Service --</option>
+                                                <template x-for="srv in servicesCatalog" :key="srv.id">
+                                                    <option :value="srv.id" x-text="srv.name + ' (PKR ' + srv.default_fee + ')'"></option>
+                                                </template>
+                                            </select>
+                                            <input 
+                                                type="text" 
+                                                x-model="item.notes" 
+                                                placeholder="Optional item remarks (e.g. Right arm drip, 5ml dose)" 
+                                                class="w-full mt-1 px-2 py-1 bg-transparent text-[10px] text-gray-500 border-none focus:ring-0 placeholder:text-gray-300"
+                                            >
+                                        </td>
+
+                                        <!-- Quantity -->
+                                        <td class="py-2 px-3 text-center">
+                                            <input 
+                                                type="number" 
+                                                min="1" 
+                                                step="1" 
+                                                x-model="item.quantity" 
+                                                @input="recalculateTotals()" 
+                                                class="w-16 px-2 py-1.5 text-center bg-white border border-gray-200 rounded-lg text-xs font-semibold"
+                                            >
+                                        </td>
+
+                                        <!-- Unit Price -->
+                                        <td class="py-2 px-3 text-right">
+                                            <input 
+                                                type="number" 
+                                                min="0" 
+                                                step="0.01" 
+                                                x-model="item.unit_price" 
+                                                @input="recalculateTotals()" 
+                                                class="w-24 px-2 py-1.5 text-right bg-white border border-gray-200 rounded-lg text-xs font-semibold"
+                                            >
+                                        </td>
+
+                                        <!-- Discount -->
+                                        <td class="py-2 px-3 text-right">
+                                            <input 
+                                                type="number" 
+                                                min="0" 
+                                                step="0.01" 
+                                                x-model="item.discount_amount" 
+                                                @input="recalculateTotals()" 
+                                                class="w-20 px-2 py-1.5 text-right bg-white border border-gray-200 rounded-lg text-xs"
+                                                placeholder="0.00"
+                                            >
+                                        </td>
+
+                                        <!-- Line Total -->
+                                        <td class="py-2 px-3 text-right font-bold text-gray-800">
+                                            <span x-text="'PKR ' + lineTotal(item).toFixed(2)"></span>
+                                        </td>
+
+                                        <!-- Delete Action -->
+                                        <td class="py-2 px-2 text-center">
+                                            <button 
+                                                type="button" 
+                                                @click="removeItem(index)" 
+                                                class="text-gray-400 hover:text-red-600 transition p-1"
+                                                title="Remove service"
+                                            >
+                                                <i class="fa-solid fa-trash-can text-xs"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
                     </div>
 
-                    <!-- Notes -->
-                    <div>
-                        <label class="block font-bold text-gray-700 mb-1 text-xs">Remarks / Billing Notes</label>
-                        <input type="text" name="notes" placeholder="Optional notes for cashier record..." class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:bg-white focus:border-blue-500">
+                    <!-- Items Quick Total Bar -->
+                    <div class="flex justify-between items-center text-xs text-gray-600 pt-2 border-t border-gray-100 font-semibold">
+                        <span>Items Subtotal: PKR <strong x-text="itemsGrossTotal.toFixed(2)"></strong></span>
+                        <template x-if="itemsDiscountSum > 0">
+                            <span class="text-amber-600">Item Discounts: - PKR <strong x-text="itemsDiscountSum.toFixed(2)"></strong></span>
+                        </template>
+                        <span class="text-blue-700 font-bold">New Services Total: PKR <strong x-text="newServicesTotal.toFixed(2)"></strong></span>
                     </div>
                 </div>
 
             </div>
 
-            <!-- RIGHT 1 COLUMN: REVENUE SPLIT PREVIEW & ACTIONS -->
+            <!-- RIGHT 1 COLUMN: BILLING & PAYMENT SUMMARY CARD -->
             <div class="space-y-6">
 
-                <!-- LIVE REVENUE SPLIT PREVIEW CARD -->
-                <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                    <div class="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
-                        <h3 class="font-bold text-xs uppercase tracking-wider flex items-center space-x-2">
-                            <i class="fa-solid fa-calculator text-blue-400"></i>
-                            <span>Revenue Split Summary</span>
+                <div class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-5 sticky top-4">
+                    <div class="border-b border-gray-100 pb-3 flex items-center justify-between">
+                        <h3 class="font-bold text-sm text-gray-800 flex items-center space-x-2">
+                            <i class="fa-solid fa-calculator text-blue-600"></i>
+                            <span>Financial Summary</span>
                         </h3>
-                        <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 font-mono text-slate-300">Live Calculation</span>
+                        <span 
+                            class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider"
+                            :class="{
+                                'bg-emerald-100 text-emerald-800': paymentType === 'paid',
+                                'bg-amber-100 text-amber-800': paymentType === 'partial',
+                                'bg-red-100 text-red-800': paymentType === 'pending',
+                                'bg-purple-100 text-purple-800': paymentType === 'free'
+                            }"
+                            x-text="paymentType"
+                        ></span>
                     </div>
 
-                    <div class="p-5 space-y-4 text-xs font-mono">
-                        <!-- Gross & Discount -->
-                        <div class="space-y-1.5 pb-3 border-b border-gray-100">
-                            <div class="flex justify-between text-gray-600">
-                                <span>Gross Service Fee:</span>
-                                <strong class="text-gray-900" x-text="'PKR ' + parseFloat(totalFee).toFixed(2)"></strong>
-                            </div>
-
-                            <template x-if="paymentType === 'free'">
-                                <div class="flex justify-between text-purple-600">
-                                    <span>Free Waiver / Discount:</span>
-                                    <strong x-text="'- PKR ' + parseFloat(totalFee).toFixed(2)"></strong>
-                                </div>
-                            </template>
-
-                            <div class="flex justify-between text-gray-600">
-                                <span>Hospital Collected:</span>
-                                <strong class="text-emerald-600 text-sm font-black" x-text="'PKR ' + (paymentType === 'free' ? '0.00' : (paymentType === 'partial' ? parseFloat(paidAmount).toFixed(2) : parseFloat(totalFee).toFixed(2)))"></strong>
-                            </div>
-
-                            <template x-if="paymentType === 'partial'">
-                                <div class="flex justify-between text-amber-600 font-bold">
-                                    <span>Remaining Due:</span>
-                                    <span x-text="'PKR ' + remainingDue.toFixed(2)"></span>
-                                </div>
-                            </template>
+                    <!-- Financial Line Items -->
+                    <div class="space-y-2.5 text-xs">
+                        <div class="flex justify-between items-center text-gray-600">
+                            <span>Services Subtotal:</span>
+                            <span class="font-semibold text-gray-800" x-text="'PKR ' + itemsGrossTotal.toFixed(2)"></span>
                         </div>
 
-                        <!-- Revenue Sharing Split -->
-                        <div class="space-y-2">
-                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">Recognized Revenue Share</p>
-                            
-                            <!-- Doctor Share -->
-                            <div class="p-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-center justify-between">
+                        <template x-if="itemsDiscountSum > 0">
+                            <div class="flex justify-between items-center text-amber-600">
+                                <span>Total Discounts:</span>
+                                <span class="font-semibold" x-text="'- PKR ' + itemsDiscountSum.toFixed(2)"></span>
+                            </div>
+                        </template>
+
+                        <div class="flex justify-between items-center font-bold text-gray-800 pt-1 border-t border-gray-50">
+                            <span>New Service Total:</span>
+                            <span class="text-blue-600" x-text="'PKR ' + newServicesTotal.toFixed(2)"></span>
+                        </div>
+
+                        <template x-if="includePreviousBalance && eligiblePreviousDue > 0">
+                            <div class="flex justify-between items-center text-red-600 font-semibold bg-red-50/50 p-2 rounded-lg border border-red-100">
                                 <div>
-                                    <div class="font-bold text-blue-900 font-sans">Doctor Payable</div>
-                                    <div class="text-[10px] text-blue-600">Share: <span x-text="doctorSharePct"></span>%</div>
+                                    <span>Eligible Previous Due:</span>
+                                    <span class="text-[10px] text-gray-500 block">Consultation & Services</span>
                                 </div>
-                                <div class="text-right">
-                                    <div class="text-sm font-black text-blue-700" x-text="'PKR ' + doctorShare.toFixed(2)"></div>
-                                    <div class="text-[9px] text-blue-500">Credited to Doctor</div>
-                                </div>
+                                <span x-text="'+ PKR ' + eligiblePreviousDue.toFixed(2)"></span>
                             </div>
+                        </template>
 
-                            <!-- Hospital Share -->
-                            <div class="p-3 bg-emerald-50/70 border border-emerald-100 rounded-xl flex items-center justify-between">
-                                <div>
-                                    <div class="font-bold text-emerald-900 font-sans">Hospital Share</div>
-                                    <div class="text-[10px] text-emerald-600">Share: <span x-text="hospitalSharePct"></span>%</div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-sm font-black text-emerald-700" x-text="'PKR ' + hospitalShare.toFixed(2)"></div>
-                                    <div class="text-[9px] text-emerald-500">Hospital Revenue</div>
-                                </div>
-                            </div>
+                        <div class="flex justify-between items-center font-black text-sm text-gray-900 pt-2 border-t-2 border-gray-100">
+                            <span>Total Due:</span>
+                            <span class="text-lg text-blue-700" x-text="'PKR ' + totalDue.toFixed(2)"></span>
                         </div>
+                    </div>
 
-                        <!-- Disclaimer notice -->
-                        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg text-[10px] text-slate-500 font-sans leading-relaxed">
-                            <i class="fa-solid fa-shield-halved text-blue-600 mr-1"></i>
-                            The hospital receives ALL patient payments directly. Doctor shares are recorded in the doctor's ledger balance and can be settled anytime by hospital administration.
-                        </div>
-
-                        <!-- SUBMIT BUTTON -->
-                        <div class="pt-2">
-                            <button 
-                                type="submit" 
-                                class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl font-bold text-xs shadow-md hover:shadow-lg transition flex items-center justify-center space-x-2 font-sans"
+                    <!-- PAYMENT SECTION -->
+                    <div class="space-y-3 pt-3 border-t border-gray-100">
+                        <!-- Payment Type -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Payment Status <span class="text-red-500">*</span></label>
+                            <select 
+                                name="payment_type" 
+                                x-model="paymentType" 
+                                @change="onPaymentTypeChange()" 
+                                class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:bg-white focus:ring-2 focus:ring-blue-500"
                             >
-                                <i class="fa-solid fa-receipt"></i>
-                                <span>Generate Bill & Record Payment</span>
-                            </button>
+                                <option value="paid">Paid in Full</option>
+                                <option value="partial">Partial Payment</option>
+                                <option value="pending">Unpaid / Credit (Pending)</option>
+                                <option value="free">Free / Complimentary</option>
+                            </select>
                         </div>
+
+                        <!-- Amount Received Now -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">
+                                <span>Amount Received Now</span>
+                                <span class="text-red-500" x-show="paymentType !== 'pending' && paymentType !== 'free'">*</span>
+                            </label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-2.5 text-xs font-bold text-gray-400">PKR</span>
+                                <input 
+                                    type="number" 
+                                    name="paid_amount" 
+                                    min="0" 
+                                    step="0.01" 
+                                    :max="totalDue"
+                                    x-model="paidAmount" 
+                                    :readonly="paymentType === 'paid' || paymentType === 'pending' || paymentType === 'free'"
+                                    :class="{'bg-gray-100': paymentType === 'paid' || paymentType === 'pending' || paymentType === 'free', 'bg-white': paymentType === 'partial'}"
+                                    class="w-full pl-12 pr-3 py-2 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:ring-2 focus:ring-blue-500"
+                                >
+                            </div>
+                        </div>
+
+                        <!-- Remaining Due Balance -->
+                        <div class="p-3 rounded-xl bg-gray-50 border border-gray-100 flex justify-between items-center text-xs">
+                            <span class="font-bold text-gray-700">Remaining Balance:</span>
+                            <span class="font-black text-sm" :class="remainingBalance > 0 ? 'text-red-600' : 'text-emerald-600'" x-text="'PKR ' + remainingBalance.toFixed(2)"></span>
+                        </div>
+
+                        <!-- Payment Method -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Payment Method <span class="text-red-500">*</span></label>
+                            <select 
+                                name="payment_method" 
+                                x-model="paymentMethod" 
+                                class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 focus:bg-white focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="cash">Cash Counter</option>
+                                <option value="card">Debit / Credit Card</option>
+                                <option value="bank_transfer">Online Bank Transfer</option>
+                                <option value="other">Other / Cheque</option>
+                            </select>
+                        </div>
+
+                        <!-- Free Reason (if complimentary) -->
+                        <div x-show="paymentType === 'free'" class="space-y-1">
+                            <label class="block text-xs font-bold text-purple-800">Reason for Free Service <span class="text-red-500">*</span></label>
+                            <select 
+                                name="free_reason" 
+                                x-model="freeReason" 
+                                class="w-full px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-xs font-semibold text-purple-900"
+                                :required="paymentType === 'free'"
+                            >
+                                <option value="">-- Choose Free Reason --</option>
+                                <option value="Staff/Employee Courtesy">Staff / Employee Courtesy</option>
+                                <option value="Needy/Charity Patient">Needy / Charity Patient</option>
+                                <option value="Hospital Director Approval">Hospital Director Approval</option>
+                                <option value="Follow-up within valid period">Follow-up within valid period</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+
+                        <!-- Notes / Remarks -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Bill Remarks / Notes</label>
+                            <textarea 
+                                name="notes" 
+                                rows="2" 
+                                placeholder="Any internal notes or references..." 
+                                class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-blue-500"
+                            ></textarea>
+                        </div>
+                    </div>
+
+                    <!-- SUBMIT ACTIONS -->
+                    <div class="space-y-2 pt-2">
+                        <button 
+                            type="submit" 
+                            name="action" 
+                            value="save_bill" 
+                            :disabled="submitting || (billingMode === 'opd' && !selectedToken) || (billingMode === 'direct' && patientMode === 'existing' && !selectedPatient)"
+                            class="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center space-x-2"
+                        >
+                            <template x-if="submitting">
+                                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                            </template>
+                            <template x-if="!submitting">
+                                <i class="fa-solid fa-check"></i>
+                            </template>
+                            <span>Save Bill & Post Ledger</span>
+                        </button>
+
+                        <button 
+                            type="submit" 
+                            name="action" 
+                            value="print_receipt" 
+                            :disabled="submitting || (billingMode === 'opd' && !selectedToken) || (billingMode === 'direct' && patientMode === 'existing' && !selectedPatient)"
+                            class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-sm transition flex items-center justify-center space-x-2"
+                        >
+                            <i class="fa-solid fa-print"></i>
+                            <span>Save & Print Thermal Receipt</span>
+                        </button>
+
+                        <a 
+                            href="{{ route('hospital-billing.index') }}" 
+                            class="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-xs text-center block transition"
+                        >
+                            Cancel
+                        </a>
                     </div>
                 </div>
 

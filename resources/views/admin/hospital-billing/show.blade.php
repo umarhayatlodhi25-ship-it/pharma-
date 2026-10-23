@@ -7,14 +7,19 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-gray-200">
         <div>
             <div class="flex items-center space-x-2 text-xs text-blue-600 font-semibold mb-1">
-                <a href="/hospital-billing" class="hover:underline">Hospital Billing</a>
+                <a href="{{ route('hospital-billing.index') }}" class="hover:underline">Hospital Billing</a>
                 <span>/</span>
                 <span>Bill #{{ $bill->bill_number }}</span>
             </div>
-            <h1 class="text-2xl font-bold text-gray-800 flex items-center space-x-2">
-                <i class="fa-solid fa-receipt text-blue-600"></i>
-                <span>Invoice Details: {{ $bill->bill_number }}</span>
-            </h1>
+            <div class="flex items-center space-x-3">
+                <h1 class="text-2xl font-bold text-gray-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-receipt text-blue-600"></i>
+                    <span>Invoice Details: {{ $bill->bill_number }}</span>
+                </h1>
+                <span class="px-2.5 py-1 rounded-full text-xs font-bold uppercase {{ $bill->billing_type === 'opd' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800' }}">
+                    {{ $bill->billing_type === 'opd' ? 'Mode A: OPD Patient' : 'Mode B: Direct Service' }}
+                </span>
+            </div>
             <p class="text-xs text-gray-500 mt-1">Generated on {{ $bill->bill_date->format('d M Y') }} - Status: <span class="font-bold uppercase text-gray-700">{{ $bill->payment_status }}</span></p>
         </div>
 
@@ -56,7 +61,7 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        <!-- LEFT 2 COLUMNS: BILL DETAILS & PAYMENT TIMELINE -->
+        <!-- LEFT 2 COLUMNS: BILL DETAILS, ITEMS & PAYMENT TIMELINE -->
         <div class="lg:col-span-2 space-y-6">
 
             <!-- MAIN INVOICE CARD -->
@@ -72,16 +77,52 @@
                     </div>
 
                     <div>
-                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Consultation / Service</span>
-                        <h3 class="text-base font-bold text-indigo-700">{{ $bill->service->name ?? 'Hospital Service' }}</h3>
-                        <p class="text-gray-600 mt-0.5">Attending Doctor: <strong>{{ $bill->doctor->name ?? 'Hospital Direct' }}</strong></p>
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Consultation / Service Reference</span>
+                        <h3 class="text-base font-bold text-indigo-700">{{ $bill->service->name ?? ($bill->billing_type === 'opd' ? 'OPD Prescribed Service' : 'Direct Hospital Service') }}</h3>
+                        <p class="text-gray-600 mt-0.5">Attending Doctor: <strong>{{ $bill->doctor ? $bill->doctor->name : 'Hospital Direct' }}</strong></p>
                         @if($bill->token)
                             <p class="text-blue-600 font-bold mt-1">
-                                <i class="fa-solid fa-ticket-simple mr-1"></i> OPD Token #{{ $bill->token->formatted_token_number }}
+                                <i class="fa-solid fa-ticket-simple mr-1"></i> OPD Token #{{ $bill->token->formatted_token_number }} ({{ $bill->token->token_date->format('d M Y') }})
                             </p>
                         @endif
                     </div>
                 </div>
+
+                <!-- ITEMIZED SERVICES TABLE -->
+                @if($bill->items->count() > 0)
+                <div class="space-y-2">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Itemized Services & Procedures</span>
+                    <div class="overflow-x-auto border border-gray-100 rounded-xl">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50 text-gray-600 font-bold border-b border-gray-200">
+                                    <th class="py-2.5 px-3">Service Name</th>
+                                    <th class="py-2.5 px-3 text-center">Qty</th>
+                                    <th class="py-2.5 px-3 text-right">Unit Price</th>
+                                    <th class="py-2.5 px-3 text-right">Discount</th>
+                                    <th class="py-2.5 px-3 text-right">Total Price</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 font-medium">
+                                @foreach($bill->items as $item)
+                                <tr>
+                                    <td class="py-2.5 px-3">
+                                        <div class="font-bold text-gray-800">{{ $item->service_name }}</div>
+                                        @if($item->notes)
+                                            <div class="text-[10px] text-gray-400">{{ $item->notes }}</div>
+                                        @endif
+                                    </td>
+                                    <td class="py-2.5 px-3 text-center font-mono">{{ number_format($item->quantity, 0) }}</td>
+                                    <td class="py-2.5 px-3 text-right font-mono">PKR {{ number_format($item->unit_price, 2) }}</td>
+                                    <td class="py-2.5 px-3 text-right font-mono text-amber-600">{{ $item->discount_amount > 0 ? '- PKR ' . number_format($item->discount_amount, 2) : '—' }}</td>
+                                    <td class="py-2.5 px-3 text-right font-mono font-bold text-gray-900">PKR {{ number_format($item->total_price, 2) }}</td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                @endif
 
                 <!-- Financial Breakdown Table -->
                 <div class="space-y-2">
@@ -89,19 +130,25 @@
                     <table class="w-full text-xs font-mono">
                         <tbody class="divide-y divide-gray-100">
                             <tr>
-                                <td class="py-2 text-gray-600">Gross Service Fee</td>
+                                <td class="py-2 text-gray-600 font-sans">Gross Service Fee</td>
                                 <td class="py-2 text-right font-bold text-gray-900">PKR {{ number_format($bill->total_amount, 2) }}</td>
                             </tr>
                             @if($bill->discount_amount > 0)
                             <tr>
-                                <td class="py-2 text-purple-600">Discount / Free Amount (Reason: {{ $bill->free_reason ?: 'Free Patient' }})</td>
+                                <td class="py-2 text-purple-600 font-sans">Discount / Free Amount (Reason: {{ $bill->free_reason ?: 'Authorized Discount' }})</td>
                                 <td class="py-2 text-right font-bold text-purple-600">- PKR {{ number_format($bill->discount_amount, 2) }}</td>
                             </tr>
                             @endif
                             <tr>
-                                <td class="py-2 text-gray-600">Net Payable Amount</td>
+                                <td class="py-2 text-gray-600 font-sans">Net Payable Amount</td>
                                 <td class="py-2 text-right font-bold text-gray-900">PKR {{ number_format($bill->net_amount, 2) }}</td>
                             </tr>
+                            @if($bill->previous_due > 0)
+                            <tr>
+                                <td class="py-2 text-red-600 font-sans">Eligible Previous Outstanding Settled in Context</td>
+                                <td class="py-2 text-right font-bold text-red-600">PKR {{ number_format($bill->previous_due, 2) }}</td>
+                            </tr>
+                            @endif
                             <tr class="bg-emerald-50/50">
                                 <td class="py-2 text-emerald-800 font-bold font-sans">Hospital Collected Payment</td>
                                 <td class="py-2 text-right font-black text-emerald-700 text-sm">PKR {{ number_format($bill->paid_amount, 2) }}</td>
@@ -140,6 +187,7 @@
                                 <th class="py-2.5 px-3 text-right">Amount Received</th>
                                 <th class="py-2.5 px-3 text-right">Doctor Share</th>
                                 <th class="py-2.5 px-3 text-right">Hospital Share</th>
+                                <th class="py-2.5 px-3 text-center">Cashier</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 font-medium text-gray-700 font-mono">
@@ -151,11 +199,61 @@
                                 <td class="py-2.5 px-3 text-right font-bold text-emerald-600">PKR {{ number_format($pmt->amount, 2) }}</td>
                                 <td class="py-2.5 px-3 text-right text-blue-600">PKR {{ number_format($pmt->doctor_share, 2) }}</td>
                                 <td class="py-2.5 px-3 text-right text-indigo-600">PKR {{ number_format($pmt->hospital_share, 2) }}</td>
+                                <td class="py-2.5 px-3 text-center font-sans text-gray-500">{{ $pmt->receivedBy ? $pmt->receivedBy->name : 'System' }}</td>
+                            </tr>
+                            @empty
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-gray-400 font-sans">
+                                    No payments recorded yet.
+                                </td>
+                            </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- HOSPITAL ACCOUNT LEDGER AUDIT LOG -->
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
+                <h3 class="font-bold text-sm text-gray-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-book-journal-whills text-emerald-600"></i>
+                    <span>Hospital Financial Ledger Trail</span>
+                </h3>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-emerald-50/60 border-b border-emerald-100 text-emerald-800 font-bold uppercase tracking-wider text-[11px]">
+                                <th class="py-2.5 px-3">Voucher #</th>
+                                <th class="py-2.5 px-3">Date</th>
+                                <th class="py-2.5 px-3">Type</th>
+                                <th class="py-2.5 px-3">Description</th>
+                                <th class="py-2.5 px-3 text-right">Received</th>
+                                <th class="py-2.5 px-3 text-right">Balance After</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 text-gray-700 font-mono">
+                            @forelse($bill->hospitalLedgers as $hLedger)
+                            <tr>
+                                <td class="py-2 px-3 font-bold text-gray-900">{{ $hLedger->transaction_number }}</td>
+                                <td class="py-2 px-3">{{ $hLedger->entry_date->format('d M Y') }}</td>
+                                <td class="py-2 px-3 font-sans">
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase {{ $hLedger->transaction_type === 'collection' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800' }}">
+                                        {{ $hLedger->transaction_type }}
+                                    </span>
+                                </td>
+                                <td class="py-2 px-3 font-sans">{{ $hLedger->description }}</td>
+                                <td class="py-2 px-3 text-right font-bold text-emerald-600">
+                                    {{ $hLedger->amount_received > 0 ? 'PKR ' . number_format($hLedger->amount_received, 2) : '—' }}
+                                </td>
+                                <td class="py-2 px-3 text-right text-gray-700">
+                                    PKR {{ number_format($hLedger->outstanding_balance, 2) }}
+                                </td>
                             </tr>
                             @empty
                             <tr>
                                 <td colspan="6" class="text-center py-4 text-gray-400 font-sans">
-                                    No payments recorded yet.
+                                    No hospital account ledger entries.
                                 </td>
                             </tr>
                             @endforelse
@@ -187,28 +285,28 @@
                             PKR {{ number_format($bill->doctor_share, 2) }}
                         </div>
                         <div class="text-[10px] text-blue-600 font-sans">
-                            Added to {{ $bill->doctor ? $bill->doctor->name : 'Doctor' }}'s Payable
+                            {{ $bill->doctor_share > 0 ? "Credited to {$bill->doctor->name}'s Ledger" : "No doctor commission on hospital service" }}
                         </div>
                     </div>
 
                     <!-- Hospital Share -->
                     <div class="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1">
                         <div class="flex items-center justify-between text-emerald-900 font-sans">
-                            <span class="font-bold">Hospital Net Share</span>
+                            <span class="font-bold">Hospital Net Revenue</span>
                             <span class="text-xs font-bold font-mono">{{ number_format($bill->hospital_share_percentage, 0) }}%</span>
                         </div>
                         <div class="text-2xl font-black text-emerald-700">
                             PKR {{ number_format($bill->hospital_share, 2) }}
                         </div>
                         <div class="text-[10px] text-emerald-600 font-sans">
-                            Retained as Hospital Revenue
+                            Credited to Hospital Financial Account
                         </div>
                     </div>
                 </div>
 
-                <div class="pt-2 text-[11px] text-gray-500 leading-relaxed">
+                <div class="pt-2 text-[11px] text-gray-500 leading-relaxed font-sans">
                     <i class="fa-solid fa-info-circle text-blue-500 mr-1"></i>
-                    Revenue split percentages were locked at the time of bill generation according to configured service rates.
+                    Hospital procedures and direct service billing are credited 100% to the hospital account.
                 </div>
             </div>
 
@@ -239,7 +337,7 @@
                             required 
                             class="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg font-mono font-bold text-emerald-700 focus:bg-white focus:border-emerald-500"
                         >
-                        <p class="text-[10px] text-gray-400 mt-1">Outstanding: PKR {{ number_format($bill->due_amount, 2) }}</p>
+                        <p class="text-[10px] text-gray-400 mt-1">Outstanding Due: PKR {{ number_format($bill->due_amount, 2) }}</p>
                     </div>
 
                     <div>

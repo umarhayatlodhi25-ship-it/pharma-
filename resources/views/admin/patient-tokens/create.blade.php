@@ -389,6 +389,23 @@
                             View Token
                         </a>
                     </div>
+
+                    <!-- Outstanding Balance Notice for Selected Patient -->
+                    <div id="patientPendingBalanceWarning" class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 space-y-2 {{ ($selectedPatient && $selectedPatient->pending_balance > 0) ? '' : 'hidden' }}">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2 font-bold text-sm text-amber-800">
+                                <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                                <span>Patient Outstanding Balance Notice</span>
+                            </div>
+                            <span id="patientPendingBalanceBadge" class="px-2 py-0.5 rounded-full text-xs font-black bg-amber-200 text-amber-900 font-mono">
+                                Due: PKR {{ number_format($selectedPatient?->pending_balance ?? 0, 2) }}
+                            </span>
+                        </div>
+                        <p class="text-xs text-amber-800 leading-relaxed">
+                            This patient has <strong id="patientPendingBalanceText">PKR {{ number_format($selectedPatient?->pending_balance ?? 0, 2) }}</strong> unpaid across previous hospital bill(s). 
+                            Any amount paid today will first settle historical pending bills (oldest first) before applying to today's consultation.
+                        </p>
+                    </div>
                 </div>
 
                 <div id="noPatientPrompt" class="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-500 {{ $selectedPatient ? 'hidden' : '' }}">
@@ -709,8 +726,18 @@
                         <!-- Revenue Split Breakdown Rows (Section 15) -->
                         <div class="space-y-2.5 text-xs bg-white p-3.5 rounded-xl border border-slate-200/80">
                             <div class="flex justify-between items-center text-slate-600">
-                                <span class="font-medium">Consultation Fee</span>
+                                <span class="font-medium">Current Fee</span>
                                 <span id="billConsultationFee" class="font-mono font-bold text-slate-900 text-sm">PKR 0</span>
+                            </div>
+
+                            <div id="rowPreviousBalance" class="hidden flex justify-between items-center text-amber-700">
+                                <span class="font-medium">Previous Balance</span>
+                                <span id="billPreviousBalance" class="font-mono font-bold text-sm">PKR 0</span>
+                            </div>
+
+                            <div id="rowTotalDue" class="hidden flex justify-between items-center text-slate-900 font-bold border-t border-slate-200 pt-1.5">
+                                <span>Total Amount Due</span>
+                                <span id="billTotalDue" class="font-mono text-sm">PKR 0</span>
                             </div>
 
                             <div class="flex justify-between items-center text-blue-700">
@@ -791,6 +818,7 @@
     let currentServiceDocPct = 0;
     let currentServiceHospPct = 0;
     let isConsultService = true;
+    let currentPreviousBalance = {{ (float) ($selectedPatient?->pending_balance ?? 0) }};
     let searchDebounceTimer = null;
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -931,6 +959,10 @@
             btnExisting.className = 'px-4 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition flex items-center space-x-1.5';
             secNew.classList.remove('hidden');
             secExisting.classList.add('hidden');
+            currentPreviousBalance = 0;
+            const warnCard = document.getElementById('patientPendingBalanceWarning');
+            if (warnCard) warnCard.classList.add('hidden');
+            updateBillingBreakdown();
         }
     }
 
@@ -1023,6 +1055,19 @@
         document.getElementById('dispPatientCnic').textContent = patient.cnic || '—';
         document.getElementById('dispPatientAddress').textContent = patient.address || '—';
 
+        currentPreviousBalance = parseFloat(patient.pending_balance) || 0;
+
+        const warnCard = document.getElementById('patientPendingBalanceWarning');
+        const warnBadge = document.getElementById('patientPendingBalanceBadge');
+        const warnText = document.getElementById('patientPendingBalanceText');
+        if (currentPreviousBalance > 0) {
+            if (warnBadge) warnBadge.textContent = 'Due: PKR ' + currentPreviousBalance.toLocaleString('en-US', { minimumFractionDigits: 2 });
+            if (warnText) warnText.textContent = 'PKR ' + currentPreviousBalance.toLocaleString('en-US', { minimumFractionDigits: 2 });
+            if (warnCard) warnCard.classList.remove('hidden');
+        } else {
+            if (warnCard) warnCard.classList.add('hidden');
+        }
+
         const billingPatient = document.getElementById('billingPatientName');
         if (billingPatient) billingPatient.textContent = patient.name;
 
@@ -1042,15 +1087,23 @@
         document.getElementById('selectedPatientCard').classList.remove('hidden');
         document.getElementById('noPatientPrompt').classList.add('hidden');
         document.getElementById('patientSearchInput').value = '';
+
+        updateBillingBreakdown();
     }
 
     function clearSelectedPatient() {
         document.getElementById('patient_id').value = '';
+        currentPreviousBalance = 0;
+        const warnCard = document.getElementById('patientPendingBalanceWarning');
+        if (warnCard) warnCard.classList.add('hidden');
+
         document.getElementById('selectedPatientCard').classList.add('hidden');
         document.getElementById('noPatientPrompt').classList.remove('hidden');
         const billingPatient = document.getElementById('billingPatientName');
         if (billingPatient) billingPatient.textContent = 'Walk-in / Not selected';
         document.getElementById('patientSearchInput').focus();
+
+        updateBillingBreakdown();
     }
 
     // 4. DUPLICATE CHECK FOR NEW PATIENT (Part 6)
@@ -1147,6 +1200,23 @@
 
         const isAddService = (!isConsultService && currentServiceFee > 0);
         const totalGrossFee = currentDoctorFee + (isAddService ? currentServiceFee : 0);
+        const totalPayable = totalGrossFee + currentPreviousBalance;
+
+        // Previous balance & Total due row toggles
+        const rowPrev = document.getElementById('rowPreviousBalance');
+        const dispPrev = document.getElementById('billPreviousBalance');
+        const rowTotal = document.getElementById('rowTotalDue');
+        const dispTotal = document.getElementById('billTotalDue');
+
+        if (currentPreviousBalance > 0) {
+            if (rowPrev) rowPrev.classList.remove('hidden');
+            if (dispPrev) dispPrev.textContent = 'PKR ' + currentPreviousBalance.toLocaleString('en-US', { minimumFractionDigits: 2 });
+            if (rowTotal) rowTotal.classList.remove('hidden');
+            if (dispTotal) dispTotal.textContent = 'PKR ' + totalPayable.toLocaleString('en-US', { minimumFractionDigits: 2 });
+        } else {
+            if (rowPrev) rowPrev.classList.add('hidden');
+            if (rowTotal) rowTotal.classList.add('hidden');
+        }
 
         const docConsultShare = Math.round(currentDoctorFee * (currentDoctorDocPct / 100) * 100) / 100;
         const serviceDocShare = isAddService ? Math.round(currentServiceFee * (currentServiceDocPct / 100) * 100) / 100 : 0;
@@ -1160,17 +1230,27 @@
         let collectedAmount = 0;
         let remainingAmount = 0;
 
+        const paidInput = document.getElementById('paid_amount');
+        if (paidInput) {
+            paidInput.max = totalPayable;
+        }
+
         if (paymentType === 'free') {
             collectedAmount = 0;
-            remainingAmount = 0;
+            remainingAmount = currentPreviousBalance;
             statusDisp.textContent = '100% FREE';
             statusDisp.className = 'font-bold text-[10px] text-purple-700 bg-purple-100 px-2 py-0.5 rounded';
             chargedDisp.textContent = 'PKR 0';
-            if (rowRemaining) rowRemaining.classList.add('hidden');
+            if (currentPreviousBalance > 0 && rowRemaining) {
+                rowRemaining.classList.remove('hidden');
+                if (remainingDisp) remainingDisp.textContent = 'PKR ' + remainingAmount.toLocaleString('en-US');
+            } else if (rowRemaining) {
+                rowRemaining.classList.add('hidden');
+            }
         } else if (paymentType === 'partial') {
-            const paidVal = parseFloat(document.getElementById('paid_amount')?.value) || 0;
-            collectedAmount = Math.max(0, Math.min(paidVal, totalGrossFee));
-            remainingAmount = Math.max(0, totalGrossFee - collectedAmount);
+            const paidVal = parseFloat(paidInput?.value) || 0;
+            collectedAmount = Math.max(0, Math.min(paidVal, totalPayable));
+            remainingAmount = Math.max(0, totalPayable - collectedAmount);
             statusDisp.textContent = 'PARTIAL';
             statusDisp.className = 'font-bold text-[10px] text-amber-800 bg-amber-100 px-2 py-0.5 rounded';
             chargedDisp.textContent = 'PKR ' + collectedAmount.toLocaleString('en-US');
@@ -1179,17 +1259,18 @@
                 if (remainingDisp) remainingDisp.textContent = 'PKR ' + remainingAmount.toLocaleString('en-US');
             }
         } else {
-            collectedAmount = totalGrossFee;
+            collectedAmount = totalPayable;
             remainingAmount = 0;
             statusDisp.textContent = 'FULL PAID';
             statusDisp.className = 'font-bold text-[10px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded';
-            chargedDisp.textContent = 'PKR ' + totalGrossFee.toLocaleString('en-US');
+            chargedDisp.textContent = 'PKR ' + totalPayable.toLocaleString('en-US');
             if (rowRemaining) rowRemaining.classList.add('hidden');
         }
 
-        // Revenue split calculation
-        const docShare = Math.round(collectedAmount * (effectiveDocPct / 100) * 100) / 100;
-        const hospShare = Math.round((collectedAmount - docShare) * 100) / 100;
+        // Today's bill portion of payment for revenue split display
+        const todayBillPayment = Math.max(0, collectedAmount - currentPreviousBalance);
+        const docShare = Math.round(todayBillPayment * (effectiveDocPct / 100) * 100) / 100;
+        const hospShare = Math.round((todayBillPayment - docShare) * 100) / 100;
 
         if (docShareLabel) docShareLabel.textContent = `Doctor Share (${effectiveDocPct}%)`;
         if (hospShareLabel) hospShareLabel.textContent = `Hospital Share (${effectiveHospPct}%)`;

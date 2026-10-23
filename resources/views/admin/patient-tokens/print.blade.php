@@ -362,11 +362,38 @@
 
         @if($profile->show_consultation_fee ?? true)
         <div class="divider"></div>
-        <!-- Fee Section -->
-        <div class="fee-section">
-            <div class="fee-label">Consultation Fee:</div>
-            <div class="fee-value">PKR {{ number_format($token->consultation_fee, 0) }}</div>
-        </div>
+        <!-- Fee & Payment Breakdown Section -->
+        <table class="info-table" style="margin: 4px 0;">
+            <tr>
+                <td class="label-col">Consultation Fee:</td>
+                <td class="val-col">PKR {{ number_format($token->consultation_fee ?? $token->charged_amount, 2) }}</td>
+            </tr>
+            @if($token->previous_due > 0)
+            <tr>
+                <td class="label-col">Previous Balance:</td>
+                <td class="val-col">PKR {{ number_format($token->previous_due, 2) }}</td>
+            </tr>
+            <tr style="border-top: 1px dashed #000;">
+                <td class="label-col" style="font-weight: 800;">Total Amount Due:</td>
+                <td class="val-col" style="font-weight: 900;">PKR {{ number_format($token->total_due, 2) }}</td>
+            </tr>
+            @endif
+            <tr>
+                <td class="label-col" style="font-weight: 700;">Amount Paid:</td>
+                <td class="val-col" style="font-weight: 900;">PKR {{ number_format($token->paid_today, 2) }}</td>
+            </tr>
+            <tr style="border-top: 1px dashed #000;">
+                <td class="label-col" style="font-weight: 800;">Remaining Due:</td>
+                <td class="val-col" style="font-weight: 900;">
+                    PKR {{ number_format($token->balance_due, 2) }}
+                    @if($token->balance_due > 0)
+                        (DUE)
+                    @else
+                        (NIL)
+                    @endif
+                </td>
+            </tr>
+        </table>
         @endif
 
         @if($profile->show_token_status ?? true)

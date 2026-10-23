@@ -55,4 +55,14 @@ class DoctorLedger extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    public function getCreditAttribute(): float
+    {
+        return $this->transaction_type === 'credit' ? (float) $this->amount : 0.00;
+    }
+
+    public function getDebitAttribute(): float
+    {
+        return $this->transaction_type === 'debit' ? (float) $this->amount : 0.00;
+    }
 }

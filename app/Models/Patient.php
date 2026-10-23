@@ -90,6 +90,22 @@ class Patient extends Model
     }
 
     /**
+     * Alias for bills relationship.
+     */
+    public function hospitalBills(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->bills();
+    }
+
+    /**
+     * Relationship: All payments made by this patient.
+     */
+    public function payments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(HospitalBillPayment::class, 'patient_id')->orderBy('payment_date', 'desc')->orderBy('id', 'desc');
+    }
+
+    /**
      * Helper: Check if the patient has an active (waiting or called) token for a specific date (defaults to today).
      */
     public function activeTokenToday(?string $date = null): ?PatientToken
@@ -99,5 +115,72 @@ class Patient extends Model
             ->where('token_date', $targetDate)
             ->whereIn('status', ['waiting', 'called', 'in_consultation'])
             ->first();
+    }
+
+    /**
+     * Helper: Get all unpaid or partially paid hospital bills for this patient.
+     */
+    public function unpaidBills()
+    {
+        return $this->bills()
+            ->where('due_amount', '>', 0)
+            ->orderBy('bill_date', 'asc')
+            ->orderBy('id', 'asc');
+    }
+
+    /**
+     * Calculate current total pending unpaid balance across all hospital bills.
+     */
+    public function pendingBalance(): float
+    {
+        return round((float) $this->unpaidBills()->sum('due_amount'), 2);
+    }
+
+    /**
+     * Accessor for pending balance.
+     */
+    public function getPendingBalanceAttribute(): float
+    {
+        return $this->pendingBalance();
+    }
+
+    /**
+     * Relationship: All hospital account ledger entries for this patient.
+     */
+    public function hospitalLedgers(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(HospitalAccountLedger::class, 'patient_id')->orderBy('entry_date', 'desc')->orderBy('id', 'desc');
+    }
+
+    /**
+     * Outstanding debt originating specifically from doctor consultations / OPD visits.
+     */
+    public function consultationOutstanding(): float
+    {
+        return round((float) $this->unpaidBills()->whereNotNull('patient_token_id')->sum('due_amount'), 2);
+    }
+
+    /**
+     * Outstanding debt originating specifically from hospital services / procedures.
+     */
+    public function hospitalServiceOutstanding(): float
+    {
+        return round((float) $this->unpaidBills()->whereNull('patient_token_id')->sum('due_amount'), 2);
+    }
+
+    /**
+     * Accessor for consultation outstanding debt.
+     */
+    public function getConsultationOutstandingAttribute(): float
+    {
+        return $this->consultationOutstanding();
+    }
+
+    /**
+     * Accessor for hospital service outstanding debt.
+     */
+    public function getHospitalServiceOutstandingAttribute(): float
+    {
+        return $this->hospitalServiceOutstanding();
     }
 }
