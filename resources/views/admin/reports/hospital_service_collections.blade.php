@@ -197,7 +197,7 @@
                         <td class="py-3 px-4 font-bold text-gray-900">{{ $p->payment_number }}</td>
                         <td class="py-3 px-4 text-gray-600 font-sans">
                             {{ $p->payment_date->format('d M Y') }}
-                            <div class="text-[10px] text-gray-400 font-mono">{{ $p->created_at->format('h:i A') }}</div>
+                            <div class="text-[10px] text-gray-400 font-mono">{{ format_app_datetime($p->created_at, 'h:i A') }}</div>
                         </td>
                         <td class="py-3 px-4 font-sans">
                             <div class="font-bold text-gray-900">{{ $p->bill && $p->bill->patient ? $p->bill->patient->name : 'Patient' }}</div>

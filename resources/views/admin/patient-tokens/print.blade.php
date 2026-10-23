@@ -355,7 +355,7 @@
             @if($profile->show_time ?? true)
             <tr>
                 <td class="label-col">Time:</td>
-                <td class="val-col">{{ $token->created_at ? $token->created_at->format('h:i A') : now()->format('h:i A') }}</td>
+                <td class="val-col">{{ format_app_datetime($token->created_at ?: now(), 'h:i A') }}</td>
             </tr>
             @endif
         </table>

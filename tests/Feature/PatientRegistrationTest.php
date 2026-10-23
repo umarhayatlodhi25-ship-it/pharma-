@@ -228,4 +228,123 @@ class PatientRegistrationTest extends TestCase
         $response->assertSee('Gulberg III, Lahore');
         $response->assertSee('Back to Patients');
     }
+
+    /**
+     * Test newly registered patient stores UTC in database and displays in Asia/Karachi timezone.
+     * Reproduces the exact reported bug: 17:25 UTC was displayed as 05:25 PM instead of 10:25 PM PKT.
+     */
+    public function test_newly_registered_patient_stores_utc_in_database_and_displays_asia_karachi_time(): void
+    {
+        // Simulate registration at 17:25:00 UTC (10:25:00 PM PKT)
+        $knownUtc = \Carbon\Carbon::create(2026, 10, 22, 17, 25, 0, 'UTC');
+        \Carbon\Carbon::setTestNow($knownUtc);
+
+        $payload = [
+            'name'                => 'Tariq Mehmood',
+            'father_husband_name' => 'Mehmood Akhtar',
+            'age'                 => 35,
+            'gender'              => 'Male',
+            'phone'               => '03009876543',
+            'cnic'                => '35201-1122334-5',
+            'address'             => 'Johar Town, Lahore',
+        ];
+
+        $response = $this->actingAs($this->user)->post('/patients', $payload);
+        $patient = Patient::where('name', 'Tariq Mehmood')->first();
+        $this->assertNotNull($patient);
+
+        // 1. Raw database timestamp MUST be stored in UTC
+        $rawCreatedAt = $patient->getRawOriginal('created_at');
+        $this->assertEquals('2026-10-22 17:25:00', $rawCreatedAt);
+
+        // 2. Eloquent created_at attribute is in UTC
+        $this->assertEquals('UTC', $patient->created_at->timezoneName);
+
+        // 3. Local created_at accessor is converted to Asia/Karachi (PKT +05:00)
+        $this->assertEquals('Asia/Karachi', $patient->created_at_local->timezoneName);
+        $this->assertEquals('2026-10-22 22:25:00', $patient->created_at_local->toDateTimeString());
+
+        // 4. Formatted registration timestamp shows 10:25 PM PKT (NOT 05:25 PM UTC)
+        $this->assertEquals('22 Oct, 2026 10:25 PM', $patient->formatRegisteredAt('d M, Y h:i A'));
+        $this->assertNotEquals('22 Oct, 2026 05:25 PM', $patient->formatRegisteredAt('d M, Y h:i A'));
+
+        // 5. Patient listing page renders the Asia/Karachi timestamp
+        $indexResponse = $this->actingAs($this->user)->get('/patients');
+        $indexResponse->assertStatus(200);
+        $indexResponse->assertSee('22 Oct, 2026 10:25 PM');
+        $indexResponse->assertDontSee('22 Oct, 2026 05:25 PM');
+
+        // 6. Patient show page renders the Asia/Karachi timestamp
+        $showResponse = $this->actingAs($this->user)->get(route('patients.show', $patient->id));
+        $showResponse->assertStatus(200);
+        $showResponse->assertSee('Registered on October 22, 2026 at 10:25 PM');
+        $showResponse->assertSee('22 Oct, 2026 - 10:25 PM');
+
+        \Carbon\Carbon::setTestNow(); // Reset test time
+    }
+
+    /**
+     * Test midnight and date boundary transition from UTC to Asia/Karachi.
+     * 20:30 UTC on 22 Oct is 01:30 AM on 23 Oct in Pakistan (+5h).
+     */
+    public function test_patient_registration_timestamp_across_midnight_date_boundary(): void
+    {
+        $boundaryUtc = \Carbon\Carbon::create(2026, 10, 22, 20, 30, 0, 'UTC');
+        \Carbon\Carbon::setTestNow($boundaryUtc);
+
+        $patient = Patient::create([
+            'name'   => 'Midnight Patient',
+            'age'    => 29,
+            'gender' => 'Female',
+        ]);
+
+        // Raw UTC date is 22 Oct
+        $this->assertEquals('2026-10-22 20:30:00', $patient->getRawOriginal('created_at'));
+
+        // In Asia/Karachi, date has crossed midnight to 23 Oct 01:30 AM
+        $this->assertEquals('23 Oct, 2026 01:30 AM', $patient->formatRegisteredAt('d M, Y h:i A'));
+
+        $indexResponse = $this->actingAs($this->user)->get('/patients');
+        $indexResponse->assertStatus(200);
+        $indexResponse->assertSee('23 Oct, 2026 01:30 AM');
+
+        \Carbon\Carbon::setTestNow();
+    }
+
+    /**
+     * Test idempotency and prevention of double timezone conversion.
+     */
+    public function test_timezone_formatting_prevents_double_conversion(): void
+    {
+        $utcTime = \Carbon\Carbon::create(2026, 10, 22, 12, 0, 0, 'UTC');
+        $pktTime = $utcTime->copy()->setTimezone('Asia/Karachi'); // 17:00 PKT
+
+        // Formatting already-converted Carbon must not add another 5 hours
+        $formattedFromUtc = format_app_datetime($utcTime, 'd M, Y h:i A');
+        $formattedFromPkt = format_app_datetime($pktTime, 'd M, Y h:i A');
+
+        $this->assertEquals('22 Oct, 2026 05:00 PM', $formattedFromUtc);
+        $this->assertEquals('22 Oct, 2026 05:00 PM', $formattedFromPkt);
+    }
+
+    /**
+     * Test existing older patient records remain intact in database.
+     */
+    public function test_older_patient_records_remain_preserved(): void
+    {
+        $olderPatient = Patient::create([
+            'name'   => 'Historical Patient',
+            'age'    => 60,
+            'gender' => 'Male',
+        ]);
+
+        $originalRaw = '2026-08-15 08:00:00';
+        \Illuminate\Support\Facades\DB::table('patients')
+            ->where('id', $olderPatient->id)
+            ->update(['created_at' => $originalRaw]);
+
+        $fresh = Patient::find($olderPatient->id);
+        $this->assertEquals($originalRaw, $fresh->getRawOriginal('created_at'));
+        $this->assertEquals('15 Aug, 2026 01:00 PM', $fresh->formatRegisteredAt('d M, Y h:i A'));
+    }
 }

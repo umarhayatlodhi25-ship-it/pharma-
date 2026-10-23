@@ -350,7 +350,7 @@
 
                             <!-- Time -->
                             <td class="p-3 text-gray-600 font-mono whitespace-nowrap">
-                                {{ $t->created_at ? $t->created_at->format('h:i A') : '—' }}
+                                {{ format_app_datetime($t->created_at, 'h:i A') }}
                             </td>
 
                             <!-- Patient -->

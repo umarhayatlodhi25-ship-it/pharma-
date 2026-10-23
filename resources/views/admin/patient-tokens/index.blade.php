@@ -326,7 +326,7 @@
 
                             <!-- Issued Time -->
                             <td class="px-4 py-3.5 whitespace-nowrap text-slate-500 text-xs">
-                                {{ $t->created_at ? $t->created_at->format('h:i A') : '—' }}
+                                {{ format_app_datetime($t->created_at, 'h:i A') }}
                             </td>
 
                             <!-- Action Buttons -->

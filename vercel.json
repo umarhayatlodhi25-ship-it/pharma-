@@ -16,7 +16,9 @@
         "VIEW_COMPILED_PATH": "/tmp/storage/framework/views",
         "CACHE_STORE": "array",
         "SESSION_DRIVER": "cookie",
-        "LOG_CHANNEL": "stderr"
+        "LOG_CHANNEL": "stderr",
+        "APP_TIMEZONE": "UTC",
+        "APP_DISPLAY_TIMEZONE": "Asia/Karachi"
     },
     "routes": [
         { "src": "/build/(.*)", "dest": "/public/build/$1" },

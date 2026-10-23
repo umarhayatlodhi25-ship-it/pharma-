@@ -30,7 +30,7 @@
                     </span>
                 </div>
                 <p class="text-xs text-slate-500 mt-1">
-                    Registered on {{ $patient->created_at ? $patient->created_at->format('F d, Y \a\t h:i A') : 'N/A' }}
+                    Registered on {{ $patient->formatRegisteredAt('F d, Y \a\t h:i A', 'N/A') }}
                 </p>
             </div>
         </div>
@@ -181,7 +181,7 @@
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Registration Date</p>
                         <p class="text-sm font-semibold text-slate-800 mt-0.5">
-                            {{ $patient->created_at ? $patient->created_at->format('d M, Y - h:i A') : '—' }}
+                            {{ $patient->formatRegisteredAt('d M, Y - h:i A') }}
                         </p>
                     </div>
                 </div>
@@ -370,7 +370,7 @@
                                                     <span class="text-[10px] uppercase font-semibold text-slate-500">{{ $pmt->payment_method }}</span>
                                                 </div>
                                                 <div class="text-[11px] text-slate-500 flex justify-between">
-                                                    <span>{{ $pmt->payment_date ? \Carbon\Carbon::parse($pmt->payment_date)->format('d M Y h:i A') : $pmt->created_at->format('d M Y h:i A') }}</span>
+                                                    <span>{{ format_app_datetime($pmt->payment_date ?: $pmt->created_at, 'd M Y h:i A') }}</span>
                                                     <span class="italic text-slate-400">By {{ $pmt->receivedBy->name ?? 'User' }}</span>
                                                 </div>
                                                 @if($pmt->reference_note)

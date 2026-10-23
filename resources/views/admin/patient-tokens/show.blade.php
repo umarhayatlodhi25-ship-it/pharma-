@@ -117,7 +117,7 @@
                 </div>
                 <p class="text-xs text-slate-500 mt-1">
                     Date: <strong class="text-slate-700">{{ \Carbon\Carbon::parse($token->token_date)->format('d-M-Y') }}</strong>
-                    &bull; Time: <span class="text-slate-700">{{ $token->created_at ? $token->created_at->format('h:i A') : '—' }}</span>
+                    &bull; Time: <span class="text-slate-700">{{ format_app_datetime($token->created_at, 'h:i A') }}</span>
                 </p>
             </div>
         </div>
@@ -344,25 +344,25 @@
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200/60">
                         <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">1. Issued At</p>
                         <p class="text-sm font-bold text-slate-800 mt-1">
-                            {{ $token->created_at ? $token->created_at->format('h:i A') : '—' }}
+                            {{ format_app_datetime($token->created_at, 'h:i A') }}
                         </p>
-                        <p class="text-[11px] text-slate-400 mt-0.5">{{ $token->created_at ? $token->created_at->format('d-M-Y') : '' }}</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">{{ format_app_datetime($token->created_at, 'd-M-Y', '') }}</p>
                     </div>
 
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200/60">
                         <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">2. Called At</p>
                         <p class="text-sm font-bold @if($token->called_at) text-blue-700 @else text-slate-400 font-normal @endif mt-1">
-                            {{ $token->called_at ? $token->called_at->format('h:i A') : 'Not yet called' }}
+                            {{ $token->called_at ? format_app_datetime($token->called_at, 'h:i A') : 'Not yet called' }}
                         </p>
-                        <p class="text-[11px] text-slate-400 mt-0.5">{{ $token->called_at ? $token->called_at->format('d-M-Y') : '' }}</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">{{ $token->called_at ? format_app_datetime($token->called_at, 'd-M-Y', '') : '' }}</p>
                     </div>
 
                     <div class="bg-slate-50 p-4 rounded-xl border border-slate-200/60">
                         <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">3. Completed At</p>
                         <p class="text-sm font-bold @if($token->completed_at) text-emerald-700 @else text-slate-400 font-normal @endif mt-1">
-                            {{ $token->completed_at ? $token->completed_at->format('h:i A') : 'Pending completion' }}
+                            {{ $token->completed_at ? format_app_datetime($token->completed_at, 'h:i A') : 'Pending completion' }}
                         </p>
-                        <p class="text-[11px] text-slate-400 mt-0.5">{{ $token->completed_at ? $token->completed_at->format('d-M-Y') : '' }}</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">{{ $token->completed_at ? format_app_datetime($token->completed_at, 'd-M-Y', '') : '' }}</p>
                     </div>
                 </div>
             </div>

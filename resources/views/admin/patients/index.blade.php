@@ -141,7 +141,7 @@
                                 @endif
                             </td>
                             <td class="px-4 py-3.5 text-slate-500 text-xs whitespace-nowrap">
-                                {{ $patient->created_at ? $patient->created_at->format('d M, Y h:i A') : '—' }}
+                                {{ $patient->formatRegisteredAt('d M, Y h:i A') }}
                             </td>
                             <td class="px-4 py-3.5 text-center whitespace-nowrap">
                                 <a href="{{ route('patients.show', $patient->id) }}" class="inline-flex items-center space-x-1.5 bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold border border-blue-200 hover:border-blue-600 transition shadow-2xs">

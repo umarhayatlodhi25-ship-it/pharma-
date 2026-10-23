@@ -276,7 +276,7 @@
                                 {{ Carbon\Carbon::parse($t->token_date)->format('d M Y') }}
                             </td>
                             <td class="py-3 px-4 font-mono text-gray-600 whitespace-nowrap">
-                                {{ $t->created_at ? $t->created_at->format('h:i A') : '—' }}
+                                {{ format_app_datetime($t->created_at, 'h:i A') }}
                             </td>
                             <td class="py-3 px-4">
                                 <span class="font-bold text-gray-900 block">{{ $t->patient ? $t->patient->name : 'Walk-in' }}</span>

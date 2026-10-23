@@ -251,7 +251,7 @@
             </tr>
             <tr>
                 <td>Date & Time:</td>
-                <td>{{ $bill->bill_date->format('d-M-Y') }} {{ $bill->created_at ? $bill->created_at->format('h:i A') : '' }}</td>
+                <td>{{ $bill->bill_date->format('d-M-Y') }} {{ format_app_datetime($bill->created_at, 'h:i A', '') }}</td>
             </tr>
             <tr>
                 <td>Patient Name:</td>

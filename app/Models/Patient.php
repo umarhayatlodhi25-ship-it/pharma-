@@ -183,4 +183,31 @@ class Patient extends Model
     {
         return $this->hospitalServiceOutstanding();
     }
+
+    /**
+     * Get the patient's registration timestamp converted to display timezone (Asia/Karachi).
+     */
+    public function getCreatedAtLocalAttribute(): ?\Carbon\Carbon
+    {
+        if (!$this->created_at) {
+            return null;
+        }
+
+        return function_exists('app_datetime')
+            ? app_datetime($this->created_at)
+            : $this->created_at->copy()->setTimezone(config('app.display_timezone', 'Asia/Karachi'));
+    }
+
+    /**
+     * Format the patient registration timestamp in the configured display timezone.
+     */
+    public function formatRegisteredAt(string $format = 'd M, Y h:i A', string $default = '—'): string
+    {
+        if (function_exists('format_app_datetime')) {
+            return format_app_datetime($this->created_at, $format, $default);
+        }
+
+        $local = $this->created_at_local;
+        return $local ? $local->format($format) : $default;
+    }
 }
