@@ -216,14 +216,9 @@ class HospitalBillingService
                                 $payForThis,
                                 $paymentMethod,
                                 "Settled via Carry-forward payment during Bill generation",
-                                $userId
+                                $userId,
+                                'previous_balance'
                             );
-                            HospitalBillPaymentAllocation::create([
-                                'hospital_bill_payment_id' => $oldPayment->id,
-                                'hospital_bill_id'         => $oldBill->id,
-                                'allocated_amount'         => $payForThis,
-                                'allocation_type'          => 'previous_balance',
-                            ]);
                             $remainingPayment = round($remainingPayment - $payForThis, 2);
                         }
                     }
@@ -316,47 +311,55 @@ class HospitalBillingService
                     'received_by'      => $userId,
                 ]);
 
-                HospitalBillPaymentAllocation::create([
-                    'hospital_bill_payment_id' => $payment->id,
-                    'hospital_bill_id'         => $bill->id,
-                    'allocated_amount'         => $paidForCurrentBill,
-                    'allocation_type'          => 'current_bill',
-                ]);
+                HospitalBillPaymentAllocation::firstOrCreate(
+                    [
+                        'hospital_bill_payment_id' => $payment->id,
+                        'hospital_bill_id'         => $bill->id,
+                    ],
+                    [
+                        'allocated_amount'         => $paidForCurrentBill,
+                        'allocation_type'          => 'current_bill',
+                    ]
+                );
 
-                // Hospital Account Ledger Collection Entry
-                HospitalAccountLedger::create([
-                    'entry_date'               => $billDate,
-                    'patient_id'               => $patientId,
-                    'hospital_bill_id'         => $bill->id,
-                    'hospital_bill_payment_id' => $payment->id,
-                    'patient_token_id'         => $tokenId,
-                    'transaction_type'         => 'collection',
-                    'description'              => "Payment collected on Bill #{$bill->bill_number} (Patient: {$patient->name})",
-                    'gross_amount'             => $grossAmount,
-                    'discount_amount'          => $discountAmount,
-                    'amount_received'          => $paidForCurrentBill,
-                    'outstanding_balance'      => $dueForCurrentBill,
-                    'payment_method'           => $paymentMethod,
-                    'status'                   => 'posted',
-                    'created_by'               => $userId,
-                ]);
-
-                // Credit Doctor Ledger ONLY if doctor is assigned and earned a share
-                if ($doctorId && $docShareCurrent > 0.00) {
-                    $currPayable = $doctor ? (float) $doctor->current_payable : 0.00;
-                    $balanceAfter = round($currPayable + $docShareCurrent, 2);
-
-                    DoctorLedger::create([
-                        'doctor_id'                => $doctorId,
+                // Hospital Account Ledger Collection Entry (Idempotent)
+                if (!HospitalAccountLedger::where('hospital_bill_payment_id', $payment->id)->exists()) {
+                    HospitalAccountLedger::create([
+                        'entry_date'               => $billDate,
+                        'patient_id'               => $patientId,
                         'hospital_bill_id'         => $bill->id,
                         'hospital_bill_payment_id' => $payment->id,
-                        'entry_date'               => $billDate,
-                        'transaction_type'         => 'credit',
-                        'amount'                   => $docShareCurrent,
-                        'balance_after'            => $balanceAfter,
-                        'description'              => "Doctor share earned from Bill #{$bill->bill_number} (Patient: {$patient->name})",
+                        'patient_token_id'         => $tokenId,
+                        'transaction_type'         => 'collection',
+                        'description'              => "Payment collected on Bill #{$bill->bill_number} (Patient: {$patient->name})",
+                        'gross_amount'             => $grossAmount,
+                        'discount_amount'          => $discountAmount,
+                        'amount_received'          => $paidForCurrentBill,
+                        'outstanding_balance'      => $dueForCurrentBill,
+                        'payment_method'           => $paymentMethod,
+                        'status'                   => 'posted',
                         'created_by'               => $userId,
                     ]);
+                }
+
+                // Credit Doctor Ledger ONLY if doctor is assigned and earned a share (Idempotent)
+                if ($doctorId && $docShareCurrent > 0.00) {
+                    if (!DoctorLedger::where('hospital_bill_payment_id', $payment->id)->exists()) {
+                        $currPayable = $doctor ? (float) $doctor->current_payable : 0.00;
+                        $balanceAfter = round($currPayable + $docShareCurrent, 2);
+
+                        DoctorLedger::create([
+                            'doctor_id'                => $doctorId,
+                            'hospital_bill_id'         => $bill->id,
+                            'hospital_bill_payment_id' => $payment->id,
+                            'entry_date'               => $billDate,
+                            'transaction_type'         => 'credit',
+                            'amount'                   => $docShareCurrent,
+                            'balance_after'            => $balanceAfter,
+                            'description'              => "Doctor share earned from Bill #{$bill->bill_number} (Patient: {$patient->name})",
+                            'created_by'               => $userId,
+                        ]);
+                    }
                 }
             }
 
@@ -463,14 +466,9 @@ class HospitalBillingService
                         $payForThis,
                         $paymentMethod,
                         "Carry-forward payment settled during Token generation (Patient: {$patient->name})",
-                        $userId
+                        $userId,
+                        'previous_balance'
                     );
-                    HospitalBillPaymentAllocation::create([
-                        'hospital_bill_payment_id' => $oldPmt->id,
-                        'hospital_bill_id'         => $oldBill->id,
-                        'allocated_amount'         => $payForThis,
-                        'allocation_type'          => 'previous_balance',
-                    ]);
                     $remainingPayment = round($remainingPayment - $payForThis, 2);
                 }
             }
@@ -635,45 +633,53 @@ class HospitalBillingService
                     'received_by'      => $userId,
                 ]);
 
-                HospitalBillPaymentAllocation::create([
-                    'hospital_bill_payment_id' => $payment->id,
-                    'hospital_bill_id'         => $bill->id,
-                    'allocated_amount'         => $paidForCurrentBill,
-                    'allocation_type'          => 'current_bill',
-                ]);
+                HospitalBillPaymentAllocation::firstOrCreate(
+                    [
+                        'hospital_bill_payment_id' => $payment->id,
+                        'hospital_bill_id'         => $bill->id,
+                    ],
+                    [
+                        'allocated_amount'         => $paidForCurrentBill,
+                        'allocation_type'          => 'current_bill',
+                    ]
+                );
 
-                HospitalAccountLedger::create([
-                    'entry_date'               => $today,
-                    'patient_id'               => $patientId,
-                    'hospital_bill_id'         => $bill->id,
-                    'hospital_bill_payment_id' => $payment->id,
-                    'patient_token_id'         => $token->id,
-                    'transaction_type'         => 'collection',
-                    'description'              => "Payment collected on Token #{$token->formatted_token_number} (Patient: {$patient->name})",
-                    'gross_amount'             => $totalGrossFee,
-                    'discount_amount'          => $discountAmount,
-                    'amount_received'          => $paidForCurrentBill,
-                    'outstanding_balance'      => $dueForCurrentBill,
-                    'payment_method'           => $paymentMethod,
-                    'status'                   => 'posted',
-                    'created_by'               => $userId,
-                ]);
-
-                if ($doctor && $docShareCurrent > 0.00) {
-                    $currPayable = (float) $doctor->current_payable;
-                    $balanceAfter = round($currPayable + $docShareCurrent, 2);
-
-                    DoctorLedger::create([
-                        'doctor_id'                => $doctor->id,
+                if (!HospitalAccountLedger::where('hospital_bill_payment_id', $payment->id)->exists()) {
+                    HospitalAccountLedger::create([
+                        'entry_date'               => $today,
+                        'patient_id'               => $patientId,
                         'hospital_bill_id'         => $bill->id,
                         'hospital_bill_payment_id' => $payment->id,
-                        'entry_date'               => $today,
-                        'transaction_type'         => 'credit',
-                        'amount'                   => $docShareCurrent,
-                        'balance_after'            => $balanceAfter,
-                        'description'              => "Doctor share earned from Bill #{$bill->bill_number} (Patient: {$patient->name})",
+                        'patient_token_id'         => $token->id,
+                        'transaction_type'         => 'collection',
+                        'description'              => "Payment collected on Token #{$token->formatted_token_number} (Patient: {$patient->name})",
+                        'gross_amount'             => $totalGrossFee,
+                        'discount_amount'          => $discountAmount,
+                        'amount_received'          => $paidForCurrentBill,
+                        'outstanding_balance'      => $dueForCurrentBill,
+                        'payment_method'           => $paymentMethod,
+                        'status'                   => 'posted',
                         'created_by'               => $userId,
                     ]);
+                }
+
+                if ($doctor && $docShareCurrent > 0.00) {
+                    if (!DoctorLedger::where('hospital_bill_payment_id', $payment->id)->exists()) {
+                        $currPayable = (float) $doctor->current_payable;
+                        $balanceAfter = round($currPayable + $docShareCurrent, 2);
+
+                        DoctorLedger::create([
+                            'doctor_id'                => $doctor->id,
+                            'hospital_bill_id'         => $bill->id,
+                            'hospital_bill_payment_id' => $payment->id,
+                            'entry_date'               => $today,
+                            'transaction_type'         => 'credit',
+                            'amount'                   => $docShareCurrent,
+                            'balance_after'            => $balanceAfter,
+                            'description'              => "Doctor share earned from Bill #{$bill->bill_number} (Patient: {$patient->name})",
+                            'created_by'               => $userId,
+                        ]);
+                    }
                 }
             }
 

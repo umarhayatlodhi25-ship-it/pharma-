@@ -114,14 +114,19 @@ class HospitalBill extends Model
      * @return HospitalBillPayment
      * @throws \Exception
      */
-    public function recordPayment(float $amount, string $paymentMethod = 'cash', ?string $referenceNote = null, ?int $userId = null): HospitalBillPayment
-    {
+    public function recordPayment(
+        float $amount,
+        string $paymentMethod = 'cash',
+        ?string $referenceNote = null,
+        ?int $userId = null,
+        string $allocationType = 'current_bill'
+    ): HospitalBillPayment {
         $amount = round($amount, 2);
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Payment amount must be greater than zero.');
         }
 
-        return DB::transaction(function () use ($amount, $paymentMethod, $referenceNote, $userId) {
+        return DB::transaction(function () use ($amount, $paymentMethod, $referenceNote, $userId, $allocationType) {
             $bill = self::where('id', $this->id)->lockForUpdate()->first();
             if (!$bill) {
                 throw new \RuntimeException('Bill not found.');
@@ -155,13 +160,17 @@ class HospitalBill extends Model
                 'received_by'      => $userId ?? auth()->id(),
             ]);
 
-            // Create explicit payment allocation record
-            HospitalBillPaymentAllocation::create([
-                'hospital_bill_payment_id' => $payment->id,
-                'hospital_bill_id'         => $bill->id,
-                'allocated_amount'         => $amount,
-                'allocation_type'          => 'current_bill',
-            ]);
+            // Create explicit payment allocation record (guarded against duplicates)
+            HospitalBillPaymentAllocation::firstOrCreate(
+                [
+                    'hospital_bill_payment_id' => $payment->id,
+                    'hospital_bill_id'         => $bill->id,
+                ],
+                [
+                    'allocated_amount'         => $amount,
+                    'allocation_type'          => $allocationType,
+                ]
+            );
 
             // Update bill totals
             $newPaid = round((float)$bill->paid_amount + $amount, 2);
@@ -179,24 +188,27 @@ class HospitalBill extends Model
                 'payment_status' => $newStatus,
             ]);
 
-            // Post collection entry to Hospital Account Ledger
-            $patientName = $bill->patient ? $bill->patient->name : 'Patient';
-            HospitalAccountLedger::create([
-                'entry_date'               => now()->toDateString(),
-                'patient_id'               => $bill->patient_id,
-                'hospital_bill_id'         => $bill->id,
-                'hospital_bill_payment_id' => $payment->id,
-                'patient_token_id'         => $bill->patient_token_id,
-                'transaction_type'         => 'collection',
-                'description'              => "Payment received for Bill #{$bill->bill_number} (Patient: {$patientName})",
-                'gross_amount'             => (float)$bill->total_amount,
-                'discount_amount'          => (float)$bill->discount_amount,
-                'amount_received'          => $amount,
-                'outstanding_balance'      => $newDue,
-                'payment_method'           => $paymentMethod,
-                'status'                   => 'posted',
-                'created_by'               => $userId ?? auth()->id(),
-            ]);
+            // Post collection entry to Hospital Account Ledger (idempotent)
+            $existingLedger = HospitalAccountLedger::where('hospital_bill_payment_id', $payment->id)->first();
+            if (!$existingLedger) {
+                $patientName = $bill->patient ? $bill->patient->name : 'Patient';
+                HospitalAccountLedger::create([
+                    'entry_date'               => now()->toDateString(),
+                    'patient_id'               => $bill->patient_id,
+                    'hospital_bill_id'         => $bill->id,
+                    'hospital_bill_payment_id' => $payment->id,
+                    'patient_token_id'         => $bill->patient_token_id,
+                    'transaction_type'         => 'collection',
+                    'description'              => "Payment received for Bill #{$bill->bill_number} (Patient: {$patientName})",
+                    'gross_amount'             => (float)$bill->total_amount,
+                    'discount_amount'          => (float)$bill->discount_amount,
+                    'amount_received'          => $amount,
+                    'outstanding_balance'      => $newDue,
+                    'payment_method'           => $paymentMethod,
+                    'status'                   => 'posted',
+                    'created_by'               => $userId ?? auth()->id(),
+                ]);
+            }
 
             // If linked to an OPD token, keep token balance_due in sync
             if ($bill->patient_token_id) {
@@ -205,24 +217,27 @@ class HospitalBill extends Model
                 ]);
             }
 
-            // Post credit to Doctor Ledger ONLY if doctor is assigned and earned a share
+            // Post credit to Doctor Ledger ONLY if doctor is assigned and earned a share (idempotent)
             if ($bill->doctor_id && $incDocShare > 0) {
-                $doctor = Doctor::find($bill->doctor_id);
-                if ($doctor) {
-                    $currPayable = (float)$doctor->current_payable;
-                    $balanceAfter = round($currPayable + $incDocShare, 2);
+                $existingDocLedger = DoctorLedger::where('hospital_bill_payment_id', $payment->id)->first();
+                if (!$existingDocLedger) {
+                    $doctor = Doctor::find($bill->doctor_id);
+                    if ($doctor) {
+                        $currPayable = (float)$doctor->current_payable;
+                        $balanceAfter = round($currPayable + $incDocShare, 2);
 
-                    DoctorLedger::create([
-                        'doctor_id'                => $bill->doctor_id,
-                        'hospital_bill_id'         => $bill->id,
-                        'hospital_bill_payment_id' => $payment->id,
-                        'entry_date'               => now()->toDateString(),
-                        'transaction_type'         => 'credit',
-                        'amount'                   => $incDocShare,
-                        'balance_after'            => $balanceAfter,
-                        'description'              => "Doctor share earned from Bill #{$bill->bill_number} (Patient: {$patientName})",
-                        'created_by'               => $userId ?? auth()->id(),
-                    ]);
+                        DoctorLedger::create([
+                            'doctor_id'                => $bill->doctor_id,
+                            'hospital_bill_id'         => $bill->id,
+                            'hospital_bill_payment_id' => $payment->id,
+                            'entry_date'               => now()->toDateString(),
+                            'transaction_type'         => 'credit',
+                            'amount'                   => $incDocShare,
+                            'balance_after'            => $balanceAfter,
+                            'description'              => "Doctor share earned from Bill #{$bill->bill_number} (Patient: " . ($bill->patient ? $bill->patient->name : 'Patient') . ")",
+                            'created_by'               => $userId ?? auth()->id(),
+                        ]);
+                    }
                 }
             }
 
