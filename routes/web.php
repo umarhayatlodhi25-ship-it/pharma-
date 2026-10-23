@@ -77,14 +77,49 @@ Route::get('/admin/setup', function (\Illuminate\Http\Request $request) {
 
 Route::get('/run-migrations-live', function () {
     try {
+        // Neon PgBouncer pooler fix: strip '-pooler' from database connection so DDL & advisory locks succeed
+        $dbConfig = config('database.connections.pgsql');
+        if ($dbConfig) {
+            $modified = false;
+            if (!empty($dbConfig['host']) && str_contains($dbConfig['host'], '-pooler')) {
+                config(['database.connections.pgsql.host' => str_replace('-pooler', '', $dbConfig['host'])]);
+                $modified = true;
+            }
+            if (!empty($dbConfig['url']) && str_contains($dbConfig['url'], '-pooler')) {
+                config(['database.connections.pgsql.url' => str_replace('-pooler', '', $dbConfig['url'])]);
+                $modified = true;
+            }
+            if ($modified) {
+                \Illuminate\Support\Facades\DB::purge('pgsql');
+            }
+        }
+
         \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-        return 'Migrations ran successfully: ' . \Illuminate\Support\Facades\Artisan::output();
-    } catch (\Exception $e) {
+        $migrateOutput = \Illuminate\Support\Facades\Artisan::output();
+
+        $tokenColumns = \Illuminate\Support\Facades\Schema::hasTable('patient_tokens')
+            ? \Illuminate\Support\Facades\Schema::getColumnListing('patient_tokens')
+            : [];
+        $billColumns = \Illuminate\Support\Facades\Schema::hasTable('hospital_bills')
+            ? \Illuminate\Support\Facades\Schema::getColumnListing('hospital_bills')
+            : [];
+
+        return response()->json([
+            'status' => 'success',
+            'output' => trim($migrateOutput),
+            'patient_tokens_columns' => $tokenColumns,
+            'hospital_bills_columns' => $billColumns,
+        ]);
+    } catch (\Throwable $e) {
         $error = $e->getMessage();
         if ($e->getPrevious()) {
             $error .= " | Previous: " . $e->getPrevious()->getMessage();
         }
-        return 'Error: ' . $error;
+        return response()->json([
+            'status' => 'error',
+            'message' => $error,
+            'trace' => $e->getTraceAsString(),
+        ], 500);
     }
 });
 

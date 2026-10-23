@@ -7,15 +7,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    public $withinTransaction = false;
+
     /**
      * Run the migrations.
      */
     public function up(): void
     {
-        Schema::table('hospital_bill_payments', function (Blueprint $table) {
-            $table->foreignId('patient_id')->nullable()->after('hospital_bill_id')->constrained('patients')->nullOnDelete();
-            $table->index('patient_id');
-        });
+        if (Schema::hasTable('hospital_bill_payments')) {
+            Schema::table('hospital_bill_payments', function (Blueprint $table) {
+                if (!Schema::hasColumn('hospital_bill_payments', 'patient_id')) {
+                    $table->foreignId('patient_id')->nullable()->after('hospital_bill_id')->constrained('patients')->nullOnDelete();
+                    $table->index('patient_id');
+                }
+            });
+        }
 
         // Backfill existing payments from hospital_bills
         try {

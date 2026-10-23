@@ -6,20 +6,34 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    public $withinTransaction = false;
+
     /**
      * Run the migrations.
      */
     public function up(): void
     {
-        Schema::table('patient_tokens', function (Blueprint $table) {
-            $table->decimal('previous_due', 10, 2)->default(0.00)->after('notes');
-            $table->decimal('paid_today', 10, 2)->default(0.00)->after('previous_due');
-            $table->decimal('balance_due', 10, 2)->default(0.00)->after('paid_today');
-        });
+        if (Schema::hasTable('patient_tokens')) {
+            Schema::table('patient_tokens', function (Blueprint $table) {
+                if (!Schema::hasColumn('patient_tokens', 'previous_due')) {
+                    $table->decimal('previous_due', 10, 2)->default(0.00);
+                }
+                if (!Schema::hasColumn('patient_tokens', 'paid_today')) {
+                    $table->decimal('paid_today', 10, 2)->default(0.00);
+                }
+                if (!Schema::hasColumn('patient_tokens', 'balance_due')) {
+                    $table->decimal('balance_due', 10, 2)->default(0.00);
+                }
+            });
+        }
 
-        Schema::table('hospital_bills', function (Blueprint $table) {
-            $table->decimal('previous_due', 10, 2)->default(0.00)->after('notes');
-        });
+        if (Schema::hasTable('hospital_bills')) {
+            Schema::table('hospital_bills', function (Blueprint $table) {
+                if (!Schema::hasColumn('hospital_bills', 'previous_due')) {
+                    $table->decimal('previous_due', 10, 2)->default(0.00);
+                }
+            });
+        }
     }
 
     /**

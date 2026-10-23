@@ -430,11 +430,10 @@ class HospitalBillingService
             $effectiveHospitalSharePct = round(100.00 - $effectiveDoctorSharePct, 2);
 
             // 3. Determine Payment Amounts
-            $totalAmountDue = round($totalGrossFee + $previousPendingBalance, 2);
-
             if ($feeType === 'free') {
                 $discountAmount = $totalGrossFee;
                 $currentNet = 0.00;
+                $totalAmountDue = round($previousPendingBalance, 2);
                 $amountReceivedToday = isset($data['paid_amount']) ? round(max(0.0, floatval($data['paid_amount'])), 2) : 0.00;
                 if ($amountReceivedToday > $previousPendingBalance) {
                     $amountReceivedToday = $previousPendingBalance;
@@ -442,6 +441,7 @@ class HospitalBillingService
             } elseif ($feeType === 'partial') {
                 $discountAmount = 0.00;
                 $currentNet = $totalGrossFee;
+                $totalAmountDue = round($totalGrossFee + $previousPendingBalance, 2);
                 $amountReceivedToday = isset($data['paid_amount']) ? round(max(0.0, floatval($data['paid_amount'])), 2) : 0.00;
                 if ($amountReceivedToday > $totalAmountDue) {
                     throw new InvalidArgumentException("Payment amount (PKR {$amountReceivedToday}) cannot exceed total outstanding amount (PKR {$totalAmountDue}).");
@@ -449,6 +449,7 @@ class HospitalBillingService
             } else { // paid in full
                 $discountAmount = 0.00;
                 $currentNet = $totalGrossFee;
+                $totalAmountDue = round($totalGrossFee + $previousPendingBalance, 2);
                 $amountReceivedToday = $totalAmountDue;
             }
 
