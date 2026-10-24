@@ -398,4 +398,49 @@ class DoctorPortalSecurityAndWorkflowTest extends TestCase
         $earningsA->assertSee('1,050.00');
         $earningsA->assertDontSee('600.00');
     }
+
+    /**
+     * TEST 11: Doctor login redirects straight to Doctor Portal dashboard.
+     */
+    public function test_doctor_login_redirects_to_doctor_portal_dashboard(): void
+    {
+        $response = $this->post('/login', [
+            'email'    => 'alice@hospital.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertRedirect('/doctor-portal/dashboard');
+    }
+
+    /**
+     * TEST 12: Doctor cannot access admin settings, inventory, or billing modules.
+     */
+    public function test_doctor_cannot_access_admin_modules(): void
+    {
+        // Settings -> redirected to fallback /doctor-portal/dashboard with restricted error
+        $settingsResponse = $this->actingAs($this->doctorUserA)->get('/settings');
+        $settingsResponse->assertRedirect('/doctor-portal/dashboard');
+
+        // Medicines -> redirected to fallback /doctor-portal/dashboard
+        $medResponse = $this->actingAs($this->doctorUserA)->get('/medicines');
+        $medResponse->assertRedirect('/doctor-portal/dashboard');
+    }
+
+    /**
+     * TEST 13: Admin cannot access Doctor Portal without a linked doctor profile.
+     */
+    public function test_admin_cannot_access_doctor_portal(): void
+    {
+        $response = $this->actingAs($this->adminUser)->get('/doctor-portal/dashboard');
+        $response->assertStatus(403);
+    }
+
+    /**
+     * TEST 14: Consultations index route redirects to OPD queue.
+     */
+    public function test_consultations_index_redirects_to_opd_queue(): void
+    {
+        $response = $this->actingAs($this->doctorUserA)->get('/doctor-portal/consultations');
+        $response->assertRedirect(route('doctor.queue.index'));
+    }
 }

@@ -459,6 +459,7 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/opd-queue/{token}/cancel', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'cancel'])->name('queue.cancel');
 
             // Consultations
+            Route::get('/consultations', [\App\Http\Controllers\DoctorPortal\ConsultationController::class, 'index'])->name('consultations.index');
             Route::get('/consultations/{token}', [\App\Http\Controllers\DoctorPortal\ConsultationController::class, 'show'])->name('consultations.show');
             Route::put('/consultations/{token}', [\App\Http\Controllers\DoctorPortal\ConsultationController::class, 'update'])->name('consultations.update');
 

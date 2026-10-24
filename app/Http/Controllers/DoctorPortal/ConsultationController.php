@@ -11,6 +11,14 @@ use Illuminate\Support\Facades\DB;
 class ConsultationController extends Controller
 {
     /**
+     * Display consultation queue / history.
+     */
+    public function index()
+    {
+        return redirect()->route('doctor.queue.index');
+    }
+
+    /**
      * Show consultation workspace for a specific token.
      */
     public function show(PatientToken $token)
