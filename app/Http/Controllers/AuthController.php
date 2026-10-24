@@ -22,6 +22,7 @@ class AuthController extends Controller
     public function redirectForUser(User $user): string
     {
         return match ($user->role) {
+            'doctor' => '/doctor-portal/dashboard',
             'cashier' => '/pos',
             'hospital' => '/opd/tokens',
             default => '/dashboard',
@@ -220,7 +221,12 @@ class AuthController extends Controller
         return response()->json([
             'authenticated' => true,
             'role' => $user->role ?? 'user',
-            'redirect' => ($user->role === 'admin' || $user->role === 'pharmacist') ? '/dashboard' : '/pos',
+            'redirect' => match ($user->role) {
+                'doctor' => '/doctor-portal/dashboard',
+                'admin', 'pharmacist' => '/dashboard',
+                'hospital' => '/opd/tokens',
+                default => '/pos',
+            },
         ]);
     }
 }

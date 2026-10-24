@@ -114,6 +114,22 @@ class User extends Authenticatable
     }
 
     /**
+     * Check if user is Doctor.
+     */
+    public function isDoctor(): bool
+    {
+        return $this->role === 'doctor';
+    }
+
+    /**
+     * Doctor profile associated with this user.
+     */
+    public function doctor(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Doctor::class, 'user_id');
+    }
+
+    /**
      * Check if user has specific role or one of given roles.
      */
     public function hasRole(string|array $roles): bool

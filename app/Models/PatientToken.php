@@ -51,6 +51,16 @@ class PatientToken extends Model
         'doctor_fee',
         'fee_type',
         'final_amount',
+        // Clinical examination data
+        'symptoms',
+        'diagnosis',
+        'clinical_notes',
+        'follow_up_date',
+        'follow_up_instructions',
+        'blood_pressure',
+        'pulse_rate',
+        'temperature',
+        'weight',
     ];
 
     /**
@@ -73,7 +83,16 @@ class PatientToken extends Model
         'balance_due'               => 'decimal:2',
         'called_at'                 => 'datetime',
         'completed_at'              => 'datetime',
+        'follow_up_date'            => 'date:Y-m-d',
     ];
+
+    /**
+     * Relationship: The prescription created from this consultation token.
+     */
+    public function prescription(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Prescription::class, 'patient_token_id');
+    }
 
     /**
      * Relationship: The patient this token belongs to.

@@ -90,6 +90,14 @@ class Patient extends Model
     }
 
     /**
+     * Relationship: All prescriptions written for this patient.
+     */
+    public function prescriptions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Prescription::class, 'patient_id')->orderBy('created_at', 'desc');
+    }
+
+    /**
      * Relationship: All hospital bills for this patient.
      */
     public function bills(): \Illuminate\Database\Eloquent\Relations\HasMany

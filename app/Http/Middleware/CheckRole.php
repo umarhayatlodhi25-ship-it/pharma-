@@ -31,6 +31,7 @@ class CheckRole
 
         // Determine safe fallback destination based on user role to avoid infinite redirect loops
         $fallbackUrl = match ($user->role) {
+            'doctor' => '/doctor-portal/dashboard',
             'cashier' => '/pos',
             'hospital' => '/opd/tokens',
             default => '/dashboard',

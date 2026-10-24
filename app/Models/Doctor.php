@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Doctor extends Model
@@ -13,9 +14,14 @@ class Doctor extends Model
     protected $table = 'doctors';
 
     protected $fillable = [
+        'user_id',
         'name',
         'specialization',
         'qualification',
+        'room_number',
+        'start_time',
+        'end_time',
+        'schedule_days',
         'phone',
         'email',
         'gender',
@@ -33,6 +39,7 @@ class Doctor extends Model
         'doctor_share_percentage'   => 'decimal:2',
         'hospital_share_percentage' => 'decimal:2',
         'is_active'                 => 'boolean',
+        'schedule_days'             => 'array',
     ];
 
     /**
@@ -126,8 +133,21 @@ class Doctor extends Model
     }
 
     /**
-     * Relationship: Tokens assigned to this doctor.
+     * Relationship: Linked login user account.
      */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /**
+     * Relationship: Prescriptions written by this doctor.
+     */
+    public function prescriptions(): HasMany
+    {
+        return $this->hasMany(Prescription::class, 'doctor_id');
+    }
+
     /**
      * Relationship: Tokens assigned to this doctor.
      */

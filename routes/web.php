@@ -259,7 +259,7 @@ Route::get('/reset-password/{email?}', [AuthController::class, 'showResetPasswor
 Route::post('/reset-password', [AuthController::class, 'processResetPassword'])->name('password.update');
 Route::get('/register', [AuthController::class, 'showRegister']);
 Route::post('/register', [AuthController::class, 'register']);
-Route::post('/logout', [AuthController::class, 'logout']);
+Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // ============================================================
 // Protected Routes
@@ -291,6 +291,12 @@ Route::middleware(['auth'])->group(function () {
                 Route::post('/users/{id}/restore', [UserManagementController::class, 'restore'])->name('users.restore');
                 Route::delete('/users/{id}/force', [UserManagementController::class, 'forceDelete'])->name('users.forceDelete');
             });
+
+        // Doctor Portal Account Management (Admin Only)
+        Route::post('/doctors/{doctor}/account', [\App\Http\Controllers\Admin\DoctorAccountController::class, 'createOrLink'])->name('admin.doctors.account.create-or-link');
+        Route::put('/doctors/{doctor}/account/password', [\App\Http\Controllers\Admin\DoctorAccountController::class, 'resetPassword'])->name('admin.doctors.account.reset-password');
+        Route::delete('/doctors/{doctor}/account', [\App\Http\Controllers\Admin\DoctorAccountController::class, 'unlink'])->name('admin.doctors.account.unlink');
+        Route::patch('/doctors/{doctor}/account/toggle-status', [\App\Http\Controllers\Admin\DoctorAccountController::class, 'toggleStatus'])->name('admin.doctors.account.toggle-status');
     });
 
     // 2. ADMIN & PHARMACIST & ASSISTANT ADMIN ROUTES (Dashboard, Medicines, Purchases, Suppliers, Reports)
@@ -435,6 +441,49 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/doctors/{doctor}/settle', [DoctorLedgerController::class, 'settle'])->name('doctor-ledgers.settle');
     Route::get('/doctor-settlements/{settlement}/voucher', [DoctorLedgerController::class, 'printVoucher'])->name('doctor-settlements.voucher');
     });
+
+    // ============================================================
+    // 5. DOCTOR PORTAL (Dedicated Clinical & Practice Workspace)
+    // ============================================================
+    Route::prefix('doctor-portal')
+        ->name('doctor.')
+        ->middleware(['doctor.portal'])
+        ->group(function () {
+            // Dashboard
+            Route::get('/dashboard', [\App\Http\Controllers\DoctorPortal\DashboardController::class, 'index'])->name('dashboard');
+
+            // OPD Queue
+            Route::get('/opd-queue', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'index'])->name('queue.index');
+            Route::post('/opd-queue/{token}/call', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'call'])->name('queue.call');
+            Route::post('/opd-queue/{token}/complete', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'complete'])->name('queue.complete');
+            Route::post('/opd-queue/{token}/cancel', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'cancel'])->name('queue.cancel');
+
+            // Consultations
+            Route::get('/consultations/{token}', [\App\Http\Controllers\DoctorPortal\ConsultationController::class, 'show'])->name('consultations.show');
+            Route::put('/consultations/{token}', [\App\Http\Controllers\DoctorPortal\ConsultationController::class, 'update'])->name('consultations.update');
+
+            // Patients (Authorized list & detail)
+            Route::get('/patients', [\App\Http\Controllers\DoctorPortal\PatientController::class, 'index'])->name('patients.index');
+            Route::get('/patients/{patient}', [\App\Http\Controllers\DoctorPortal\PatientController::class, 'show'])->name('patients.show');
+
+            // Prescriptions
+            Route::get('/prescriptions', [\App\Http\Controllers\DoctorPortal\PrescriptionController::class, 'index'])->name('prescriptions.index');
+            Route::get('/prescriptions/create', [\App\Http\Controllers\DoctorPortal\PrescriptionController::class, 'create'])->name('prescriptions.create');
+            Route::post('/prescriptions', [\App\Http\Controllers\DoctorPortal\PrescriptionController::class, 'store'])->name('prescriptions.store');
+            Route::get('/prescriptions/{prescription}', [\App\Http\Controllers\DoctorPortal\PrescriptionController::class, 'show'])->name('prescriptions.show');
+            Route::get('/prescriptions/{prescription}/print', [\App\Http\Controllers\DoctorPortal\PrescriptionController::class, 'print'])->name('prescriptions.print');
+
+            // Financial Earnings & Ledger
+            Route::get('/earnings', [\App\Http\Controllers\DoctorPortal\EarningsController::class, 'index'])->name('earnings.index');
+            Route::get('/ledger', [\App\Http\Controllers\DoctorPortal\LedgerController::class, 'index'])->name('ledger.index');
+
+            // Schedule & Profile
+            Route::get('/schedule', [\App\Http\Controllers\DoctorPortal\ScheduleController::class, 'index'])->name('schedule.index');
+            Route::put('/schedule', [\App\Http\Controllers\DoctorPortal\ScheduleController::class, 'update'])->name('schedule.update');
+            Route::get('/profile', [\App\Http\Controllers\DoctorPortal\ProfileController::class, 'show'])->name('profile.show');
+            Route::put('/profile', [\App\Http\Controllers\DoctorPortal\ProfileController::class, 'update'])->name('profile.update');
+            Route::put('/profile/password', [\App\Http\Controllers\DoctorPortal\ProfileController::class, 'updatePassword'])->name('profile.password');
+        });
 });
 
 

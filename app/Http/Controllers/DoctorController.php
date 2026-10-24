@@ -134,6 +134,15 @@ class DoctorController extends Controller
         $totalPaid = (float) $doctor->total_paid;
         $currentPayable = (float) $doctor->current_payable;
 
+        // Potential users that can be linked to this doctor profile (excluding admins and already linked doctors)
+        $availableUsers = \App\Models\User::where('role', '!=', 'admin')
+            ->where(function ($q) use ($doctor) {
+                $q->whereDoesntHave('doctor')
+                  ->orWhere('id', $doctor->user_id);
+            })
+            ->orderBy('name')
+            ->get();
+
         return view('admin.doctors.show', compact(
             'doctor',
             'tokens',
@@ -145,7 +154,8 @@ class DoctorController extends Controller
             'totalCollection',
             'totalEarned',
             'totalPaid',
-            'currentPayable'
+            'currentPayable',
+            'availableUsers'
         ));
     }
 

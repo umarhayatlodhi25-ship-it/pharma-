@@ -165,6 +165,175 @@
         </div>
     </div>
 
+    <!-- DOCTOR PORTAL LOGIN ACCOUNT (Admin Management) -->
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 pb-3">
+            <div>
+                <h3 class="text-sm font-bold text-gray-900 flex items-center space-x-2">
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                    <span>Doctor Portal Login & Security Account</span>
+                </h3>
+                <p class="text-xs text-gray-500">Manage portal access credentials for Dr. {{ $doctor->name }}.</p>
+            </div>
+            @if($doctor->user)
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    <i class="fa-solid fa-circle-check mr-1.5 text-indigo-600"></i> Account Linked: {{ $doctor->user->email }}
+                </span>
+            @else
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                    <i class="fa-solid fa-triangle-exclamation mr-1.5 text-amber-600"></i> No Login Account Linked
+                </span>
+            @endif
+        </div>
+
+        @if($errors->any())
+            <div class="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+                <p class="font-bold mb-1">Please fix the following issues:</p>
+                <ul class="list-disc list-inside space-y-0.5">
+                    @foreach($errors->all() as $err)
+                        <li>{{ $err }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+
+        @if($doctor->user)
+            <!-- LINKED ACCOUNT DETAILS & ACTIONS -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+                <div>
+                    <span class="text-gray-400 block font-medium">Account Name</span>
+                    <span class="font-bold text-gray-800 text-sm">{{ $doctor->user->name }}</span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block font-medium">Login Email</span>
+                    <span class="font-bold text-indigo-700 font-mono text-sm">{{ $doctor->user->email }}</span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block font-medium">Assigned System Role</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded font-mono font-bold bg-indigo-100 text-indigo-800 text-xs">
+                        {{ $doctor->user->role }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2">
+                <!-- RESET PASSWORD FORM -->
+                <div class="bg-gray-50/70 p-4 rounded-xl border border-gray-200 space-y-3">
+                    <h4 class="text-xs font-bold text-gray-700 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-key text-amber-600"></i>
+                        <span>Reset Account Password</span>
+                    </h4>
+                    <form action="{{ route('admin.doctors.account.reset-password', $doctor->id) }}" method="POST" class="space-y-3">
+                        @csrf
+                        @method('PUT')
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-1">New Password</label>
+                                <input type="password" name="password" required minlength="6" placeholder="Min. 6 characters" class="w-full text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 py-1.5 px-3">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-gray-600 mb-1">Confirm New Password</label>
+                                <input type="password" name="password_confirmation" required minlength="6" placeholder="Re-type password" class="w-full text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 py-1.5 px-3">
+                            </div>
+                        </div>
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow-2xs transition">
+                            <i class="fa-solid fa-lock mr-1.5"></i> Update Password
+                        </button>
+                    </form>
+                </div>
+
+                <!-- UNLINK ACCOUNT -->
+                <div class="bg-gray-50/70 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
+                    <div>
+                        <h4 class="text-xs font-bold text-rose-700 flex items-center space-x-1.5 mb-1.5">
+                            <i class="fa-solid fa-link-slash"></i>
+                            <span>Unlink Portal Login Account</span>
+                        </h4>
+                        <p class="text-xs text-gray-500 leading-relaxed">
+                            Unlinking removes portal login capability for this doctor profile. Historical patient visits, prescriptions, and financial ledger records remain intact.
+                        </p>
+                    </div>
+                    <form action="{{ route('admin.doctors.account.unlink', $doctor->id) }}" method="POST" onsubmit="return confirm('Are you sure you want to unlink the login account for this doctor? The doctor will no longer be able to log in to the Doctor Portal.');" class="pt-3">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow-2xs transition">
+                            <i class="fa-solid fa-unlink mr-1.5"></i> Unlink Login Account
+                        </button>
+                    </form>
+                </div>
+            </div>
+        @else
+            <!-- CREATE OR LINK TABS -->
+            <div x-data="{ tab: 'create' }" class="space-y-4">
+                <div class="flex border-b border-gray-200 text-xs font-semibold">
+                    <button type="button" @click="tab = 'create'" :class="tab === 'create' ? 'border-b-2 border-indigo-600 text-indigo-700 font-bold pb-2 px-4' : 'text-gray-500 hover:text-gray-700 pb-2 px-4'">
+                        <i class="fa-solid fa-user-plus mr-1"></i> Option A: Create New Login Account
+                    </button>
+                    <button type="button" @click="tab = 'link'" :class="tab === 'link' ? 'border-b-2 border-indigo-600 text-indigo-700 font-bold pb-2 px-4' : 'text-gray-500 hover:text-gray-700 pb-2 px-4'">
+                        <i class="fa-solid fa-link mr-1"></i> Option B: Link Existing Account
+                    </button>
+                </div>
+
+                <!-- OPTION A: CREATE NEW USER -->
+                <div x-show="tab === 'create'" class="bg-gray-50/70 p-4 rounded-xl border border-gray-200">
+                    <form action="{{ route('admin.doctors.account.create-or-link', $doctor->id) }}" method="POST" class="space-y-3">
+                        @csrf
+                        <input type="hidden" name="action_type" value="create">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                            <div>
+                                <label class="block font-semibold text-gray-700 mb-1">Full Name</label>
+                                <input type="text" name="name" value="{{ old('name', 'Dr. ' . $doctor->name) }}" required class="w-full text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 py-1.5 px-3">
+                            </div>
+                            <div>
+                                <label class="block font-semibold text-gray-700 mb-1">Portal Login Email</label>
+                                <input type="email" name="email" value="{{ old('email', $doctor->email) }}" required placeholder="doctor@hospital.com" class="w-full text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 py-1.5 px-3">
+                            </div>
+                            <div>
+                                <label class="block font-semibold text-gray-700 mb-1">Password</label>
+                                <input type="password" name="password" required minlength="6" placeholder="Min. 6 characters" class="w-full text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 py-1.5 px-3">
+                            </div>
+                            <div>
+                                <label class="block font-semibold text-gray-700 mb-1">Confirm Password</label>
+                                <input type="password" name="password_confirmation" required minlength="6" placeholder="Confirm password" class="w-full text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 py-1.5 px-3">
+                            </div>
+                        </div>
+                        <div class="pt-2 flex justify-end">
+                            <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-2xs transition">
+                                <i class="fa-solid fa-user-shield mr-1.5"></i> Create & Link Doctor Account
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- OPTION B: LINK EXISTING USER -->
+                <div x-show="tab === 'link'" style="display: none;" class="bg-gray-50/70 p-4 rounded-xl border border-gray-200">
+                    <form action="{{ route('admin.doctors.account.create-or-link', $doctor->id) }}" method="POST" class="space-y-3">
+                        @csrf
+                        <input type="hidden" name="action_type" value="link">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                            <div class="sm:col-span-2">
+                                <label class="block font-semibold text-gray-700 mb-1">Select Existing System User</label>
+                                <select name="existing_user_id" required class="w-full text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 py-1.5 px-3">
+                                    <option value="">-- Choose User Account --</option>
+                                    @foreach($availableUsers as $u)
+                                        <option value="{{ $u->id }}">
+                                            {{ $u->name }} ({{ $u->email }}) [Role: {{ $u->role }}]
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-2xs transition">
+                                    <i class="fa-solid fa-link mr-1.5"></i> Link Selected User
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
+    </div>
+
     <!-- DOCTOR REVENUE SHARE & PAYABLE LEDGER (User Spec Section 9) -->
     <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-3">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 pb-3">
