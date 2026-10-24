@@ -50,7 +50,7 @@
         <div class="flex items-center space-x-3">
             <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 shadow-xs">
                 <i class="fa-regular fa-calendar-check mr-2 text-blue-600"></i>
-                {{ now()->format('d M Y') }}
+                {{ format_app_datetime(now(), 'd M Y') }}
             </span>
 
             <button 
@@ -810,14 +810,14 @@
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-500 font-medium">Date:</span>
                                 <span class="font-semibold text-slate-800">
-                                    {{ $generatedToken->created_at ? $generatedToken->created_at->format('d M Y') : now()->format('d M Y') }}
+                                    {{ format_app_datetime($generatedToken->created_at ?: now(), 'd M Y') }}
                                 </span>
                             </div>
 
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-500 font-medium">Time:</span>
                                 <span class="font-semibold text-slate-800 font-mono">
-                                    {{ $generatedToken->created_at ? $generatedToken->created_at->format('h:i A') : now()->format('h:i A') }}
+                                    {{ format_app_datetime($generatedToken->created_at ?: now(), 'h:i A') }}
                                 </span>
                             </div>
 
@@ -1115,7 +1115,7 @@
 
                             <!-- Time -->
                             <td class="py-3 px-3 font-mono text-slate-600">
-                                {{ $t->created_at ? $t->created_at->format('h:i A') : '—' }}
+                                {{ format_app_datetime($t->created_at, 'h:i A') }}
                             </td>
 
                             <!-- Status -->
@@ -1269,11 +1269,11 @@
                 </tr>
                 <tr>
                     <td style="font-weight: bold;">Date:</td>
-                    <td>{{ $printToken->created_at ? $printToken->created_at->format('d M Y') : now()->format('d M Y') }}</td>
+                    <td>{{ format_app_datetime($printToken->created_at ?: now(), 'd M Y') }}</td>
                 </tr>
                 <tr>
                     <td style="font-weight: bold;">Time:</td>
-                    <td>{{ $printToken->created_at ? $printToken->created_at->format('h:i A') : now()->format('h:i A') }}</td>
+                    <td>{{ format_app_datetime($printToken->created_at ?: now(), 'h:i A') }}</td>
                 </tr>
                 <tr>
                     <td style="font-weight: bold;">Fee:</td>

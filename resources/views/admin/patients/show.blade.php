@@ -15,6 +15,17 @@
             </button>
         </div>
     @endif
+    @if(session('error'))
+        <div class="bg-rose-50 border border-rose-200/80 text-rose-800 px-4 py-3.5 rounded-xl text-sm font-medium flex items-center justify-between shadow-xs">
+            <div class="flex items-center space-x-2.5">
+                <i class="fa-solid fa-circle-exclamation text-rose-600 text-base"></i>
+                <span>{{ session('error') }}</span>
+            </div>
+            <button onclick="this.parentElement.remove()" class="text-rose-500 hover:text-rose-800 text-sm">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    @endif
 
     <!-- Header & Navigation -->
     <div class="bg-white p-6 rounded-2xl shadow-xs border border-slate-200/80 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -55,6 +66,15 @@
                 <i class="fa-solid fa-arrow-left text-xs"></i>
                 <span>Back to Patients</span>
             </a>
+
+            <form action="{{ route('patients.destroy', $patient->id) }}" method="POST" class="inline-block" onsubmit="return confirm('Are you sure you want to delete patient \'{{ addslashes($patient->name) }}\' ({{ $patient->patient_number }})? All related tokens and billing records will also be removed.');">
+                @csrf
+                @method('DELETE')
+                <button type="submit" class="bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 hover:border-rose-600 px-3.5 py-2.5 rounded-xl font-bold text-xs transition flex items-center space-x-1.5 cursor-pointer shadow-xs">
+                    <i class="fa-solid fa-trash-can text-xs"></i>
+                    <span>Delete Patient</span>
+                </button>
+            </form>
         </div>
     </div>
 

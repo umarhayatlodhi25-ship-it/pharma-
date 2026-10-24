@@ -118,7 +118,7 @@ class TokenManagement extends Component
         $this->resetValidation('selected_patient_id');
 
         // Check if patient already has an active token today
-        $today = now()->toDateString();
+        $today = app_datetime()->toDateString();
         $activeToken = PatientToken::where('patient_id', $patient->id)
             ->where('token_date', $today)
             ->whereIn('status', ['waiting', 'called', 'in_consultation'])
@@ -317,7 +317,7 @@ class TokenManagement extends Component
             }
         }
 
-        $today = now()->toDateString();
+        $today = app_datetime()->toDateString();
 
         try {
             $token = DB::transaction(function () use ($doctor, $service, $today) {
@@ -442,7 +442,7 @@ class TokenManagement extends Component
 
     public function render()
     {
-        $today = now()->toDateString();
+        $today = app_datetime()->toDateString();
         $doctors = Doctor::active()->orderBy('name')->get();
         $selectedDoctor = $this->doctor_id ? Doctor::find($this->doctor_id) : null;
         $selectedPatient = $this->selected_patient_id ? Patient::find($this->selected_patient_id) : null;

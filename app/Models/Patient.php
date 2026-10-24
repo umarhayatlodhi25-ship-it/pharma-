@@ -82,6 +82,14 @@ class Patient extends Model
     }
 
     /**
+     * Relationship: Latest token issued to this patient.
+     */
+    public function latestToken(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(PatientToken::class, 'patient_id')->latestOfMany('id');
+    }
+
+    /**
      * Relationship: All hospital bills for this patient.
      */
     public function bills(): \Illuminate\Database\Eloquent\Relations\HasMany

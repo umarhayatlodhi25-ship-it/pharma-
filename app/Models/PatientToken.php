@@ -161,9 +161,19 @@ class PatientToken extends Model
         $this->attributes['token_date'] = $value;
     }
 
+    public function getCreatedAtLocalAttribute(): ?\Carbon\Carbon
+    {
+        return $this->created_at ? app_datetime($this->created_at) : null;
+    }
+
     public function getVisitTimeAttribute(): string
     {
-        return $this->created_at ? $this->created_at->format('h:i A') : now()->format('h:i A');
+        return format_app_datetime($this->created_at ?: now(), 'h:i A');
+    }
+
+    public function formatCreatedAt(string $format = 'd M Y, h:i A', string $default = '—'): string
+    {
+        return format_app_datetime($this->created_at, $format, $default);
     }
 
     public function getDisplayFeeAttribute(): string

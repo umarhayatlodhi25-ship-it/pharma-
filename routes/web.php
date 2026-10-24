@@ -386,6 +386,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/patients', [PatientController::class, 'store'])->name('patients.store');
     Route::get('/patients/{patient}/pending-balance', [PatientController::class, 'pendingBalance'])->name('patients.pending-balance');
     Route::get('/patients/{patient}', [PatientController::class, 'show'])->name('patients.show');
+    Route::delete('/patients/{patient}', [PatientController::class, 'destroy'])->name('patients.destroy');
 
     // Patient Tokens (Phase 2 & Phase 3.1: Smart Token Management)
     Route::get('/patient-tokens', [PatientTokenController::class, 'index'])->name('patient-tokens.index');
