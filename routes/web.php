@@ -206,7 +206,7 @@ Route::get('/doctor-sync-audit', function () {
             'message' => $e->getMessage(),
             'line' => $e->getLine(),
             'file' => $e->getFile(),
-        ], 500);
+        ], 200);
     }
 });
 
