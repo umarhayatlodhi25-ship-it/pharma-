@@ -242,5 +242,39 @@ class Doctor extends Model
     {
         return 'PKR ' . number_format($this->total_paid, 2);
     }
+
+    /**
+     * Accessor: Gross collection billed/charged under this doctor profile.
+     * Reuses hospital bills as authoritative source, or valid charged tokens if no bills.
+     */
+    public function getGrossCollectionAttribute(): float
+    {
+        $billsTotal = (float) $this->hospitalBills()->sum('total_amount');
+        if ($billsTotal > 0) {
+            return $billsTotal;
+        }
+        return (float) $this->tokens()->where('status', '!=', 'cancelled')->sum('charged_amount');
+    }
+
+    public function getFormattedGrossCollectionAttribute(): string
+    {
+        return 'PKR ' . number_format($this->gross_collection, 2);
+    }
+
+    /**
+     * Accessor: Total OPD tokens generated for this doctor.
+     */
+    public function getTotalTokensCountAttribute(): int
+    {
+        return $this->tokens()->count();
+    }
+
+    /**
+     * Accessor: Total valid visits / consultations (excluding cancelled).
+     */
+    public function getTotalVisitsCountAttribute(): int
+    {
+        return $this->tokens()->where('status', '!=', 'cancelled')->count();
+    }
 }
 

@@ -16,20 +16,41 @@
                 <span>OPD Consultation Queue</span>
             </h1>
             <p class="text-xs text-gray-500 mt-1">
-                Manage today's patient queue assigned to Dr. {{ $doctor->name }} (Room: {{ $doctor->room_number ?: 'Not Set' }})
+                @if($targetDate === 'all')
+                    Showing all historical patient consultations assigned to Dr. {{ $doctor->name }} (Total: {{ $totalLifetimeTokens }})
+                @elseif($targetDate === $todayDate)
+                    Managing today's patient queue for Dr. {{ $doctor->name }} (Today: {{ $todayTokensCount }} • Lifetime: {{ $totalLifetimeTokens }})
+                @else
+                    Showing consultations for {{ format_app_datetime($targetDate, 'd M, Y') }} (Total: {{ $counts['total'] }})
+                @endif
             </p>
         </div>
 
-        <!-- Date Selector & Quick Refresh -->
-        <form action="{{ route('doctor.queue.index') }}" method="GET" class="flex items-center space-x-2">
-            <input type="date" name="date" value="{{ $targetDate }}" onchange="this.form.submit()" class="text-xs rounded-xl border-gray-300 shadow-2xs py-2 px-3 focus:ring-teal-500 focus:border-teal-500">
-            @if($statusFilter !== 'all')
-                <input type="hidden" name="status" value="{{ $statusFilter }}">
-            @endif
-            <button type="submit" class="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition shadow-xs">
-                <i class="fa-solid fa-arrows-rotate"></i>
-            </button>
-        </form>
+        <!-- Period Toggle & Date Selector -->
+        <div class="flex flex-wrap items-center gap-2">
+            <!-- Today Quick Button -->
+            <a href="{{ route('doctor.queue.index', ['date' => $todayDate, 'status' => $statusFilter]) }}"
+               class="px-3 py-2 rounded-xl text-xs font-bold transition {{ $targetDate === $todayDate ? 'bg-teal-600 text-white shadow-xs' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50' }}">
+                <i class="fa-solid fa-calendar-day mr-1"></i> Today ({{ $todayTokensCount }})
+            </a>
+
+            <!-- All Lifetime Quick Button -->
+            <a href="{{ route('doctor.queue.index', ['date' => 'all', 'status' => $statusFilter]) }}"
+               class="px-3 py-2 rounded-xl text-xs font-bold transition {{ $targetDate === 'all' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50' }}">
+                <i class="fa-solid fa-list-check mr-1"></i> All Lifetime ({{ $totalLifetimeTokens }})
+            </a>
+
+            <!-- Specific Date Selector -->
+            <form action="{{ route('doctor.queue.index') }}" method="GET" class="flex items-center space-x-1.5">
+                <input type="date" name="date" value="{{ $targetDate === 'all' ? '' : $targetDate }}" onchange="this.form.submit()" class="text-xs rounded-xl border-gray-300 shadow-2xs py-2 px-3 focus:ring-teal-500 focus:border-teal-500">
+                @if($statusFilter !== 'all')
+                    <input type="hidden" name="status" value="{{ $statusFilter }}">
+                @endif
+                <button type="submit" title="Refresh Queue" class="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition shadow-xs">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </button>
+            </form>
+        </div>
     </div>
 
     <!-- QUEUE SUMMARY FILTER CHIPS -->

@@ -37,22 +37,25 @@
 
     <!-- OPD QUEUE KPI STATS -->
     <div>
-        <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center space-x-2">
-            <i class="fa-solid fa-ticket-simple text-teal-600"></i>
-            <span>Today's OPD Queue Overview ({{ format_app_datetime(now(), 'd M, Y') }})</span>
-        </h2>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-3">
+            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center space-x-2">
+                <i class="fa-solid fa-ticket-simple text-teal-600"></i>
+                <span>Today's OPD Queue Overview ({{ format_app_datetime(now(config('app.display_timezone', 'Asia/Karachi')), 'd M, Y') }})</span>
+            </h2>
+            <span class="text-[11px] text-gray-400 font-medium">Timezone: {{ config('app.display_timezone', 'Asia/Karachi') }}</span>
+        </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Total Today -->
             <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-xs">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-medium text-gray-500">Total Tokens</span>
+                    <span class="text-xs font-medium text-gray-500">Today's Tokens</span>
                     <div class="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center text-sm">
                         <i class="fa-solid fa-users-viewfinder"></i>
                     </div>
                 </div>
                 <div class="mt-2 flex items-baseline space-x-2">
                     <span class="text-2xl font-black text-gray-900 font-mono">{{ $todayTokensCount }}</span>
-                    <span class="text-[11px] text-gray-400">assigned</span>
+                    <span class="text-[11px] text-gray-400">assigned today</span>
                 </div>
             </div>
 
@@ -80,33 +83,38 @@
                 </div>
                 <div class="mt-2 flex items-baseline space-x-2">
                     <span class="text-2xl font-black text-indigo-700 font-mono">{{ $inConsultationCount }}</span>
-                    <span class="text-[11px] text-indigo-600">active</span>
+                    <span class="text-[11px] text-indigo-600">active now</span>
                 </div>
             </div>
 
             <!-- Completed Today -->
             <div class="bg-white rounded-xl border border-emerald-100 p-4 shadow-xs">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-medium text-emerald-700">Completed Visits</span>
+                    <span class="text-xs font-medium text-emerald-700">Completed Today</span>
                     <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm">
                         <i class="fa-solid fa-circle-check"></i>
                     </div>
                 </div>
                 <div class="mt-2 flex items-baseline space-x-2">
                     <span class="text-2xl font-black text-emerald-700 font-mono">{{ $completedTokensCount }}</span>
-                    <span class="text-[11px] text-emerald-600">examined</span>
+                    <span class="text-[11px] text-emerald-600">examined today</span>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- PRACTICE & FINANCIAL METRICS (REAL LEDGER DATA) -->
+    <!-- PRACTICE & FINANCIAL METRICS (REAL AUTHORITATIVE LEDGER DATA) -->
     <div>
-        <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center space-x-2">
-            <i class="fa-solid fa-scale-balanced text-teal-600"></i>
-            <span>Practice Summary & Ledger Balance</span>
-        </h2>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-3">
+            <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center space-x-2">
+                <i class="fa-solid fa-scale-balanced text-teal-600"></i>
+                <span>Practice Summary & Ledger Balance (Authoritative Audit Records)</span>
+            </h2>
+            <span class="text-[11px] text-emerald-700 font-semibold flex items-center">
+                <i class="fa-solid fa-shield-halved mr-1 text-[10px]"></i> Reconciled with Hospital Ledger
+            </span>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <!-- Current Outstanding Payable -->
             <div class="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border border-emerald-200 p-4 shadow-xs">
                 <div class="flex items-center justify-between">
@@ -117,21 +125,35 @@
                     <span class="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
                         PKR {{ number_format($currentPayable, 2) }}
                     </span>
-                    <p class="text-[10px] text-emerald-600 mt-0.5">Owed to you by hospital</p>
+                    <p class="text-[10px] text-emerald-600 mt-0.5">Owed to you by hospital cash office</p>
                 </div>
             </div>
 
-            <!-- Total Earned -->
+            <!-- Total Doctor Share Earned -->
             <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-xs">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-medium text-gray-500">Total Lifetime Earned</span>
+                    <span class="text-xs font-medium text-gray-500">Doctor Share Earned</span>
                     <i class="fa-solid fa-arrow-trend-up text-blue-500"></i>
                 </div>
                 <div class="mt-2">
                     <span class="text-xl sm:text-2xl font-black text-gray-900 font-mono">
                         PKR {{ number_format($totalEarned, 2) }}
                     </span>
-                    <p class="text-[10px] text-gray-400 mt-0.5">Posted share credits</p>
+                    <p class="text-[10px] text-gray-400 mt-0.5">Total lifetime earned credits ({{ (float)$doctor->doctor_share_percentage }}% share)</p>
+                </div>
+            </div>
+
+            <!-- Gross Practice Collection -->
+            <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-xs">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-gray-500">Gross Practice Collection</span>
+                    <i class="fa-solid fa-receipt text-teal-600"></i>
+                </div>
+                <div class="mt-2">
+                    <span class="text-xl sm:text-2xl font-black text-teal-900 font-mono">
+                        PKR {{ number_format($grossCollection, 2) }}
+                    </span>
+                    <p class="text-[10px] text-gray-400 mt-0.5">Eligible consultation/service billing</p>
                 </div>
             </div>
 
@@ -145,7 +167,21 @@
                     <span class="text-xl sm:text-2xl font-black text-gray-900 font-mono">
                         PKR {{ number_format($totalPaid, 2) }}
                     </span>
-                    <p class="text-[10px] text-gray-400 mt-0.5">Paid out to date</p>
+                    <p class="text-[10px] text-gray-400 mt-0.5">Verified payouts disbursed to date</p>
+                </div>
+            </div>
+
+            <!-- Lifetime Visits & Consultations -->
+            <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-xs">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-gray-500">Total Lifetime Visits</span>
+                    <i class="fa-solid fa-hospital-user text-indigo-500"></i>
+                </div>
+                <div class="mt-2">
+                    <span class="text-xl sm:text-2xl font-black text-gray-900 font-mono">
+                        {{ $totalLifetimeVisits }}
+                    </span>
+                    <p class="text-[10px] text-gray-400 mt-0.5">{{ $totalLifetimeTokens }} total tokens • {{ $totalCompletedVisits }} completed visits</p>
                 </div>
             </div>
 
@@ -158,7 +194,7 @@
                 <div class="mt-2 flex items-center justify-between">
                     <div>
                         <span class="text-xl font-black text-gray-900 font-mono">{{ $authorizedPatientsCount }}</span>
-                        <p class="text-[10px] text-gray-400">Patients</p>
+                        <p class="text-[10px] text-gray-400">Unique Patients</p>
                     </div>
                     <div class="text-right border-l border-gray-100 pl-4">
                         <span class="text-xl font-black text-purple-700 font-mono">{{ $prescriptionsCount }}</span>
@@ -205,8 +241,8 @@
                                 #{{ $token->token_number }}
                             </td>
                             <td class="py-3 px-4">
-                                <span class="font-bold text-gray-800 block">{{ $token->patient->name }}</span>
-                                <span class="text-[11px] text-gray-400 font-mono">{{ $token->patient->patient_number }} • {{ $token->patient->gender ?: '—' }}, {{ $token->patient->age ? $token->patient->age.'y' : '—' }}</span>
+                                <span class="font-bold text-gray-800 block">{{ $token->patient ? $token->patient->name : 'OPD Patient' }}</span>
+                                <span class="text-[11px] text-gray-400 font-mono">{{ $token->patient ? $token->patient->patient_number : '—' }} • {{ $token->patient && $token->patient->gender ? $token->patient->gender : '—' }}, {{ $token->patient && $token->patient->age ? $token->patient->age.'y' : '—' }}</span>
                             </td>
                             <td class="py-3 px-4 text-gray-500 whitespace-nowrap">
                                 {{ format_app_datetime($token->token_date, 'd M, Y') }}

@@ -29,7 +29,7 @@
     </div>
 
     <!-- PRIMARY FINANCIAL KPI CARDS -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <!-- Current Outstanding Payable -->
         <div class="bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl p-5 shadow-lg shadow-emerald-900/20">
             <div class="flex items-center justify-between">
@@ -45,32 +45,60 @@
         <!-- Total Earned -->
         <div class="bg-white rounded-2xl border border-gray-100 p-5 shadow-xs">
             <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Lifetime Earned</span>
+                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Doctor Share Earned</span>
                 <div class="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center text-sm">
                     <i class="fa-solid fa-arrow-trend-up"></i>
                 </div>
             </div>
             <div class="mt-3">
                 <span class="text-2xl font-black text-gray-900 font-mono">PKR {{ number_format($totalEarned, 2) }}</span>
-                <p class="text-[11px] text-gray-400 mt-1">Total consultation credits</p>
+                <p class="text-[11px] text-gray-400 mt-1">Lifetime consultation revenue credits ({{ (float)$doctor->doctor_share_percentage }}% share)</p>
+            </div>
+        </div>
+
+        <!-- Gross Practice Collection -->
+        <div class="bg-white rounded-2xl border border-gray-100 p-5 shadow-xs">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Gross Collection</span>
+                <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm">
+                    <i class="fa-solid fa-receipt"></i>
+                </div>
+            </div>
+            <div class="mt-3">
+                <span class="text-2xl font-black text-teal-900 font-mono">PKR {{ number_format($grossCollection, 2) }}</span>
+                <p class="text-[11px] text-gray-400 mt-1">Total gross billing attributed to doctor</p>
             </div>
         </div>
 
         <!-- Total Settled -->
         <div class="bg-white rounded-2xl border border-gray-100 p-5 shadow-xs">
             <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Settled / Paid</span>
+                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Settled Payouts</span>
                 <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center text-sm">
                     <i class="fa-solid fa-money-bill-transfer"></i>
                 </div>
             </div>
             <div class="mt-3">
                 <span class="text-2xl font-black text-gray-900 font-mono">PKR {{ number_format($totalPaid, 2) }}</span>
-                <p class="text-[11px] text-gray-400 mt-1">Disbursed by hospital cash office</p>
+                <p class="text-[11px] text-gray-400 mt-1">Disbursed by hospital cash office to date</p>
             </div>
         </div>
 
-        <!-- This Month / Today -->
+        <!-- Lifetime Consultations / Visits Volume -->
+        <div class="bg-white rounded-2xl border border-gray-100 p-5 shadow-xs">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Consultations / Visits</span>
+                <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm">
+                    <i class="fa-solid fa-hospital-user"></i>
+                </div>
+            </div>
+            <div class="mt-3">
+                <span class="text-2xl font-black text-gray-900 font-mono">{{ $totalLifetimeVisits }}</span>
+                <p class="text-[11px] text-gray-400 mt-1">{{ $totalTokens }} tokens • {{ $paidTokens }} paid • {{ $freeTokens }} free</p>
+            </div>
+        </div>
+
+        <!-- Period Earnings -->
         <div class="bg-white rounded-2xl border border-gray-100 p-5 shadow-xs">
             <div class="flex items-center justify-between">
                 <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Period Earnings</span>
@@ -196,6 +224,7 @@
                             <th class="py-2.5 px-3">Date</th>
                             <th class="py-2.5 px-3">Settlement #</th>
                             <th class="py-2.5 px-3">Method</th>
+                            <th class="py-2.5 px-3">Status</th>
                             <th class="py-2.5 px-3 text-right">Paid Amount</th>
                         </tr>
                     </thead>
@@ -214,13 +243,18 @@
                                     <span class="text-[10px] text-gray-400 block truncate max-w-xs">{{ $settlement->reference_note }}</span>
                                 @endif
                             </td>
+                            <td class="py-3 px-3">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <i class="fa-solid fa-circle-check text-[8px] mr-1"></i> Completed
+                                </span>
+                            </td>
                             <td class="py-3 px-3 text-right font-mono font-bold text-slate-900">
                                 - PKR {{ number_format($settlement->paid_amount, 2) }}
                             </td>
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="4" class="py-8 text-center text-gray-400 text-xs">
+                            <td colspan="5" class="py-8 text-center text-gray-400 text-xs">
                                 No settlement payout vouchers generated yet.
                             </td>
                         </tr>

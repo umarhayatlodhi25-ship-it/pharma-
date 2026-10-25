@@ -16,14 +16,19 @@ class QueueController extends Controller
     public function index(Request $request)
     {
         /** @var Doctor $doctor */
-        $doctor = auth()->user()->doctor;
-        $targetDate = $request->input('date', now()->toDateString());
+        $doctor = $request->get('doctor') ?? auth()->user()->doctor;
+
+        $tz = config('app.display_timezone', config('app.timezone', 'Asia/Karachi'));
+        $todayDate = now($tz)->toDateString();
+        $targetDate = $request->input('date', $todayDate);
         $statusFilter = $request->input('status', 'all');
         $search = trim($request->input('search', ''));
 
-        $query = $doctor->tokens()
-            ->with(['patient', 'prescription'])
-            ->where('token_date', $targetDate);
+        $query = $doctor->tokens()->with(['patient', 'prescription']);
+
+        if ($targetDate !== 'all' && !empty($targetDate)) {
+            $query->where('token_date', $targetDate);
+        }
 
         if ($statusFilter !== 'all') {
             $query->where('status', $statusFilter);
@@ -49,17 +54,34 @@ class QueueController extends Controller
                 WHEN status = 'completed' THEN 4
                 ELSE 5
             END ASC
-        ")->orderBy('token_number', 'asc')->paginate(20)->withQueryString();
+        ")->orderBy('token_date', 'desc')->orderBy('token_number', 'asc')->paginate(20)->withQueryString();
 
-        // Queue counts for target date
+        // Queue counts for active date scope
+        $baseCountQuery = ($targetDate === 'all')
+            ? $doctor->tokens()
+            : $doctor->tokens()->where('token_date', $targetDate);
+
         $counts = [
-            'total'           => (clone $doctor->tokens()->where('token_date', $targetDate))->count(),
-            'waiting'         => (clone $doctor->tokens()->where('token_date', $targetDate))->where('status', 'waiting')->count(),
-            'in_consultation' => (clone $doctor->tokens()->where('token_date', $targetDate))->where('status', 'in_consultation')->count(),
-            'completed'       => (clone $doctor->tokens()->where('token_date', $targetDate))->where('status', 'completed')->count(),
+            'total'           => (clone $baseCountQuery)->count(),
+            'waiting'         => (clone $baseCountQuery)->where('status', 'waiting')->count(),
+            'in_consultation' => (clone $baseCountQuery)->where('status', 'in_consultation')->count(),
+            'completed'       => (clone $baseCountQuery)->where('status', 'completed')->count(),
         ];
 
-        return view('doctor-portal.queue.index', compact('doctor', 'tokens', 'counts', 'targetDate', 'statusFilter', 'search'));
+        $todayTokensCount = $doctor->tokens()->where('token_date', $todayDate)->count();
+        $totalLifetimeTokens = $doctor->tokens()->count();
+
+        return view('doctor-portal.queue.index', compact(
+            'doctor',
+            'tokens',
+            'counts',
+            'targetDate',
+            'todayDate',
+            'todayTokensCount',
+            'totalLifetimeTokens',
+            'statusFilter',
+            'search'
+        ));
     }
 
     /**
