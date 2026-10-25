@@ -152,6 +152,7 @@ Route::get('/doctor-sync-audit', function () {
                 'total_tokens_count' => (clone $tokens)->count(),
                 'tokens_by_status' => (clone $tokens)->select('status', \Illuminate\Support\Facades\DB::raw('count(*) as count'))->groupBy('status')->pluck('count', 'status'),
                 'tokens_by_payment_type' => (clone $tokens)->select('payment_type', \Illuminate\Support\Facades\DB::raw('count(*) as count'))->groupBy('payment_type')->pluck('count', 'payment_type'),
+                'tokens_by_date' => (clone $tokens)->select('token_date', \Illuminate\Support\Facades\DB::raw('count(*) as count'))->groupBy('token_date')->orderBy('token_date')->pluck('count', 'token_date'),
                 'tokens_with_bill_id' => (clone $tokens)->whereNotNull('hospital_bill_id')->count(),
                 'tokens_without_bill_id' => (clone $tokens)->whereNull('hospital_bill_id')->count(),
                 'tokens_distinct_patients' => (clone $tokens)->distinct('patient_id')->count('patient_id'),
