@@ -26,6 +26,22 @@ class EnsureDoctorPortalAccess
 
         // Must have an associated doctor record
         $doctor = $user->doctor;
+
+        // Auto-heal / link by email if doctor record exists with matching email
+        if (!$doctor && !empty($user->email)) {
+            $matchingDoctor = \App\Models\Doctor::whereRaw('LOWER(email) = ?', [strtolower(trim($user->email))])
+                ->whereNull('user_id')
+                ->first();
+
+            if ($matchingDoctor) {
+                $matchingDoctor->user_id = $user->id;
+                $matchingDoctor->status = 'active';
+                $matchingDoctor->is_active = true;
+                $matchingDoctor->save();
+                $doctor = $matchingDoctor;
+            }
+        }
+
         if (!$doctor) {
             abort(403, 'Account Configuration Error: No doctor profile is linked to this login account. Please contact the administrator.');
         }
@@ -35,7 +51,8 @@ class EnsureDoctorPortalAccess
             abort(403, 'Access Suspended: Your doctor account has been deactivated. Please contact the administrator.');
         }
 
-        // Share the active doctor on the request for easy controller access
+        // Share the active doctor on the request and user instance for easy controller access
+        $user->setRelation('doctor', $doctor);
         $request->attributes->set('doctor', $doctor);
 
         return $next($request);

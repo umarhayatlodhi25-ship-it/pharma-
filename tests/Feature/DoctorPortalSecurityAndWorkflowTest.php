@@ -443,4 +443,33 @@ class DoctorPortalSecurityAndWorkflowTest extends TestCase
         $response = $this->actingAs($this->doctorUserA)->get('/doctor-portal/consultations');
         $response->assertRedirect(route('doctor.queue.index'));
     }
+
+    /**
+     * TEST 15: Unlinked doctor user is auto-linked by email if doctor record exists.
+     */
+    public function test_unlinked_doctor_user_is_auto_linked_by_email(): void
+    {
+        $unlinkedDoctor = Doctor::create([
+            'user_id'                   => null,
+            'name'                      => 'Dr. Charlie Brown',
+            'email'                     => 'charlie@hospital.com',
+            'specialization'            => 'Pediatrician',
+            'consultation_fee'          => 1200.00,
+            'status'                    => 'active',
+            'is_active'                 => true,
+        ]);
+
+        $doctorUserC = User::factory()->create([
+            'name'  => 'Dr. Charlie Brown',
+            'email' => 'charlie@hospital.com',
+            'role'  => 'doctor',
+        ]);
+
+        $response = $this->actingAs($doctorUserC)->get('/doctor-portal/dashboard');
+        $response->assertStatus(200);
+
+        // Verify that doctor record was automatically linked to the user ID
+        $this->assertEquals($doctorUserC->id, $unlinkedDoctor->fresh()->user_id);
+    }
 }
+
