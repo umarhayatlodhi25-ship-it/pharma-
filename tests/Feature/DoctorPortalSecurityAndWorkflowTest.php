@@ -471,5 +471,27 @@ class DoctorPortalSecurityAndWorkflowTest extends TestCase
         // Verify that doctor record was automatically linked to the user ID
         $this->assertEquals($doctorUserC->id, $unlinkedDoctor->fresh()->user_id);
     }
+
+    /**
+     * TEST 16: Doctor user with no profile is automatically provisioned a profile on first login.
+     */
+    public function test_doctor_user_is_auto_provisioned_if_no_profile_exists(): void
+    {
+        $newDoctorUser = User::factory()->create([
+            'name'  => 'Dr. Gregory House',
+            'email' => 'house@princeton.edu',
+            'role'  => 'doctor',
+        ]);
+
+        $response = $this->actingAs($newDoctorUser)->get('/doctor-portal/dashboard');
+        $response->assertStatus(200);
+
+        // Verify that a doctor profile was automatically created
+        $createdDoctor = Doctor::where('user_id', $newDoctorUser->id)->first();
+        $this->assertNotNull($createdDoctor);
+        $this->assertEquals('Dr. Gregory House', $createdDoctor->name);
+        $this->assertEquals('house@princeton.edu', $createdDoctor->email);
+        $this->assertTrue($createdDoctor->is_active);
+    }
 }
 
