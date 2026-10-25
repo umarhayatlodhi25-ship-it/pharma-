@@ -177,8 +177,8 @@ Route::get('/doctor-sync-audit', function () {
 
                 // Settlements
                 'settlements_count' => (clone $settlements)->count(),
-                'settlements_sum' => (float)(clone $settlements)->sum('amount'),
-                'settlements_list' => (clone $settlements)->select('id', 'settlement_date', 'amount', 'payment_method', 'status', 'reference_number')->get(),
+                'settlements_sum' => (float)(clone $settlements)->sum('paid_amount'),
+                'settlements_list' => (clone $settlements)->select('id', 'settlement_number', 'settlement_date', 'paid_amount', 'payment_method', 'reference_note')->get(),
 
                 // Prescriptions
                 'prescriptions_count' => (clone $prescriptions)->count(),
