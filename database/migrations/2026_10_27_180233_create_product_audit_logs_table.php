@@ -7,11 +7,18 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
+     * Disable transaction block on PostgreSQL/Neon so that pooled connections
+     * and DDL commands execute safely without transaction abort errors.
+     */
+    public $withinTransaction = false;
+
+    /**
      * Run the migrations.
      */
     public function up(): void
     {
-        Schema::create('product_audit_logs', function (Blueprint $table) {
+        if (!Schema::hasTable('product_audit_logs')) {
+            Schema::create('product_audit_logs', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('user_name')->nullable();
@@ -25,6 +32,7 @@ return new class extends Migration
             $table->string('status')->default('success');
             $table->timestamps();
         });
+        }
     }
 
     /**

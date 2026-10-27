@@ -77,9 +77,9 @@ Route::get('/admin/setup', function (\Illuminate\Http\Request $request) {
 
 Route::get('/run-migrations-live', function () {
     try {
-        // Neon PgBouncer pooler fix: strip '-pooler' from database connection so DDL & advisory locks succeed
         $dbConfig = config('database.connections.pgsql');
-        if ($dbConfig) {
+        $hasPgsql = (!empty($dbConfig['url']) || !empty($dbConfig['host']));
+        if ($hasPgsql) {
             $modified = false;
             if (!empty($dbConfig['host']) && str_contains($dbConfig['host'], '-pooler')) {
                 config(['database.connections.pgsql.host' => str_replace('-pooler', '', $dbConfig['host'])]);
@@ -92,11 +92,44 @@ Route::get('/run-migrations-live', function () {
             if ($modified) {
                 \Illuminate\Support\Facades\DB::purge('pgsql');
             }
-        }
 
-        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+            // Direct DDL to guarantee medicines.deleted_at and product_audit_logs exist immediately
+            try {
+                \Illuminate\Support\Facades\DB::connection('pgsql')->statement(
+                    'ALTER TABLE medicines ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL'
+                );
+            } catch (\Throwable $e) {}
+
+            try {
+                \Illuminate\Support\Facades\DB::connection('pgsql')->statement("
+                    CREATE TABLE IF NOT EXISTS product_audit_logs (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+                        user_name VARCHAR(255) NULL,
+                        user_email VARCHAR(255) NULL,
+                        action VARCHAR(255) NOT NULL,
+                        description TEXT NULL,
+                        ip_address VARCHAR(45) NULL,
+                        user_agent TEXT NULL,
+                        affected_product_ids JSONB NULL,
+                        summary JSONB NULL,
+                        status VARCHAR(50) DEFAULT 'success',
+                        created_at TIMESTAMP NULL,
+                        updated_at TIMESTAMP NULL
+                    )
+                ");
+            } catch (\Throwable $e) {}
+
+            config(['database.default' => 'pgsql']);
+            \Illuminate\Support\Facades\Artisan::call('migrate', ['--database' => 'pgsql', '--force' => true]);
+        } else {
+            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        }
         $migrateOutput = \Illuminate\Support\Facades\Artisan::output();
 
+        $medicineColumns = \Illuminate\Support\Facades\Schema::hasTable('medicines')
+            ? \Illuminate\Support\Facades\Schema::getColumnListing('medicines')
+            : [];
         $tokenColumns = \Illuminate\Support\Facades\Schema::hasTable('patient_tokens')
             ? \Illuminate\Support\Facades\Schema::getColumnListing('patient_tokens')
             : [];
@@ -107,6 +140,7 @@ Route::get('/run-migrations-live', function () {
         return response()->json([
             'status' => 'success',
             'output' => trim($migrateOutput),
+            'medicines_columns' => $medicineColumns,
             'patient_tokens_columns' => $tokenColumns,
             'hospital_bills_columns' => $billColumns,
         ]);

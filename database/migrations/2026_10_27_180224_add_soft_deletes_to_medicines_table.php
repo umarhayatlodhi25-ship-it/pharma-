@@ -7,15 +7,25 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
+     * Disable transaction block on PostgreSQL/Neon so that pooled connections
+     * and DDL commands execute safely without transaction abort errors.
+     */
+    public $withinTransaction = false;
+
+    /**
      * Run the migrations.
      */
     public function up(): void
     {
-        Schema::table('medicines', function (Blueprint $table) {
-            if (!Schema::hasColumn('medicines', 'deleted_at')) {
-                $table->softDeletes();
-            }
-        });
+        if (\Illuminate\Support\Facades\DB::getDriverName() === 'pgsql') {
+            \Illuminate\Support\Facades\DB::statement('ALTER TABLE medicines ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL');
+        } else {
+            Schema::table('medicines', function (Blueprint $table) {
+                if (!Schema::hasColumn('medicines', 'deleted_at')) {
+                    $table->softDeletes();
+                }
+            });
+        }
     }
 
     /**

@@ -33,6 +33,32 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Support\Facades\Event::listen(function (\Illuminate\Database\Events\ConnectionEstablished $event) {
             if ($event->connection->getDriverName() === 'pgsql') {
                 $event->connection->getPdo()->setAttribute(\PDO::ATTR_EMULATE_PREPARES, true);
+
+                // Auto-heal production schema on Neon PostgreSQL (prevents missing column errors on serverless deployments)
+                static $schemaSynced = false;
+                if (!$schemaSynced) {
+                    $schemaSynced = true;
+                    try {
+                        $event->connection->statement('ALTER TABLE medicines ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL');
+                        $event->connection->statement("CREATE TABLE IF NOT EXISTS product_audit_logs (
+                            id BIGSERIAL PRIMARY KEY,
+                            user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+                            user_name VARCHAR(255) NULL,
+                            user_email VARCHAR(255) NULL,
+                            action VARCHAR(255) NOT NULL,
+                            description TEXT NULL,
+                            ip_address VARCHAR(45) NULL,
+                            user_agent TEXT NULL,
+                            affected_product_ids JSONB NULL,
+                            summary JSONB NULL,
+                            status VARCHAR(50) DEFAULT 'success',
+                            created_at TIMESTAMP NULL,
+                            updated_at TIMESTAMP NULL
+                        )");
+                    } catch (\Throwable $e) {
+                        // Non-blocking fallback
+                    }
+                }
             }
         });
 
