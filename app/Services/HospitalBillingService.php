@@ -47,16 +47,26 @@ class HospitalBillingService
             $billingType = $data['billing_type'] ?? ($tokenId ? 'opd' : 'direct');
             $includePreviousBalance = !empty($data['include_previous_balance']);
 
-            // Validate token ownership if token provided
+            // Validate token ownership and doctor relationship if token provided
             $token = null;
             if ($tokenId) {
-                $token = PatientToken::where('id', $tokenId)->where('patient_id', $patientId)->first();
+                $token = PatientToken::with('doctor')->where('id', $tokenId)->where('patient_id', $patientId)->first();
                 if (!$token) {
                     throw new InvalidArgumentException("Selected OPD token does not belong to this patient.");
+                }
+                if ($doctorId && $token->doctor_id && (int)$token->doctor_id !== (int)$doctorId) {
+                    $docName = $token->doctor ? $token->doctor->name : 'another doctor';
+                    throw new InvalidArgumentException("Selected OPD token is assigned to Dr. {$docName}. Mismatched doctor-token billing is not permitted.");
                 }
                 if (!$doctorId && $token->doctor_id) {
                     $doctorId = $token->doctor_id;
                 }
+            } elseif ($billingType === 'opd') {
+                throw new InvalidArgumentException("An OPD token is required for Mode A (OPD Patient Billing).");
+            }
+
+            if ($billingType === 'opd' && !$doctorId) {
+                throw new InvalidArgumentException("A valid attending doctor is required for Mode A (OPD Patient Billing).");
             }
 
             // Load doctor
@@ -159,17 +169,37 @@ class HospitalBillingService
             $previousDueRecorded = $includePreviousBalance ? $eligiblePreviousOutstanding : 0.00;
 
             // 3. Revenue Split Determination
-            // Rule: Hospital service bills belong 100% to hospital, unless doctor procedure share is configured
-            if ($billingType === 'direct') {
+            // If no doctor is assigned (Mode B without doctor), service revenue is 100% hospital according to direct-billing rules.
+            // If a doctor is assigned (Mode A or Mode B with doctor), apply doctor share ONLY when configured service rules explicitly support it.
+            // Never create an arbitrary doctor share.
+            if (!$doctorId) {
                 $doctorPct = 0.00;
                 $hospitalPct = 100.00;
             } elseif (isset($data['doctor_share_percentage']) && is_numeric($data['doctor_share_percentage'])) {
                 $doctorPct = max(0.00, min(100.00, round(floatval($data['doctor_share_percentage']), 2)));
                 $hospitalPct = round(100.00 - $doctorPct, 2);
             } else {
-                // If this is a procedure bill linked to an OPD visit, hospital services do NOT split doctor fee
-                $doctorPct = 0.00;
-                $hospitalPct = 100.00;
+                // Compute doctor share from configured hospital services
+                $totalDoctorSharePotential = 0.00;
+                foreach ($normalizedItems as $item) {
+                    $itemSrvId = $item['hospital_service_id'] ?? null;
+                    if ($itemSrvId) {
+                        $srv = HospitalService::find($itemSrvId);
+                        if ($srv && (float)$srv->doctor_share_percentage > 0) {
+                            $itemDocShare = round(((float)$item['total_price']) * ((float)$srv->doctor_share_percentage / 100), 2);
+                            $totalDoctorSharePotential += $itemDocShare;
+                        }
+                    }
+                }
+
+                $effectiveNet = max(0.00, round($grossAmount - $computedDiscount, 2));
+                if ($effectiveNet > 0 && $totalDoctorSharePotential > 0) {
+                    $doctorPct = min(100.00, round(($totalDoctorSharePotential / $effectiveNet) * 100, 2));
+                    $hospitalPct = round(100.00 - $doctorPct, 2);
+                } else {
+                    $doctorPct = 0.00;
+                    $hospitalPct = 100.00;
+                }
             }
 
             // 4. Calculate Net, Paid, and Due Amounts

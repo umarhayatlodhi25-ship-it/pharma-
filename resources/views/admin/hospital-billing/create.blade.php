@@ -43,6 +43,17 @@
 
     // Service catalog & items
     servicesCatalog: {{ json_encode($allServices) }},
+
+    // Doctors catalog & selected doctor
+    doctorsCatalog: {{ json_encode($allDoctors->map(fn($d) => [
+        'id'               => $d->id,
+        'name'             => $d->name,
+        'specialization'   => $d->specialization,
+        'consultation_fee' => (float)$d->consultation_fee,
+    ])) }},
+    selectedDoctorId: '{{ $selectedDoctor ? $selectedDoctor->id : ($selectedToken ? $selectedToken->doctor_id : '') }}',
+    filterByDoctor: true,
+    doctorMismatchError: '',
     items: [
         @if($selectedService)
         {
@@ -76,6 +87,70 @@
     freeReason: '',
     notes: '',
     submitting: false,
+
+    get selectedDoctorName() {
+        if (!this.selectedDoctorId) return '';
+        let doc = this.doctorsCatalog.find(d => String(d.id) === String(this.selectedDoctorId));
+        return doc ? doc.name : '';
+    },
+
+    get isDoctorTokenMismatch() {
+        if (this.billingMode === 'opd' && this.selectedToken && this.selectedToken.doctor_id && this.selectedDoctorId) {
+            return parseInt(this.selectedDoctorId) !== parseInt(this.selectedToken.doctor_id);
+        }
+        return false;
+    },
+
+    onDoctorChange() {
+        if (this.billingMode === 'opd' && this.selectedToken && this.selectedToken.doctor_id) {
+            if (this.isDoctorTokenMismatch) {
+                this.doctorMismatchError = `Selected OPD Token #${this.selectedToken.token_number} is assigned to Dr. ${this.selectedToken.doctor_name}. Mismatched doctor-token billing is not permitted.`;
+            } else {
+                this.doctorMismatchError = '';
+            }
+        } else {
+            this.doctorMismatchError = '';
+        }
+
+        if (this.billingMode === 'opd' && this.searchQuery.trim().length > 0) {
+            this.performSearch();
+        }
+    },
+
+    resetToTokenDoctor() {
+        if (this.selectedToken && this.selectedToken.doctor_id) {
+            this.selectedDoctorId = String(this.selectedToken.doctor_id);
+            this.doctorMismatchError = '';
+        }
+    },
+
+    get canSubmit() {
+        if (this.submitting) return false;
+        if (this.isDoctorTokenMismatch) return false;
+
+        if (this.billingMode === 'opd') {
+            if (!this.selectedDoctorId || !this.selectedToken || !this.selectedPatient) {
+                return false;
+            }
+        } else {
+            if (this.patientMode === 'existing' && !this.selectedPatient) {
+                return false;
+            }
+        }
+
+        if (this.newServicesTotal <= 0 && this.paymentType !== 'free') {
+            return false;
+        }
+
+        if (this.paymentType === 'partial') {
+            let paid = parseFloat(this.paidAmount) || 0;
+            if (paid <= 0 || paid > this.totalDue) {
+                return false;
+            }
+        }
+
+        return true;
+    },
 
     init() {
         if (this.selectedPatient) {
@@ -211,7 +286,18 @@
             ? '{{ route('hospital-billing.search-tokens') }}' 
             : '{{ route('hospital-billing.search-patients') }}';
 
-        fetch(`${endpoint}?query=${encodeURIComponent(this.searchQuery)}`)
+        let params = new URLSearchParams();
+        params.append('query', this.searchQuery);
+        if (this.billingMode === 'opd') {
+            if (this.selectedDoctorId) {
+                params.append('doctor_id', this.selectedDoctorId);
+            }
+            if (this.filterByDoctor) {
+                params.append('filter_doctor', '1');
+            }
+        }
+
+        fetch(`${endpoint}?${params.toString()}`)
             .then(res => res.json())
             .then(data => {
                 this.searchResults = data;
@@ -236,6 +322,10 @@
                 consultation_paid: item.consultation_paid,
                 consultation_balance: item.consultation_balance,
             };
+            if (item.doctor_id) {
+                this.selectedDoctorId = String(item.doctor_id);
+                this.doctorMismatchError = '';
+            }
             this.selectedPatient = {
                 id: item.patient_id,
                 name: item.patient_name,
@@ -282,6 +372,7 @@
     clearSelection() {
         this.selectedPatient = null;
         this.selectedToken = null;
+        this.doctorMismatchError = '';
         this.consultationOutstanding = 0;
         this.hospitalServiceOutstanding = 0;
         this.totalOutstanding = 0;
@@ -293,8 +384,18 @@
         this.billingMode = mode;
         this.searchResults = [];
         this.searchQuery = '';
+        this.doctorMismatchError = '';
         if (mode === 'direct') {
             this.selectedToken = null;
+            this.selectedDoctorId = '';
+        } else if (mode === 'opd') {
+            if (this.patientMode === 'new') {
+                this.patientMode = 'existing';
+                this.selectedPatient = null;
+            }
+            if (this.selectedToken && this.selectedToken.doctor_id) {
+                this.selectedDoctorId = String(this.selectedToken.doctor_id);
+            }
         }
         this.recalculateTotals();
     }
@@ -344,8 +445,8 @@
         <input type="hidden" name="billing_mode" :value="billingMode">
         <input type="hidden" name="patient_mode" :value="patientMode">
         <input type="hidden" name="patient_id" :value="selectedPatient ? selectedPatient.id : ''">
-        <input type="hidden" name="patient_token_id" :value="selectedToken ? selectedToken.id : ''">
-        <input type="hidden" name="doctor_id" :value="selectedToken ? selectedToken.doctor_id : ''">
+        <input type="hidden" name="patient_token_id" :value="billingMode === 'opd' && selectedToken ? selectedToken.id : ''">
+        <input type="hidden" name="doctor_id" :value="selectedDoctorId || ''">
         <input type="hidden" name="total_amount" :value="newServicesTotal">
         <input type="hidden" name="items" :value="JSON.stringify(items)">
 
@@ -432,6 +533,91 @@
                         </template>
                     </div>
 
+                    <!-- MODE A: REQUIRED DOCTOR SELECTION CARD -->
+                    <template x-if="billingMode === 'opd'">
+                        <div class="space-y-2 p-3.5 bg-blue-50/50 rounded-xl border border-blue-100">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+                                <label class="block text-xs font-bold text-gray-800">
+                                    <i class="fa-solid fa-user-doctor text-blue-600 mr-1"></i>
+                                    <span>Attending Doctor</span>
+                                    <span class="text-red-500">*</span>
+                                    <span class="text-[10px] font-normal text-gray-500 ml-1">(Required for OPD procedure billing)</span>
+                                </label>
+                                <label class="inline-flex items-center space-x-1.5 text-[11px] text-blue-700 font-semibold cursor-pointer select-none">
+                                    <input 
+                                        type="checkbox" 
+                                        x-model="filterByDoctor" 
+                                        @change="if (searchQuery.trim().length > 0) performSearch()"
+                                        class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                                    >
+                                    <span>Filter tokens to selected doctor</span>
+                                </label>
+                            </div>
+
+                            <div class="relative">
+                                <select 
+                                    x-model="selectedDoctorId" 
+                                    @change="onDoctorChange()" 
+                                    class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 transition"
+                                    :class="{'border-red-400 ring-1 ring-red-300': isDoctorTokenMismatch || (!selectedDoctorId && selectedToken)}"
+                                >
+                                    <option value="">-- Choose Attending Doctor --</option>
+                                    <template x-for="doc in doctorsCatalog" :key="doc.id">
+                                        <option :value="doc.id" x-text="'Dr. ' + doc.name + (doc.specialization ? ' — ' + doc.specialization : '')"></option>
+                                    </template>
+                                </select>
+                                <i class="fa-solid fa-user-doctor absolute left-3 top-3 text-blue-600 text-xs"></i>
+                            </div>
+
+                            <!-- Doctor Token Mismatch Banner -->
+                            <template x-if="isDoctorTokenMismatch">
+                                <div class="p-3 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shadow-xs">
+                                    <div class="flex items-center space-x-2">
+                                        <i class="fa-solid fa-triangle-exclamation text-red-600 text-base"></i>
+                                        <div>
+                                            <span class="font-bold">Doctor Mismatch:</span>
+                                            <span>OPD Token #<span x-text="selectedToken.token_number"></span> belongs to Dr. <strong x-text="selectedToken.doctor_name"></strong>, which does not match selected Dr. <strong x-text="selectedDoctorName"></strong>. Mismatched doctor-token billing is prohibited.</span>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        @click="resetToTokenDoctor()" 
+                                        class="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] rounded-lg transition whitespace-nowrap self-end sm:self-auto shadow-xs"
+                                    >
+                                        Reset to Token Doctor
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- MODE B: OPTIONAL REFERRING / PERFORMING DOCTOR -->
+                    <template x-if="billingMode === 'direct'">
+                        <div class="space-y-1.5 p-3.5 bg-emerald-50/40 rounded-xl border border-emerald-100">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-xs font-bold text-gray-800">
+                                    <i class="fa-solid fa-stethoscope text-emerald-600 mr-1"></i>
+                                    <span>Referring / Performing Doctor</span>
+                                    <span class="text-[10px] font-normal text-gray-500 ml-1">(Optional for direct walk-in billing)</span>
+                                </label>
+                                <span class="text-[10px] text-emerald-800 font-bold bg-emerald-100/70 px-2 py-0.5 rounded-full" x-text="selectedDoctorId ? 'Doctor share applied per service rules' : '100% Hospital Revenue'"></span>
+                            </div>
+
+                            <div class="relative">
+                                <select 
+                                    x-model="selectedDoctorId" 
+                                    class="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 focus:ring-2 focus:ring-emerald-500 transition"
+                                >
+                                    <option value="">-- No Doctor Assigned (100% Hospital Service Revenue) --</option>
+                                    <template x-for="doc in doctorsCatalog" :key="doc.id">
+                                        <option :value="doc.id" x-text="'Dr. ' + doc.name + (doc.specialization ? ' — ' + doc.specialization : '')"></option>
+                                    </template>
+                                </select>
+                                <i class="fa-solid fa-stethoscope absolute left-3 top-2.5 text-emerald-600 text-xs"></i>
+                            </div>
+                        </div>
+                    </template>
+
                     <!-- SEARCH BAR (When using existing patient or token) -->
                     <template x-if="patientMode === 'existing' && !selectedPatient">
                         <div class="relative space-y-2">
@@ -472,11 +658,17 @@
                                                 <template x-if="result.token_number">
                                                     <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-black text-[10px]" x-text="'Token #' + result.token_number"></span>
                                                 </template>
+                                                <template x-if="result.doctor_matches">
+                                                    <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[9px] flex items-center space-x-1">
+                                                        <i class="fa-solid fa-check"></i>
+                                                        <span>Matches Doctor</span>
+                                                    </span>
+                                                </template>
                                             </div>
                                             <div class="text-[11px] text-gray-500 flex items-center space-x-3">
                                                 <span><i class="fa-solid fa-phone text-[10px] mr-1"></i><span x-text="result.patient_phone || result.phone || 'No phone'"></span></span>
                                                 <template x-if="result.doctor_name">
-                                                    <span><i class="fa-solid fa-user-doctor text-[10px] mr-1"></i><span x-text="result.doctor_name"></span></span>
+                                                    <span class="font-medium text-gray-700"><i class="fa-solid fa-user-doctor text-[10px] mr-1 text-blue-600"></i><span x-text="result.doctor_name"></span></span>
                                                 </template>
                                                 <template x-if="result.token_date">
                                                     <span class="text-gray-400" x-text="result.token_date"></span>
@@ -541,6 +733,17 @@
                                         <span class="text-[10px] text-gray-400 block font-semibold">Consultation Balance</span>
                                         <span class="font-bold" :class="selectedToken.consultation_balance > 0 ? 'text-amber-600' : 'text-gray-500'" x-text="'PKR ' + selectedToken.consultation_balance"></span>
                                     </div>
+                                </div>
+                            </template>
+
+                            <!-- DIRECT SERVICE DOCTOR BADGE (If Mode B with Doctor) -->
+                            <template x-if="billingMode === 'direct' && selectedDoctorId">
+                                <div class="p-2.5 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-between text-xs">
+                                    <div class="flex items-center space-x-2">
+                                        <i class="fa-solid fa-stethoscope text-emerald-600"></i>
+                                        <span><strong>Referring / Performing Doctor:</strong> Dr. <span x-text="selectedDoctorName"></span></span>
+                                    </div>
+                                    <span class="text-[10px] text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-200 font-semibold">Service Revenue Split</span>
                                 </div>
                             </template>
 
@@ -911,8 +1114,8 @@
                             type="submit" 
                             name="action" 
                             value="save_bill" 
-                            :disabled="submitting || (billingMode === 'opd' && !selectedToken) || (billingMode === 'direct' && patientMode === 'existing' && !selectedPatient)"
-                            class="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center space-x-2"
+                            :disabled="!canSubmit"
+                            class="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center space-x-2"
                         >
                             <template x-if="submitting">
                                 <i class="fa-solid fa-circle-notch fa-spin"></i>
@@ -927,12 +1130,46 @@
                             type="submit" 
                             name="action" 
                             value="print_receipt" 
-                            :disabled="submitting || (billingMode === 'opd' && !selectedToken) || (billingMode === 'direct' && patientMode === 'existing' && !selectedPatient)"
-                            class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-sm transition flex items-center justify-center space-x-2"
+                            :disabled="!canSubmit"
+                            class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow-sm transition flex items-center justify-center space-x-2"
                         >
                             <i class="fa-solid fa-print"></i>
                             <span>Save & Print Thermal Receipt</span>
                         </button>
+
+                        <!-- Clear Validation Message Status Helper -->
+                        <div x-show="!canSubmit && !submitting" class="text-[11px] text-gray-600 bg-gray-50 p-2.5 rounded-xl border border-gray-200 space-y-1">
+                            <template x-if="isDoctorTokenMismatch">
+                                <div class="text-red-600 font-bold flex items-center space-x-1.5">
+                                    <i class="fa-solid fa-circle-exclamation"></i>
+                                    <span>Doctor and Token do not match. Reset to token doctor or change selection.</span>
+                                </div>
+                            </template>
+                            <template x-if="!isDoctorTokenMismatch && billingMode === 'opd' && !selectedDoctorId">
+                                <div class="text-amber-700 font-semibold flex items-center space-x-1.5">
+                                    <i class="fa-solid fa-user-doctor"></i>
+                                    <span>Please select an attending doctor.</span>
+                                </div>
+                            </template>
+                            <template x-if="!isDoctorTokenMismatch && billingMode === 'opd' && selectedDoctorId && !selectedToken">
+                                <div class="text-amber-700 font-semibold flex items-center space-x-1.5">
+                                    <i class="fa-solid fa-ticket"></i>
+                                    <span>Please search and select an OPD token.</span>
+                                </div>
+                            </template>
+                            <template x-if="!isDoctorTokenMismatch && billingMode === 'direct' && patientMode === 'existing' && !selectedPatient">
+                                <div class="text-amber-700 font-semibold flex items-center space-x-1.5">
+                                    <i class="fa-solid fa-user"></i>
+                                    <span>Please search and select a patient.</span>
+                                </div>
+                            </template>
+                            <template x-if="!isDoctorTokenMismatch && newServicesTotal <= 0 && paymentType !== 'free'">
+                                <div class="text-amber-700 font-semibold flex items-center space-x-1.5">
+                                    <i class="fa-solid fa-list-check"></i>
+                                    <span>Please add at least one hospital service.</span>
+                                </div>
+                            </template>
+                        </div>
 
                         <a 
                             href="{{ route('hospital-billing.index') }}" 

@@ -195,6 +195,7 @@ class HospitalBillingController extends Controller
 
         if ($billingMode === 'opd') {
             $rules['patient_token_id'] = 'required|exists:patient_tokens,id';
+            $rules['doctor_id']        = 'required|exists:doctors,id';
         }
 
         if ($patientMode === 'existing') {
@@ -214,6 +215,23 @@ class HospitalBillingController extends Controller
         }
 
         $validated = $request->validate($rules);
+
+        // Server-side validation of doctor-token-patient relationships
+        if ($billingMode === 'opd') {
+            $token = PatientToken::with(['doctor', 'patient'])->find($validated['patient_token_id']);
+            if (!$token) {
+                return redirect()->back()->withErrors(['patient_token_id' => 'The selected OPD token does not exist.'])->withInput();
+            }
+            if ($patientMode === 'existing' && (int)$token->patient_id !== (int)$validated['patient_id']) {
+                return redirect()->back()->withErrors(['patient_token_id' => 'The selected OPD token does not belong to the selected patient.'])->withInput();
+            }
+            if ($token->doctor_id && (int)$token->doctor_id !== (int)$validated['doctor_id']) {
+                $docName = $token->doctor ? $token->doctor->name : 'another doctor';
+                return redirect()->back()->withErrors([
+                    'doctor_id' => "Selected OPD Token #{$token->formatted_token_number} is assigned to Dr. {$docName}. Mismatched doctor-token billing is not permitted.",
+                ])->withInput();
+            }
+        }
 
         // Parse items if provided as JSON string
         $rawItems = $request->input('items');
@@ -280,7 +298,7 @@ class HospitalBillingController extends Controller
             return $this->billingService->createBill([
                 'patient_id'                => $patientId,
                 'billing_type'              => $billingMode,
-                'patient_token_id'          => $validated['patient_token_id'] ?? null,
+                'patient_token_id'          => ($billingMode === 'opd') ? ($validated['patient_token_id'] ?? null) : null,
                 'doctor_id'                 => $validated['doctor_id'] ?? null,
                 'hospital_service_id'       => $validated['hospital_service_id'] ?? null,
                 'total_amount'              => $effectiveGross,
@@ -358,11 +376,14 @@ class HospitalBillingController extends Controller
     public function searchTokens(Request $request)
     {
         $query = trim($request->input('query', ''));
+        $doctorId = $request->input('doctor_id');
+        $filterDoctor = $request->boolean('filter_doctor', false);
+
         if (strlen($query) < 1) {
             return response()->json([]);
         }
 
-        $tokens = PatientToken::with(['patient', 'doctor', 'service', 'hospitalBill.payments'])
+        $tokenQuery = PatientToken::with(['patient', 'doctor', 'service', 'hospitalBill.payments'])
             ->where(function ($q) use ($query) {
                 $q->where('token_number', 'like', "%{$query}%")
                   ->orWhereHas('patient', function ($pq) use ($query) {
@@ -370,13 +391,23 @@ class HospitalBillingController extends Controller
                          ->orWhere('patient_number', 'like', "%{$query}%")
                          ->orWhere('phone', 'like', "%{$query}%");
                   });
-            })
+            });
+
+        if (!empty($doctorId)) {
+            if ($filterDoctor) {
+                $tokenQuery->where('doctor_id', (int)$doctorId);
+            } else {
+                $tokenQuery->orderByRaw('CASE WHEN doctor_id = ? THEN 0 ELSE 1 END', [(int)$doctorId]);
+            }
+        }
+
+        $tokens = $tokenQuery
             ->latest('token_date')
             ->latest('id')
             ->take(15)
             ->get();
 
-        $results = $tokens->map(function ($t) {
+        $results = $tokens->map(function ($t) use ($doctorId) {
             $patient = $t->patient;
             $bill = $t->hospitalBill;
             $consultationFee = (float)$t->consultation_fee;
@@ -397,6 +428,7 @@ class HospitalBillingController extends Controller
                 'patient_gender'               => $patient->gender,
                 'doctor_id'                    => $t->doctor_id,
                 'doctor_name'                  => $t->doctor ? $t->doctor->name : 'N/A',
+                'doctor_matches'               => !empty($doctorId) && (int)$t->doctor_id === (int)$doctorId,
                 'consultation_fee'             => $consultationFee,
                 'consultation_paid'            => $paidAgainstConsultation,
                 'consultation_balance'         => $consultationBalance,

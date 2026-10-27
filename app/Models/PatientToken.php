@@ -127,6 +127,14 @@ class PatientToken extends Model
     }
 
     /**
+     * Alias relationship: The hospital bill generated for this token.
+     */
+    public function hospitalBill(): BelongsTo
+    {
+        return $this->belongsTo(HospitalBill::class, 'hospital_bill_id');
+    }
+
+    /**
      * Accessor: Format token number as 3-digit zero-padded string (e.g. 001, 002, 015).
      */
     public function getFormattedTokenNumberAttribute(): string

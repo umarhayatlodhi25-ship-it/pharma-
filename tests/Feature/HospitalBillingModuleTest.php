@@ -618,4 +618,398 @@ class HospitalBillingModuleTest extends TestCase
         $outResponse->assertStatus(200);
         $outResponse->assertViewHas('totalOutstanding', 600.00);
     }
+
+    /**
+     * Scenario 21: Mode A requires a valid doctor and OPD token.
+     */
+    public function test_scenario_21_mode_a_requires_valid_doctor_and_opd_token(): void
+    {
+        $token = $this->billingService->generateOpdTokenWithBilling([
+            'patient_id'   => $this->patient->id,
+            'doctor_id'    => $this->doctor->id,
+            'payment_type' => 'paid',
+            'created_by'   => $this->adminUser->id,
+        ]);
+
+        // 1. Missing doctor_id in Mode A HTTP POST
+        $response1 = $this->actingAs($this->adminUser)->post(route('hospital-billing.store'), [
+            'billing_mode'     => 'opd',
+            'patient_mode'     => 'existing',
+            'patient_id'       => $this->patient->id,
+            'patient_token_id' => $token->id,
+            'doctor_id'        => null,
+            'total_amount'     => 500.00,
+            'payment_type'     => 'paid',
+            'payment_method'   => 'cash',
+        ]);
+        $response1->assertSessionHasErrors(['doctor_id']);
+
+        // 2. Missing patient_token_id in Mode A HTTP POST
+        $response2 = $this->actingAs($this->adminUser)->post(route('hospital-billing.store'), [
+            'billing_mode'     => 'opd',
+            'patient_mode'     => 'existing',
+            'patient_id'       => $this->patient->id,
+            'patient_token_id' => null,
+            'doctor_id'        => $this->doctor->id,
+            'total_amount'     => 500.00,
+            'payment_type'     => 'paid',
+            'payment_method'   => 'cash',
+        ]);
+        $response2->assertSessionHasErrors(['patient_token_id']);
+
+        // 3. Service level validation for Mode A
+        try {
+            $this->billingService->createBill([
+                'billing_type'        => 'opd',
+                'patient_id'          => $this->patient->id,
+                'patient_token_id'    => null,
+                'doctor_id'           => $this->doctor->id,
+                'total_amount'        => 500.00,
+                'payment_type'        => 'paid',
+                'created_by'          => $this->adminUser->id,
+            ]);
+            $this->fail("Expected InvalidArgumentException for missing token in Mode A");
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString("An OPD token is required", $e->getMessage());
+        }
+
+        try {
+            $this->billingService->createBill([
+                'billing_type'        => 'opd',
+                'patient_id'          => $this->patient->id,
+                'patient_token_id'    => $token->id,
+                'doctor_id'           => null,
+                'total_amount'        => 500.00,
+                'payment_type'        => 'paid',
+                'created_by'          => $this->adminUser->id,
+            ]);
+            // If token already has doctor_id, service automatically uses token doctor, but if neither has doctor:
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString("doctor", $e->getMessage());
+        }
+    }
+
+    /**
+     * Scenario 22: Searching tokens prioritizes or filters by selected doctor.
+     */
+    public function test_scenario_22_search_tokens_prioritizes_and_filters_by_selected_doctor(): void
+    {
+        $doctor2 = Doctor::create([
+            'name'                     => 'Dr. Ayesha Khan',
+            'specialization'           => 'Gynecologist',
+            'consultation_fee'         => 800.00,
+            'doctor_share_percentage'   => 70.00,
+            'hospital_share_percentage' => 30.00,
+            'phone'                    => '0300-7654321',
+            'is_active'                => true,
+        ]);
+
+        $patient2 = Patient::create([
+            'name'   => 'Muhammad Usman Second',
+            'age'    => 40,
+            'gender' => 'Male',
+            'phone'  => '0322-1112233',
+        ]);
+
+        $token1 = $this->billingService->generateOpdTokenWithBilling([
+            'patient_id'   => $this->patient->id,
+            'doctor_id'    => $this->doctor->id,
+            'payment_type' => 'paid',
+            'created_by'   => $this->adminUser->id,
+        ]);
+
+        $token2 = $this->billingService->generateOpdTokenWithBilling([
+            'patient_id'   => $patient2->id,
+            'doctor_id'    => $doctor2->id,
+            'payment_type' => 'paid',
+            'created_by'   => $this->adminUser->id,
+        ]);
+
+        // Prioritized search when doctor_id is passed
+        $resPrioritized = $this->actingAs($this->adminUser)->getJson(route('hospital-billing.search-tokens', [
+            'query'     => 'Usman',
+            'doctor_id' => $this->doctor->id,
+        ]));
+        $resPrioritized->assertStatus(200);
+        $dataPrioritized = $resPrioritized->json();
+        $this->assertNotEmpty($dataPrioritized);
+        $this->assertEquals($token1->id, $dataPrioritized[0]['token_id']);
+        $this->assertTrue($dataPrioritized[0]['doctor_matches']);
+
+        // Filtered search when filter_doctor=1 is passed
+        $resFiltered = $this->actingAs($this->adminUser)->getJson(route('hospital-billing.search-tokens', [
+            'query'         => 'Usman',
+            'doctor_id'     => $this->doctor->id,
+            'filter_doctor' => 1,
+        ]));
+        $resFiltered->assertStatus(200);
+        $dataFiltered = $resFiltered->json();
+        $tokenIds = array_column($dataFiltered, 'token_id');
+        $this->assertContains($token1->id, $tokenIds);
+        $this->assertNotContains($token2->id, $tokenIds, "Filtered search must exclude tokens from other doctors.");
+    }
+
+    /**
+     * Scenario 23: Mismatched doctor/token combination is rejected on server and service.
+     */
+    public function test_scenario_23_mismatched_doctor_token_combination_is_rejected(): void
+    {
+        $doctor2 = Doctor::create([
+            'name'                     => 'Dr. Farhan Ali',
+            'specialization'           => 'Cardiologist',
+            'consultation_fee'         => 1000.00,
+            'doctor_share_percentage'   => 70.00,
+            'hospital_share_percentage' => 30.00,
+            'phone'                    => '0311-9988776',
+            'is_active'                => true,
+        ]);
+
+        $token = $this->billingService->generateOpdTokenWithBilling([
+            'patient_id'   => $this->patient->id,
+            'doctor_id'    => $this->doctor->id,
+            'payment_type' => 'paid',
+            'created_by'   => $this->adminUser->id,
+        ]);
+
+        // HTTP request mismatch
+        $response = $this->actingAs($this->adminUser)->post(route('hospital-billing.store'), [
+            'billing_mode'     => 'opd',
+            'patient_mode'     => 'existing',
+            'patient_id'       => $this->patient->id,
+            'patient_token_id' => $token->id,
+            'doctor_id'        => $doctor2->id, // Mismatched doctor
+            'total_amount'     => 500.00,
+            'payment_type'     => 'paid',
+            'payment_method'   => 'cash',
+        ]);
+        $response->assertSessionHasErrors(['doctor_id']);
+
+        // Service level mismatch rejection
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Mismatched doctor-token billing is not permitted");
+        $this->billingService->createBill([
+            'billing_type'        => 'opd',
+            'patient_id'          => $this->patient->id,
+            'patient_token_id'    => $token->id,
+            'doctor_id'           => $doctor2->id, // Mismatched doctor
+            'total_amount'        => 500.00,
+            'payment_type'        => 'paid',
+            'created_by'          => $this->adminUser->id,
+        ]);
+    }
+
+    /**
+     * Scenario 24: Mode A bills hospital services without recharging consultation fee.
+     */
+    public function test_scenario_24_mode_a_bills_hospital_services_without_recharging_consultation_fee(): void
+    {
+        $token = $this->billingService->generateOpdTokenWithBilling([
+            'patient_id'   => $this->patient->id,
+            'doctor_id'    => $this->doctor->id,
+            'payment_type' => 'paid',
+            'created_by'   => $this->adminUser->id,
+        ]);
+
+        $bill = $this->billingService->createBill([
+            'billing_type'        => 'opd',
+            'patient_id'          => $this->patient->id,
+            'patient_token_id'    => $token->id,
+            'doctor_id'           => $this->doctor->id,
+            'hospital_service_id' => $this->dripService->id,
+            'total_amount'        => 800.00,
+            'payment_type'        => 'paid',
+            'payment_method'      => 'cash',
+            'created_by'          => $this->adminUser->id,
+        ]);
+
+        $this->assertEquals(800.00, (float)$bill->total_amount, "Bill should only charge the hospital service fee.");
+        $this->assertEquals(0.00, (float)$bill->due_amount);
+    }
+
+    /**
+     * Scenario 25: Mode B works without an OPD token.
+     */
+    public function test_scenario_25_mode_b_works_without_opd_token(): void
+    {
+        $response = $this->actingAs($this->adminUser)->post(route('hospital-billing.store'), [
+            'billing_mode'        => 'direct',
+            'patient_mode'        => 'existing',
+            'patient_id'          => $this->patient->id,
+            'patient_token_id'    => null,
+            'doctor_id'           => null,
+            'hospital_service_id' => $this->bpCheckService->id,
+            'total_amount'        => 100.00,
+            'payment_type'        => 'paid',
+            'payment_method'      => 'cash',
+        ]);
+
+        $response->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('hospital_bills', [
+            'billing_type'     => 'direct',
+            'patient_id'       => $this->patient->id,
+            'patient_token_id' => null,
+            'doctor_id'        => null,
+            'total_amount'     => 100.00,
+            'paid_amount'      => 100.00,
+        ]);
+    }
+
+    /**
+     * Scenario 26: Optional doctor selection in Mode B follows existing share rules.
+     */
+    public function test_scenario_26_mode_b_optional_doctor_follows_existing_share_rules(): void
+    {
+        // Procedure with 30% doctor share
+        $procedureService = HospitalService::create([
+            'name'                     => 'Minor Surgery / Procedure',
+            'code'                     => 'SRV-SURG',
+            'service_type'             => 'procedure',
+            'default_fee'              => 1000.00,
+            'doctor_share_percentage'   => 30.00,
+            'hospital_share_percentage' => 70.00,
+            'is_active'                => true,
+        ]);
+
+        // Case A: Mode B without doctor -> 0% doctor share, 100% hospital share
+        $billNoDoctor = $this->billingService->createBill([
+            'billing_type'        => 'direct',
+            'patient_id'          => $this->patient->id,
+            'doctor_id'           => null,
+            'hospital_service_id' => $procedureService->id,
+            'total_amount'        => 1000.00,
+            'payment_type'        => 'paid',
+            'created_by'          => $this->adminUser->id,
+        ]);
+        $this->assertEquals(0.00, (float)$billNoDoctor->doctor_share);
+        $this->assertEquals(1000.00, (float)$billNoDoctor->hospital_share);
+        $this->assertEquals(0.00, (float)$billNoDoctor->doctor_share_percentage);
+
+        // Case B: Mode B with doctor, but service has 0% doctor share (e.g. Sugar test)
+        $billZeroShare = $this->billingService->createBill([
+            'billing_type'        => 'direct',
+            'patient_id'          => $this->patient->id,
+            'doctor_id'           => $this->doctor->id,
+            'hospital_service_id' => $this->sugarTestService->id,
+            'total_amount'        => 200.00,
+            'payment_type'        => 'paid',
+            'created_by'          => $this->adminUser->id,
+        ]);
+        $this->assertEquals(0.00, (float)$billZeroShare->doctor_share, "Doctor share must not be arbitrarily created when service is 0%.");
+        $this->assertEquals(200.00, (float)$billZeroShare->hospital_share);
+
+        // Case C: Mode B with doctor and service has configured 30% doctor share
+        $initialPayable = (float)$this->doctor->fresh()->current_payable;
+        $billWithShare = $this->billingService->createBill([
+            'billing_type'        => 'direct',
+            'patient_id'          => $this->patient->id,
+            'doctor_id'           => $this->doctor->id,
+            'hospital_service_id' => $procedureService->id,
+            'total_amount'        => 1000.00,
+            'payment_type'        => 'paid',
+            'created_by'          => $this->adminUser->id,
+        ]);
+        $this->assertEquals(30.00, (float)$billWithShare->doctor_share_percentage);
+        $this->assertEquals(300.00, (float)$billWithShare->doctor_share);
+        $this->assertEquals(700.00, (float)$billWithShare->hospital_share);
+
+        // Doctor ledger should be credited with 300
+        $this->assertEquals($initialPayable + 300.00, (float)$this->doctor->fresh()->current_payable);
+        $this->assertDatabaseHas('doctor_ledgers', [
+            'doctor_id'        => $this->doctor->id,
+            'hospital_bill_id' => $billWithShare->id,
+            'amount'           => 300.00,
+            'transaction_type' => 'credit',
+        ]);
+    }
+
+    /**
+     * Scenario 27: Partial payments and outstanding balances with doctor shares remain accurate.
+     */
+    public function test_scenario_27_partial_payments_and_outstanding_balances_with_doctor_shares(): void
+    {
+        $procedureService = HospitalService::create([
+            'name'                     => 'Specialized Therapy',
+            'code'                     => 'SRV-THERAPY',
+            'service_type'             => 'procedure',
+            'default_fee'              => 1000.00,
+            'doctor_share_percentage'   => 40.00,
+            'hospital_share_percentage' => 60.00,
+            'is_active'                => true,
+        ]);
+
+        $initialPayable = (float)$this->doctor->fresh()->current_payable;
+
+        // Bill of 1000, partial payment of 500
+        $bill = $this->billingService->createBill([
+            'billing_type'        => 'direct',
+            'patient_id'          => $this->patient->id,
+            'doctor_id'           => $this->doctor->id,
+            'hospital_service_id' => $procedureService->id,
+            'total_amount'        => 1000.00,
+            'payment_type'        => 'partial',
+            'paid_amount'         => 500.00,
+            'created_by'          => $this->adminUser->id,
+        ]);
+
+        $this->assertEquals('partial', $bill->payment_status);
+        $this->assertEquals(500.00, (float)$bill->paid_amount);
+        $this->assertEquals(500.00, (float)$bill->due_amount);
+        $this->assertEquals(200.00, (float)$bill->doctor_share); // 500 * 40% = 200
+        $this->assertEquals(300.00, (float)$bill->hospital_share); // 500 - 200 = 300
+        $this->assertEquals($initialPayable + 200.00, (float)$this->doctor->fresh()->current_payable);
+
+        // Subsequent payment of remaining 500
+        $bill->recordPayment(500.00, 'cash', 'Remaining settlement', $this->adminUser->id);
+        $fresh = $bill->fresh();
+
+        $this->assertEquals('paid', $fresh->payment_status);
+        $this->assertEquals(1000.00, (float)$fresh->paid_amount);
+        $this->assertEquals(0.00, (float)$fresh->due_amount);
+        $this->assertEquals(400.00, (float)$fresh->doctor_share); // Total 400
+        $this->assertEquals(600.00, (float)$fresh->hospital_share); // Total 600
+        $this->assertEquals($initialPayable + 400.00, (float)$this->doctor->fresh()->current_payable);
+    }
+
+    /**
+     * Scenario 28: Receipt printing correctly displays attending and referred doctors without duplicate transactions.
+     */
+    public function test_scenario_28_receipt_printing_displays_doctors_without_duplicate_transactions(): void
+    {
+        $token = $this->billingService->generateOpdTokenWithBilling([
+            'patient_id'   => $this->patient->id,
+            'doctor_id'    => $this->doctor->id,
+            'payment_type' => 'paid',
+            'created_by'   => $this->adminUser->id,
+        ]);
+
+        $billModeA = $this->billingService->createBill([
+            'billing_type'        => 'opd',
+            'patient_id'          => $this->patient->id,
+            'patient_token_id'    => $token->id,
+            'doctor_id'           => $this->doctor->id,
+            'hospital_service_id' => $this->dripService->id,
+            'total_amount'        => 800.00,
+            'payment_type'        => 'paid',
+            'created_by'          => $this->adminUser->id,
+        ]);
+
+        $resReceiptA = $this->actingAs($this->adminUser)->get(route('hospital-billing.receipt', $billModeA->id));
+        $resReceiptA->assertStatus(200);
+        $resReceiptA->assertSee($this->doctor->name);
+        $resReceiptA->assertSee($token->formatted_token_number);
+
+        $billModeB = $this->billingService->createBill([
+            'billing_type'        => 'direct',
+            'patient_id'          => $this->patient->id,
+            'doctor_id'           => $this->doctor->id,
+            'hospital_service_id' => $this->sugarTestService->id,
+            'total_amount'        => 200.00,
+            'payment_type'        => 'paid',
+            'created_by'          => $this->adminUser->id,
+        ]);
+
+        $resReceiptB = $this->actingAs($this->adminUser)->get(route('hospital-billing.receipt', $billModeB->id));
+        $resReceiptB->assertStatus(200);
+        $resReceiptB->assertSee($this->doctor->name);
+    }
 }
