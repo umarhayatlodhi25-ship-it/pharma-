@@ -64,6 +64,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'status',
     ];
 
     /**
@@ -122,11 +123,51 @@ class User extends Authenticatable
     }
 
     /**
+     * Check if user account is active.
+     */
+    public function isActive(): bool
+    {
+        return empty($this->status) || $this->status === 'active';
+    }
+
+    /**
+     * Check if user registration is pending approval.
+     */
+    public function isPendingApproval(): bool
+    {
+        return $this->status === 'pending_approval';
+    }
+
+    /**
+     * Check if user account is suspended.
+     */
+    public function isSuspended(): bool
+    {
+        return $this->status === 'suspended';
+    }
+
+    /**
+     * Check if user account is rejected.
+     */
+    public function isRejected(): bool
+    {
+        return $this->status === 'rejected';
+    }
+
+    /**
      * Doctor profile associated with this user.
      */
     public function doctor(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(Doctor::class, 'user_id');
+    }
+
+    /**
+     * Doctor registration requests submitted by or linked to this user.
+     */
+    public function doctorRegistrationRequests(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(DoctorRegistrationRequest::class, 'user_id');
     }
 
     /**

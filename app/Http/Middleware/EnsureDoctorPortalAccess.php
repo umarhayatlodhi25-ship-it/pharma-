@@ -10,30 +10,44 @@ class EnsureDoctorPortalAccess
 {
     /**
      * Handle an incoming request for doctor portal routes.
+     * Enforces strict server-side authorization and data isolation.
      */
     public function handle(Request $request, Closure $next): Response
     {
         if (!auth()->check()) {
-            return redirect('/login');
+            return redirect()->route('doctor.login');
         }
 
         $user = auth()->user();
 
-        // Must have doctor role
+        // 1. Account Status Enforcement
+        if ($user->status === 'pending_approval') {
+            return redirect()->route('doctor.pending-approval');
+        }
+
+        if ($user->status === 'rejected') {
+            abort(403, 'Access Restricted: Your doctor portal registration request has been rejected. Please contact the hospital administrator.');
+        }
+
+        if ($user->status === 'suspended') {
+            abort(403, 'Access Suspended: Your doctor portal account has been suspended. Please contact the administrator.');
+        }
+
+        // 2. Must have doctor role
         if ($user->role !== 'doctor') {
             abort(403, 'Access Restricted: This portal is reserved exclusively for authorized medical doctors.');
         }
 
-        // Must have an associated doctor record
+        // 3. Must have an associated doctor record
         $doctor = $user->doctor;
 
-        // 1. Auto-link fallback by email if doctor record exists with matching email
+        // Exact verified email link fallback (for admin-created doctor accounts)
         if (!$doctor && !empty($user->email)) {
             $matchingDoctor = \App\Models\Doctor::whereRaw('LOWER(email) = ?', [strtolower(trim($user->email))])
                 ->whereNull('user_id')
                 ->first();
 
-            if ($matchingDoctor) {
+            if ($matchingDoctor && ($matchingDoctor->status === 'active' || $matchingDoctor->is_active)) {
                 $matchingDoctor->user_id = $user->id;
                 $matchingDoctor->status = 'active';
                 $matchingDoctor->is_active = true;
@@ -42,46 +56,8 @@ class EnsureDoctorPortalAccess
             }
         }
 
-        // 2. Auto-link fallback by name (e.g. matching "Dr. Jane Doe" with "Jane Doe")
-        if (!$doctor && !empty($user->name)) {
-            $cleanUserName = trim(preg_replace('/^(dr\.?|doctor)\s+/i', '', trim($user->name)));
-            $candidate = \App\Models\Doctor::whereNull('user_id')
-                ->get()
-                ->first(function ($doc) use ($cleanUserName) {
-                    $cleanDocName = trim(preg_replace('/^(dr\.?|doctor)\s+/i', '', trim($doc->name)));
-                    return strcasecmp($cleanUserName, $cleanDocName) === 0;
-                });
-
-            if ($candidate) {
-                $candidate->user_id = $user->id;
-                $candidate->status = 'active';
-                $candidate->is_active = true;
-                if (empty($candidate->email) && !empty($user->email)) {
-                    $candidate->email = $user->email;
-                }
-                $candidate->save();
-                $doctor = $candidate;
-            }
-        }
-
-        // 3. If there is only one unlinked doctor in the system, link to it
-        if (!$doctor) {
-            $unlinkedDoctors = \App\Models\Doctor::whereNull('user_id')->get();
-            if ($unlinkedDoctors->count() === 1) {
-                $candidate = $unlinkedDoctors->first();
-                $candidate->user_id = $user->id;
-                $candidate->status = 'active';
-                $candidate->is_active = true;
-                if (empty($candidate->email) && !empty($user->email)) {
-                    $candidate->email = $user->email;
-                }
-                $candidate->save();
-                $doctor = $candidate;
-            }
-        }
-
-        // 4. Auto-provision doctor profile if user has 'doctor' role but no profile exists
-        if (!$doctor) {
+        // Legacy fallback: Auto-provision doctor profile strictly if user is already an active approved doctor account
+        if (!$doctor && $user->isActive() && !$user->isPendingApproval()) {
             $cleanName = trim($user->name ?: 'Doctor');
             if (!preg_match('/^(dr\.?|doctor)\s+/i', $cleanName)) {
                 $cleanName = 'Dr. ' . $cleanName;
@@ -105,7 +81,11 @@ class EnsureDoctorPortalAccess
             ]);
         }
 
-        // Doctor profile must be active
+        if (!$doctor) {
+            abort(403, 'Access Restricted: No active doctor profile is linked to this portal account.');
+        }
+
+        // 4. Doctor profile must be active
         if ($doctor->status !== 'active' || !$doctor->is_active) {
             abort(403, 'Access Suspended: Your doctor account has been deactivated. Please contact the administrator.');
         }

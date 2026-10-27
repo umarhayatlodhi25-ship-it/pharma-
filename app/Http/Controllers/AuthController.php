@@ -53,6 +53,18 @@ class AuthController extends Controller
         ];
 
         if (Auth::attempt($credentials, $remember)) {
+            $user = Auth::user();
+            if ($user->status === 'pending_approval') {
+                Auth::logout();
+                return redirect()->route('doctor.pending-approval')
+                    ->with('info', 'Your doctor portal registration request is pending administrator review and approval.');
+            }
+            if ($user->status === 'rejected' || $user->status === 'suspended') {
+                Auth::logout();
+                return back()->withInput($request->only('email', 'remember'))->withErrors([
+                    'email' => 'Your account is currently suspended or rejected. Please contact the administrator.',
+                ]);
+            }
             if ($request->hasSession()) {
                 $request->session()->regenerate();
             }
@@ -62,6 +74,18 @@ class AuthController extends Controller
         // Retry after syncing from Firebase
         \App\Services\FirebaseService::syncFirebaseUsersToLocal();
         if (Auth::attempt($credentials, $remember)) {
+            $user = Auth::user();
+            if ($user->status === 'pending_approval') {
+                Auth::logout();
+                return redirect()->route('doctor.pending-approval')
+                    ->with('info', 'Your doctor portal registration request is pending administrator review and approval.');
+            }
+            if ($user->status === 'rejected' || $user->status === 'suspended') {
+                Auth::logout();
+                return back()->withInput($request->only('email', 'remember'))->withErrors([
+                    'email' => 'Your account is currently suspended or rejected. Please contact the administrator.',
+                ]);
+            }
             if ($request->hasSession()) {
                 $request->session()->regenerate();
             }

@@ -141,6 +141,14 @@ class Doctor extends Model
     }
 
     /**
+     * Relationship: Registration requests for this doctor.
+     */
+    public function registrationRequests(): HasMany
+    {
+        return $this->hasMany(DoctorRegistrationRequest::class, 'doctor_id');
+    }
+
+    /**
      * Relationship: Prescriptions written by this doctor.
      */
     public function prescriptions(): HasMany

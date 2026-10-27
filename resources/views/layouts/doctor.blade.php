@@ -148,7 +148,7 @@
 
             <!-- Footer User Section -->
             <div class="p-3 border-t border-slate-800 bg-slate-950/40">
-                <form action="{{ route('logout') }}" method="POST">
+                <form action="{{ route('doctor.logout') }}" method="POST">
                     @csrf
                     <button type="submit" class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 text-xs font-semibold transition">
                         <i class="fa-solid fa-arrow-right-from-bracket"></i>

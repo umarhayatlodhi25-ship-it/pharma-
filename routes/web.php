@@ -264,6 +264,18 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // ============================================================
+// Doctor Portal Public Auth Routes (Registration, Dedicated Login, Pending Approval)
+// ============================================================
+Route::prefix('doctor-portal')->name('doctor.')->group(function () {
+    Route::get('/login', [\App\Http\Controllers\DoctorPortal\AuthController::class, 'showLoginForm'])->name('login');
+    Route::post('/login', [\App\Http\Controllers\DoctorPortal\AuthController::class, 'login'])->name('login.submit');
+    Route::get('/register', [\App\Http\Controllers\DoctorPortal\AuthController::class, 'showRegisterForm'])->name('register');
+    Route::post('/register', [\App\Http\Controllers\DoctorPortal\AuthController::class, 'register'])->name('register.submit');
+    Route::get('/pending-approval', [\App\Http\Controllers\DoctorPortal\AuthController::class, 'pendingApproval'])->name('pending-approval');
+    Route::post('/logout', [\App\Http\Controllers\DoctorPortal\AuthController::class, 'logout'])->name('logout');
+});
+
+// ============================================================
 // Protected Routes
 // ============================================================
 
@@ -299,6 +311,12 @@ Route::middleware(['auth'])->group(function () {
         Route::put('/doctors/{doctor}/account/password', [\App\Http\Controllers\Admin\DoctorAccountController::class, 'resetPassword'])->name('admin.doctors.account.reset-password');
         Route::delete('/doctors/{doctor}/account', [\App\Http\Controllers\Admin\DoctorAccountController::class, 'unlink'])->name('admin.doctors.account.unlink');
         Route::patch('/doctors/{doctor}/account/toggle-status', [\App\Http\Controllers\Admin\DoctorAccountController::class, 'toggleStatus'])->name('admin.doctors.account.toggle-status');
+
+        // Doctor Portal Self-Registration Requests & Approval Workflow (Admin Only)
+        Route::get('/doctor-requests', [\App\Http\Controllers\Admin\DoctorRegistrationRequestController::class, 'index'])->name('admin.doctor-requests.index');
+        Route::post('/doctor-requests/{id}/approve', [\App\Http\Controllers\Admin\DoctorRegistrationRequestController::class, 'approve'])->name('admin.doctor-requests.approve');
+        Route::post('/doctor-requests/{id}/reject', [\App\Http\Controllers\Admin\DoctorRegistrationRequestController::class, 'reject'])->name('admin.doctor-requests.reject');
+        Route::post('/doctor-requests/{id}/suspend', [\App\Http\Controllers\Admin\DoctorRegistrationRequestController::class, 'suspend'])->name('admin.doctor-requests.suspend');
     });
 
     // 2. ADMIN & PHARMACIST & ASSISTANT ADMIN ROUTES (Dashboard, Medicines, Purchases, Suppliers, Reports)

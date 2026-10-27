@@ -149,6 +149,25 @@
                         </a>
                         @endif
 
+                        @if(!$user || $user->hasPermission('manage_doctors') || $user->isAdmin())
+                        <a href="/doctor-requests" @click="mobileMenuOpen = false" class="flex items-center justify-between px-3 py-2.5 rounded-lg {{ request()->is('doctor-requests*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <div class="flex items-center space-x-3">
+                                <i class="fa-solid fa-user-check w-5"></i>
+                                <span>Doctor Requests</span>
+                            </div>
+                            @php
+                                $pendingRequestsCount = \Illuminate\Support\Facades\Schema::hasTable('doctor_registration_requests')
+                                    ? \App\Models\DoctorRegistrationRequest::where('status', 'pending')->count()
+                                    : 0;
+                            @endphp
+                            @if($pendingRequestsCount > 0)
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
+                                    {{ $pendingRequestsCount }}
+                                </span>
+                            @endif
+                        </a>
+                        @endif
+
                         @if(!$user || $user->hasPermission('manage_opd_tokens'))
                         <a href="/opd/tokens" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ (request()->is('opd/tokens*') || request()->is('patient-tokens*')) ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-ticket-simple w-5"></i>
