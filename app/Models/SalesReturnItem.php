@@ -42,7 +42,7 @@ class SalesReturnItem extends Model
 
     public function medicine(): BelongsTo
     {
-        return $this->belongsTo(Medicine::class);
+        return $this->belongsTo(Medicine::class)->withTrashed();
     }
 
     public function batch(): BelongsTo

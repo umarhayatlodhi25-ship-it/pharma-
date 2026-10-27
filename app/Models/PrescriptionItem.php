@@ -34,6 +34,6 @@ class PrescriptionItem extends Model
 
     public function medicine(): BelongsTo
     {
-        return $this->belongsTo(Medicine::class, 'medicine_id');
+        return $this->belongsTo(Medicine::class, 'medicine_id')->withTrashed();
     }
 }

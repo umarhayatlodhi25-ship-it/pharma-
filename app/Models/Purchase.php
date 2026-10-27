@@ -26,6 +26,6 @@ class Purchase extends Model
 
     public function medicine()
     {
-        return $this->belongsTo(Medicine::class);
+        return $this->belongsTo(Medicine::class)->withTrashed();
     }
 }

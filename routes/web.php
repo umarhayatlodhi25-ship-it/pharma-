@@ -317,6 +317,10 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/doctor-requests/{id}/approve', [\App\Http\Controllers\Admin\DoctorRegistrationRequestController::class, 'approve'])->name('admin.doctor-requests.approve');
         Route::post('/doctor-requests/{id}/reject', [\App\Http\Controllers\Admin\DoctorRegistrationRequestController::class, 'reject'])->name('admin.doctor-requests.reject');
         Route::post('/doctor-requests/{id}/suspend', [\App\Http\Controllers\Admin\DoctorRegistrationRequestController::class, 'suspend'])->name('admin.doctor-requests.suspend');
+
+        // Bulk Product Deletion & Archiving (Admin Only - Protected by Auth, Role, CSRF, Server Validation)
+        Route::get('/medicines/delete-all/preview', [\App\Http\Controllers\Admin\MedicineBulkActionController::class, 'preview'])->name('admin.medicines.delete-all.preview');
+        Route::match(['post', 'delete'], '/medicines/delete-all', [\App\Http\Controllers\Admin\MedicineBulkActionController::class, 'deleteAll'])->name('admin.medicines.delete-all');
     });
 
     // 2. ADMIN & PHARMACIST & ASSISTANT ADMIN ROUTES (Dashboard, Medicines, Purchases, Suppliers, Reports)

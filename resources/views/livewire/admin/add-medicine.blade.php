@@ -1664,6 +1664,23 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                         </svg>
                     </button>
+
+                    {{-- Admin Only: Secure Delete All Products --}}
+                    @if(auth()->check() && (auth()->user()->role === 'admin' || auth()->user()->isAdmin()))
+                        <button
+                            type="button"
+                            wire:click="openDeleteAllModal"
+                            wire:loading.attr="disabled"
+                            class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 hover:text-red-800 text-xs font-bold shadow-sm transition active:scale-95"
+                            title="Delete all products (Admin only)"
+                            id="btn-delete-all-products"
+                        >
+                            <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span>Delete All</span>
+                        </button>
+                    @endif
                 </div>
 
             </div>
@@ -2952,6 +2969,145 @@
                                 Delete All Selected
                             </button>
                         </div>
+                    </div>
+
+                </div>
+            </div>
+        @endif
+
+        {{-- ========================================================= --}}
+        {{-- MODAL 6B: DELETE ALL PRODUCTS CONFIRMATION (ADMIN ONLY) --}}
+        {{-- ========================================================= --}}
+        @if($showDeleteAllModal && auth()->check() && (auth()->user()->role === 'admin' || auth()->user()->isAdmin()))
+            <div class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn" id="delete-all-products-modal">
+                <div class="bg-white rounded-2xl shadow-2xl max-w-xl w-full border border-red-200 overflow-hidden transform transition-all">
+                    
+                    {{-- Modal Header --}}
+                    <div class="px-6 py-4.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-xl shadow-inner text-white">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-extrabold tracking-tight">Bulk Operation: Delete All Products</h3>
+                                <p class="text-xs text-rose-100 font-medium">Administrator Authorization Required</p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            wire:click="closeDeleteAllModal"
+                            class="text-white/80 hover:text-white rounded-lg p-1 hover:bg-white/10 transition"
+                            title="Close modal"
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    {{-- Modal Content --}}
+                    <div class="p-6 space-y-4">
+
+                        {{-- Preview Stats Banner --}}
+                        <div class="rounded-xl bg-gradient-to-br from-red-50 to-rose-50/60 border border-red-200/80 p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold uppercase tracking-wider text-red-800">Affected Scope Preview</span>
+                                <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-red-600 text-white shadow-xs">
+                                    {{ number_format($deleteAllPreview['total_products'] ?? 0) }} Active Products
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                                <div class="bg-white/90 rounded-lg p-2.5 border border-red-100 shadow-2xs">
+                                    <div class="text-lg font-black text-slate-800">{{ number_format($deleteAllPreview['total_products'] ?? 0) }}</div>
+                                    <div class="text-[10px] uppercase font-semibold text-slate-500">Total Products</div>
+                                </div>
+                                <div class="bg-white/90 rounded-lg p-2.5 border border-amber-100 shadow-2xs">
+                                    <div class="text-lg font-black text-amber-700">{{ number_format($deleteAllPreview['with_history_count'] ?? 0) }}</div>
+                                    <div class="text-[10px] uppercase font-semibold text-slate-500">With History (Archived)</div>
+                                </div>
+                                <div class="bg-white/90 rounded-lg p-2.5 border border-emerald-100 shadow-2xs">
+                                    <div class="text-lg font-black text-emerald-700">{{ number_format($deleteAllPreview['without_history_count'] ?? 0) }}</div>
+                                    <div class="text-[10px] uppercase font-semibold text-slate-500">Unreferenced (Deleted)</div>
+                                </div>
+                                <div class="bg-white/90 rounded-lg p-2.5 border border-blue-100 shadow-2xs">
+                                    <div class="text-lg font-black text-blue-700">{{ number_format($deleteAllPreview['batches_count'] ?? 0) }}</div>
+                                    <div class="text-[10px] uppercase font-semibold text-slate-500">Batches Affected</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Data Integrity & Financial Explanation --}}
+                        <div class="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2 text-xs text-slate-600">
+                            <div class="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                                <svg class="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                </svg>
+                                <span>Regulatory & Financial Data Integrity Safeguards:</span>
+                            </div>
+                            <ul class="list-disc list-inside space-y-1 pl-1 text-[11px] leading-relaxed text-slate-600">
+                                <li><strong>Preserved Financial Records:</strong> Invoices, sales items, purchase records, returns, and stock movement logs are strictly preserved.</li>
+                                <li><strong>Soft Deletion & Archiving:</strong> Products with existing sales or ledger dependencies will be safely archived and hidden from active inventory, maintaining receipt links without cascade deletions.</li>
+                                <li><strong>Safe Permanent Deletion:</strong> Products with zero transaction dependencies will be permanently deleted safely.</li>
+                                <li><strong>Audit Logging:</strong> This bulk operation is logged with your administrator identity, IP address, and timestamp.</li>
+                            </ul>
+                        </div>
+
+                        {{-- Confirmation Input Requirement --}}
+                        <div class="pt-2">
+                            <label for="delete-all-confirmation-input" class="block text-xs font-bold text-slate-800 mb-1.5">
+                                Type <span class="font-mono bg-red-100 text-red-800 px-1.5 py-0.5 rounded border border-red-200 select-all">DELETE ALL PRODUCTS</span> below to confirm:
+                            </label>
+                            <input
+                                type="text"
+                                id="delete-all-confirmation-input"
+                                wire:model.live="deleteAllConfirmationInput"
+                                placeholder="DELETE ALL PRODUCTS"
+                                autocomplete="off"
+                                spellcheck="false"
+                                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-red-500 focus:ring-2 focus:ring-red-200 text-sm font-semibold tracking-wide text-slate-900 transition placeholder:text-slate-400 uppercase"
+                            />
+                            @if(!empty($deleteAllConfirmationInput) && trim($deleteAllConfirmationInput) !== 'DELETE ALL PRODUCTS')
+                                <p class="text-[11px] text-red-600 mt-1 font-semibold flex items-center gap-1">
+                                    <span>✕</span> Phrase does not match exactly.
+                                </p>
+                            @elseif(trim($deleteAllConfirmationInput) === 'DELETE ALL PRODUCTS')
+                                <p class="text-[11px] text-emerald-600 mt-1 font-semibold flex items-center gap-1">
+                                    <span>✓</span> Phrase confirmed. You may proceed.
+                                </p>
+                            @endif
+                        </div>
+
+                        {{-- Action Buttons --}}
+                        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                            <button
+                                type="button"
+                                wire:click="closeDeleteAllModal"
+                                class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                wire:click="executeDeleteAll"
+                                wire:loading.attr="disabled"
+                                id="btn-confirm-delete-all"
+                                @if(trim($deleteAllConfirmationInput) !== 'DELETE ALL PRODUCTS') disabled @endif
+                                class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none @if(trim($deleteAllConfirmationInput) === 'DELETE ALL PRODUCTS') bg-red-600 hover:bg-red-700 text-white shadow-red-200 @else bg-slate-200 text-slate-400 @endif"
+                            >
+                                <span wire:loading.remove wire:target="executeDeleteAll">
+                                    Confirm Bulk Delete
+                                </span>
+                                <span wire:loading wire:target="executeDeleteAll" class="inline-flex items-center gap-1.5">
+                                    <svg class="animate-spin w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                    </svg>
+                                    Processing Bulk Deletion...
+                                </span>
+                            </button>
+                        </div>
+
                     </div>
 
                 </div>

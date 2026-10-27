@@ -12,6 +12,7 @@ use App\Models\Supplier;
 use App\Models\Unit;
 use App\Services\PackagingService;
 use App\Services\StockLedgerService;
+use App\Services\ProductBulkDeletionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Livewire\Component;
@@ -147,6 +148,11 @@ class AddMedicine extends Component
     public int $deleteMedicineBatchesCount = 0;
     public bool $deleteHasSales = false;
     public bool $showBulkDeleteModal = false;
+
+    // Delete All Products Modal (Admin Only)
+    public bool $showDeleteAllModal = false;
+    public string $deleteAllConfirmationInput = '';
+    public array $deleteAllPreview = [];
 
     // Barcode Modal
     public bool $showBarcodeModal = false;
@@ -1206,32 +1212,39 @@ class AddMedicine extends Component
         $this->showBulkDeleteModal = false;
     }
 
-    public function bulkDelete(): void
+    public function bulkDelete(ProductBulkDeletionService $deletionService): void
     {
         if (empty($this->selectedMedicines)) {
             $this->closeBulkDeleteModal();
             return;
         }
 
-        $count = 0;
+        $user = auth()->user();
+        if (!$user || (!$user->isAdmin() && $user->role !== 'admin')) {
+            abort(403, 'Unauthorized: Administrator access required.');
+        }
 
-        DB::transaction(function () use (&$count) {
+        $archivedCount = 0;
+        $deletedCount = 0;
+
+        DB::transaction(function () use (&$archivedCount, &$deletedCount, $deletionService) {
             foreach ($this->selectedMedicines as $id) {
                 $medicine = Medicine::find($id);
                 if (!$medicine) continue;
 
-                DB::table('sale_items')->where('medicine_id', $id)->delete();
-                DB::table('sales_return_items')->where('medicine_id', $id)->delete();
-                DB::table('purchase_return_items')->where('medicine_id', $id)->delete();
-                DB::table('purchase_invoice_items')->where('medicine_id', $id)->delete();
-
-                StockMovement::where('medicine_id', $id)->delete();
-                MedicineBatch::where('medicine_id', $id)->delete();
-                MedicinePackaging::where('medicine_id', $id)->delete();
-                Inventory::where('medicine_id', $id)->delete();
-
-                $medicine->delete();
-                $count++;
+                $dep = $deletionService->checkProductDependencies((int)$id);
+                if ($dep['has_history']) {
+                    $medicine->status = 'archived';
+                    $medicine->save();
+                    $medicine->delete();
+                    $archivedCount++;
+                } else {
+                    MedicinePackaging::where('medicine_id', $id)->delete();
+                    Inventory::where('medicine_id', $id)->delete();
+                    MedicineBatch::where('medicine_id', $id)->delete();
+                    $medicine->forceDelete();
+                    $deletedCount++;
+                }
             }
         });
 
@@ -1239,7 +1252,53 @@ class AddMedicine extends Component
         $this->selectAll = false;
         $this->closeBulkDeleteModal();
 
-        session()->flash('message', "{$count} products permanently deleted.");
+        $msgParts = [];
+        if ($deletedCount > 0) $msgParts[] = "{$deletedCount} unreferenced products permanently deleted";
+        if ($archivedCount > 0) $msgParts[] = "{$archivedCount} products archived to preserve historical records and accounting balances";
+        $msg = empty($msgParts) ? "No products were modified." : implode(', ', $msgParts) . ".";
+
+        session()->flash('message', $msg);
+        $this->resetPage();
+    }
+
+    public function openDeleteAllModal(ProductBulkDeletionService $deletionService): void
+    {
+        $user = auth()->user();
+        if (!$user || (!$user->isAdmin() && $user->role !== 'admin')) {
+            abort(403, 'Unauthorized: Administrator access required.');
+        }
+
+        $this->deleteAllConfirmationInput = '';
+        $this->deleteAllPreview = $deletionService->getPreviewStats();
+        $this->showDeleteAllModal = true;
+    }
+
+    public function closeDeleteAllModal(): void
+    {
+        $this->showDeleteAllModal = false;
+        $this->deleteAllConfirmationInput = '';
+    }
+
+    public function executeDeleteAll(ProductBulkDeletionService $deletionService): void
+    {
+        $user = auth()->user();
+        if (!$user || (!$user->isAdmin() && $user->role !== 'admin')) {
+            abort(403, 'Unauthorized: Administrator access required.');
+        }
+
+        if (trim($this->deleteAllConfirmationInput) !== 'DELETE ALL PRODUCTS') {
+            session()->flash('error', 'You must type DELETE ALL PRODUCTS exactly to confirm.');
+            return;
+        }
+
+        $result = $deletionService->execute($user, request()->ip(), request()->userAgent());
+
+        $this->closeDeleteAllModal();
+        $this->selectedMedicines = [];
+        $this->selectAll = false;
+
+        $flashKey = ($result['status'] === 'success') ? 'message' : 'warning';
+        session()->flash($flashKey, $result['message']);
         $this->resetPage();
     }
 
