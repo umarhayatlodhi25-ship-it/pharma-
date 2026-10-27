@@ -157,6 +157,93 @@ Route::get('/run-migrations-live', function () {
     }
 });
 
+Route::get('/run-clear-medicines-live', function (\Illuminate\Http\Request $request) {
+    try {
+        $dbConfig = config('database.connections.pgsql');
+        $hasPgsql = (!empty($dbConfig['url']) || !empty($dbConfig['host']));
+        if ($hasPgsql) {
+            if (!empty($dbConfig['host']) && str_contains($dbConfig['host'], '-pooler')) {
+                config(['database.connections.pgsql.host' => str_replace('-pooler', '', $dbConfig['host'])]);
+            }
+            if (!empty($dbConfig['url']) && str_contains($dbConfig['url'], '-pooler')) {
+                config(['database.connections.pgsql.url' => str_replace('-pooler', '', $dbConfig['url'])]);
+            }
+            \Illuminate\Support\Facades\DB::purge('pgsql');
+
+            // Guarantee columns and tables exist
+            try {
+                \Illuminate\Support\Facades\DB::connection('pgsql')->statement(
+                    'ALTER TABLE medicines ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL'
+                );
+            } catch (\Throwable $e) {}
+
+            try {
+                \Illuminate\Support\Facades\DB::connection('pgsql')->statement("
+                    CREATE TABLE IF NOT EXISTS product_audit_logs (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+                        user_name VARCHAR(255) NULL,
+                        user_email VARCHAR(255) NULL,
+                        action VARCHAR(255) NOT NULL,
+                        description TEXT NULL,
+                        ip_address VARCHAR(45) NULL,
+                        user_agent TEXT NULL,
+                        affected_product_ids JSONB NULL,
+                        summary JSONB NULL,
+                        status VARCHAR(50) DEFAULT 'success',
+                        created_at TIMESTAMP NULL,
+                        updated_at TIMESTAMP NULL
+                    )
+                ");
+            } catch (\Throwable $e) {}
+
+            config(['database.default' => 'pgsql']);
+        }
+
+        $admin = \App\Models\User::where('role', 'admin')->first()
+            ?? \App\Models\User::first()
+            ?? new \App\Models\User(['id' => 1, 'name' => 'Admin Maintenance', 'email' => 'admin@pharma.com', 'role' => 'admin']);
+
+        $service = app(\App\Services\ProductBulkDeletionService::class);
+        $previewBefore = $service->getPreviewStats();
+
+        $force = $request->has('force') || $request->has('purge');
+        $result = $service->execute($admin, $request->ip(), $request->userAgent());
+
+        if ($force) {
+            \Illuminate\Support\Facades\DB::table('medicine_batches')->delete();
+            \Illuminate\Support\Facades\DB::table('inventories')->delete();
+            \Illuminate\Support\Facades\DB::table('medicine_packagings')->delete();
+            \App\Models\Medicine::withTrashed()->forceDelete();
+        }
+
+        $activeRemaining = \App\Models\Medicine::count();
+        $archivedCount = \App\Models\Medicine::onlyTrashed()->count();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'All existing medicines have been cleared successfully!',
+            'details' => [
+                'preview_before' => $previewBefore,
+                'result' => $result,
+                'active_medicines_remaining' => $activeRemaining,
+                'archived_medicines' => $archivedCount,
+                'database_driver' => config('database.default'),
+            ]
+        ]);
+    } catch (\Throwable $e) {
+        $error = $e->getMessage();
+        if ($e->getPrevious()) {
+            $error .= " | Previous: " . $e->getPrevious()->getMessage();
+        }
+        return response()->json([
+            'status' => 'error',
+            'message' => $error,
+            'trace' => $e->getTraceAsString(),
+        ], 500);
+    }
+});
+
 
 
 Route::get('/create-roles-tables', function () {
