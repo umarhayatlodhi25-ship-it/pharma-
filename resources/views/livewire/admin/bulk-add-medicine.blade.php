@@ -27,46 +27,20 @@
                     <span>Template</span>
                 </button>
                 
-                <div class="relative" x-data="{
-                    isImporting: false,
-                    async handleFile(e) {
-                        const file = e.target.files[0];
-                        if (!file) return;
-                        
-                        this.isImporting = true;
-                        
-                        const reader = new FileReader();
-                        reader.onload = async (evt) => {
-                            try {
-                                const data = new Uint8Array(evt.target.result);
-                                const workbook = XLSX.read(data, {type: 'array'});
-                                const firstSheetName = workbook.SheetNames[0];
-                                const worksheet = workbook.Sheets[firstSheetName];
-                                const json = XLSX.utils.sheet_to_json(worksheet, {header: 1});
-                                
-                                // Remove header row if it exists
-                                if (json.length > 0) json.shift();
-                                
-                                const chunkSize = 150;
-                                for (let i = 0; i < json.length; i += chunkSize) {
-                                    const chunk = json.slice(i, i + chunkSize);
-                                    await @this.call('importJson', chunk);
-                                }
-                            } catch (err) {
-                                console.error(err);
-                                alert('An error occurred during import.');
-                            } finally {
-                                this.isImporting = false;
-                                document.getElementById('importFile').value = '';
-                            }
-                        };
-                        reader.readAsArrayBuffer(file);
-                    }
-                }">
-                    <input type="file" id="importFile" class="hidden" accept=".csv,.txt,.xlsx,.xls" x-on:change="handleFile">
-                    <label for="importFile" class="inline-flex cursor-pointer items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 text-sm font-semibold rounded-xl shadow-xs transition" x-bind:class="{'opacity-50 cursor-wait': isImporting}" wire:loading.class="opacity-50 cursor-wait" wire:target="importJson">
-                        <i x-bind:class="isImporting ? 'fa-solid fa-circle-notch fa-spin' : 'fa-solid fa-file-import'" class="text-xs"></i>
-                        <span x-text="isImporting ? 'Importing...' : 'Import CSV/Excel'">Import CSV/Excel</span>
+                <div class="relative">
+                    <input type="file" wire:model="importFile" id="importFile" class="hidden" accept=".csv,.txt,.xlsx,.xls,.ods">
+                    <label for="importFile"
+                           class="inline-flex cursor-pointer items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 text-sm font-semibold rounded-xl shadow-xs transition"
+                           wire:loading.class="opacity-50 cursor-wait pointer-events-none"
+                           wire:target="importFile, importData">
+                        <span wire:loading.remove wire:target="importFile, importData" class="flex items-center gap-2">
+                            <i class="fa-solid fa-file-import text-xs"></i>
+                            <span>Import CSV/Excel</span>
+                        </span>
+                        <span wire:loading wire:target="importFile, importData" class="flex items-center gap-2">
+                            <i class="fa-solid fa-circle-notch fa-spin text-xs"></i>
+                            <span>Importing...</span>
+                        </span>
                     </label>
                 </div>
 
@@ -88,6 +62,13 @@
             </div>
         @endif
 
+        @error('importFile')
+            <div class="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800 flex items-center gap-3 shadow-xs">
+                <i class="fa-solid fa-circle-exclamation text-red-600 text-lg"></i>
+                <div>{{ $message }}</div>
+            </div>
+        @enderror
+
         @if ($errors->has('general'))
             <div class="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800 flex items-center gap-3 shadow-xs">
                 <i class="fa-solid fa-circle-exclamation text-red-600 text-lg"></i>
@@ -95,7 +76,56 @@
             </div>
         @endif
 
-        @if ($errors->any() && !$errors->has('general'))
+        @if ($importSummary)
+            <div class="mb-5 rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50/50 p-5 shadow-xs">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs shadow-xs">
+                            <i class="fa-solid fa-file-lines"></i>
+                        </div>
+                        <h3 class="text-sm font-bold text-slate-800">File Import Summary</h3>
+                    </div>
+                    <button type="button" wire:click="$set('importSummary', null)" class="text-xs font-semibold text-slate-400 hover:text-slate-600 transition inline-flex items-center gap-1">
+                        <i class="fa-solid fa-xmark"></i> Dismiss
+                    </button>
+                </div>
+                
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div class="bg-white/90 rounded-xl p-3 border border-slate-200/60 shadow-2xs">
+                        <span class="text-slate-500 block text-[11px] font-medium">Total Parsed</span>
+                        <span class="text-lg font-bold text-slate-800">{{ $importSummary['parsed'] ?? 0 }}</span>
+                    </div>
+                    <div class="bg-white/90 rounded-xl p-3 border border-emerald-200/60 shadow-2xs">
+                        <span class="text-emerald-600 block text-[11px] font-medium">Ready to Save</span>
+                        <span class="text-lg font-bold text-emerald-700">{{ $importSummary['valid'] ?? 0 }}</span>
+                    </div>
+                    <div class="bg-white/90 rounded-xl p-3 border border-amber-200/60 shadow-2xs">
+                        <span class="text-amber-600 block text-[11px] font-medium">Requires Attention</span>
+                        <span class="text-lg font-bold text-amber-700">{{ $importSummary['invalid'] ?? 0 }}</span>
+                    </div>
+                    <div class="bg-white/90 rounded-xl p-3 border border-purple-200/60 shadow-2xs">
+                        <span class="text-purple-600 block text-[11px] font-medium">Duplicates Flagged</span>
+                        <span class="text-lg font-bold text-purple-700">{{ $importSummary['duplicates'] ?? 0 }}</span>
+                    </div>
+                </div>
+
+                @if (!empty($importSummary['errors']))
+                    <div class="mt-4 pt-3 border-t border-slate-200/60">
+                        <span class="font-bold text-xs text-amber-900 block mb-1.5 flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation text-amber-600 text-xs"></i>
+                            <span>Issues to review before saving ({{ count($importSummary['errors']) }}):</span>
+                        </span>
+                        <ul class="list-disc pl-5 space-y-1 text-xs text-amber-800 max-h-36 overflow-y-auto">
+                            @foreach ($importSummary['errors'] as $err)
+                                <li>{{ $err }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+            </div>
+        @endif
+
+        @if ($errors->any() && !$errors->has('general') && !$errors->has('importFile') && !$importSummary)
             <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-xs">
                 <div class="font-bold flex items-center gap-2 mb-1">
                     <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
@@ -179,6 +209,9 @@
                                                 <option value="{{ $cat->id }}">{{ $cat->name }}</option>
                                             @endforeach
                                         </select>
+                                        @if (!empty($row['category_name_raw']) && empty($row['category_id']))
+                                            <span class="text-[10px] text-amber-600 font-medium block mt-0.5 leading-tight">File: "{{ $row['category_name_raw'] }}"</span>
+                                        @endif
                                         @error("rows.{$index}.category_id")
                                             <span class="text-[10px] text-red-500 font-medium block mt-1 leading-tight">{{ $message }}</span>
                                         @enderror
@@ -352,6 +385,4 @@
             <option value="{{ $u }}">
         @endforeach
     </datalist>
-
-    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </div>

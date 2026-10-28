@@ -4,7 +4,13 @@ namespace App\Livewire\Admin;
 
 use App\Models\Category;
 use App\Models\Medicine;
+use App\Models\MedicinePackaging;
+use App\Models\Unit;
+use App\Services\MedicineImportService;
+use App\Services\StockLedgerService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -14,8 +20,9 @@ class BulkAddMedicine extends Component
 
     public array $rows = [];
     public $importFile;
-    public $totalImported = 0;
-    public $totalSkipped = 0;
+    public ?array $importSummary = null;
+    public int $totalImported = 0;
+    public int $totalSkipped = 0;
 
     public function mount(): void
     {
@@ -53,6 +60,132 @@ class BulkAddMedicine extends Component
         }
     }
 
+    public function updatedImportFile(): void
+    {
+        $this->importData();
+    }
+
+    public function importData(): void
+    {
+        $this->resetErrorBag();
+
+        if (!$this->importFile) {
+            $this->addError('importFile', 'Please select a file to import.');
+            return;
+        }
+
+        $this->validate([
+            'importFile' => 'required|file|max:10240',
+        ], [
+            'importFile.required' => 'Please select a file to import.',
+            'importFile.max' => 'The file size must not exceed 10MB.',
+        ]);
+
+        $ext = strtolower((string) $this->importFile->getClientOriginalExtension());
+        if (!in_array($ext, ['csv', 'txt', 'xlsx', 'xls', 'ods'])) {
+            $this->addError('importFile', 'The file must be a CSV or Excel spreadsheet (.csv, .xlsx, .xls).');
+            $this->reset('importFile');
+            return;
+        }
+
+        try {
+            $service = app(MedicineImportService::class);
+            $result = $service->parseFile($this->importFile);
+
+            if (!$result['success']) {
+                $this->addError('general', $result['error']);
+                return;
+            }
+
+            $this->applyParsedRows($result);
+
+        } catch (\Throwable $e) {
+            $this->addError('general', 'Failed to import file: ' . $e->getMessage());
+        } finally {
+            $this->reset('importFile');
+        }
+    }
+
+    public function importJson($jsonData): void
+    {
+        $this->resetErrorBag();
+
+        if (empty($jsonData) || !is_array($jsonData)) {
+            $this->addError('general', 'No data provided to import.');
+            return;
+        }
+
+        try {
+            $service = app(MedicineImportService::class);
+            $result = $service->parseRawData($jsonData);
+
+            if (!$result['success']) {
+                $this->addError('general', $result['error']);
+                return;
+            }
+
+            $this->applyParsedRows($result);
+
+        } catch (\Throwable $e) {
+            $this->addError('general', 'Failed to process data: ' . $e->getMessage());
+        }
+    }
+
+    protected function applyParsedRows(array $result): void
+    {
+        $hasExistingData = false;
+        foreach ($this->rows as $r) {
+            if (!empty(trim($r['name'] ?? '')) || !empty(trim($r['category_id'] ?? '')) || !empty(trim($r['unit_price'] ?? ''))) {
+                $hasExistingData = true;
+                break;
+            }
+        }
+
+        if ($hasExistingData) {
+            $existingFiltered = array_values(array_filter($this->rows, function ($r) {
+                return !empty(trim($r['name'] ?? '')) || !empty(trim($r['category_id'] ?? '')) || !empty(trim($r['unit_price'] ?? ''));
+            }));
+            $offset = count($existingFiltered);
+            $this->rows = array_merge($existingFiltered, $result['rows']);
+        } else {
+            $offset = 0;
+            $this->rows = $result['rows'];
+        }
+
+        $allIssues = [];
+        foreach ($result['row_errors'] as $rowIndex => $errors) {
+            $adjustedIndex = $offset + $rowIndex;
+            foreach ($errors as $err) {
+                $allIssues[] = $err;
+                if (str_contains($err, 'Medicine Name') || str_contains($err, 'medicine name')) {
+                    $this->addError("rows.{$adjustedIndex}.name", $err);
+                } elseif (str_contains($err, 'Category') || str_contains($err, 'category')) {
+                    $this->addError("rows.{$adjustedIndex}.category_id", $err);
+                } elseif (str_contains($err, 'Sale Price') || str_contains($err, 'sale price')) {
+                    $this->addError("rows.{$adjustedIndex}.unit_price", $err);
+                } elseif (str_contains($err, 'Purchase Price') || str_contains($err, 'purchase price')) {
+                    $this->addError("rows.{$adjustedIndex}.purchase_price", $err);
+                } elseif (str_contains($err, 'Barcode') || str_contains($err, 'barcode')) {
+                    $this->addError("rows.{$adjustedIndex}.barcode", $err);
+                } else {
+                    $this->addError("rows.{$adjustedIndex}.name", $err);
+                }
+            }
+        }
+
+        $stats = $result['stats'];
+        $stats['errors'] = $allIssues;
+        $this->importSummary = $stats;
+        $this->totalImported = $stats['valid'];
+        $this->totalSkipped = $stats['duplicates'];
+
+        if ($stats['invalid'] === 0) {
+            session()->flash('message', "{$stats['valid']} medicines loaded from file. Please review and click Save All Medicines.");
+        } else {
+            session()->flash('message', "{$stats['parsed']} rows loaded from file ({$stats['valid']} ready, {$stats['invalid']} require attention). Please review highlighted rows.");
+        }
+    }
+
     public function saveAll()
     {
         $this->resetErrorBag();
@@ -83,7 +216,7 @@ class BulkAddMedicine extends Component
             $rawCategory = trim($this->rows[$index]['category_name_raw'] ?? '');
             $categoryId = $this->rows[$index]['category_id'] ?? '';
 
-            // Check if there was an invalid category from CSV
+            // Check if there was an invalid category from file
             if (empty($categoryId) && !empty($rawCategory)) {
                 $rowNum = $index + 1;
                 $this->addError("rows.{$index}.category_id", "Row {$rowNum}: Category \"{$rawCategory}\" does not exist.");
@@ -109,7 +242,7 @@ class BulkAddMedicine extends Component
             }
 
             // Check duplicate name in Database
-            if (Medicine::where('name', $name)->exists()) {
+            if (Medicine::whereRaw('LOWER(name) = ?', [$nameLower])->exists()) {
                 $this->addError("rows.{$index}.name", "Medicine '{$name}' already exists in database.");
                 $hasDuplicateError = true;
             }
@@ -146,7 +279,7 @@ class BulkAddMedicine extends Component
             $attributes["rows.{$index}.barcode"] = "Row {$rowNum} Barcode";
         }
 
-        $validator = \Illuminate\Support\Facades\Validator::make(
+        $validator = Validator::make(
             ['rows' => $this->rows],
             $rules,
             [],
@@ -179,9 +312,9 @@ class BulkAddMedicine extends Component
                     $barcode = !empty(trim($row['barcode'] ?? '')) ? trim($row['barcode']) : null;
 
                     $baseUnitSlug = Str::slug($dosageUnit);
-                    $baseUnit = \App\Models\Unit::firstOrCreate(
+                    $baseUnit = Unit::firstOrCreate(
                         ['unit_id' => $baseUnitSlug],
-                        ['name' => $dosageUnit, 'symbol' => substr($dosageUnit, 0, 4), 'allow_decimal' => \Illuminate\Support\Facades\DB::raw('false'), 'status' => 'active']
+                        ['name' => $dosageUnit, 'symbol' => substr($dosageUnit, 0, 4), 'allow_decimal' => false, 'status' => 'active']
                     );
 
                     $med = Medicine::create([
@@ -206,12 +339,12 @@ class BulkAddMedicine extends Component
                         'barcode' => $barcode,
                         'alert_quantity' => $alertQty,
                         'reorder_level' => $alertQty,
-                        'has_expiry' => \Illuminate\Support\Facades\DB::raw('true'),
-                        'track_batches' => \Illuminate\Support\Facades\DB::raw('true'),
+                        'has_expiry' => true,
+                        'track_batches' => true,
                         'status' => 'active',
                     ]);
 
-                    \App\Models\MedicinePackaging::create([
+                    MedicinePackaging::create([
                         'medicine_id' => $med->id,
                         'unit_id' => $baseUnit->id,
                         'conversion_to_base' => 1.0,
@@ -221,18 +354,19 @@ class BulkAddMedicine extends Component
                         'barcode' => $barcode,
                         'purchase_price' => $purchasePrice,
                         'sale_price' => $unitPrice,
-                        'allow_purchase' => \Illuminate\Support\Facades\DB::raw('true'),
-                        'allow_sale' => \Illuminate\Support\Facades\DB::raw('true'),
+                        'allow_purchase' => true,
+                        'allow_sale' => true,
                         'status' => 'active',
                     ]);
 
-                    app(\App\Services\StockLedgerService::class)->syncInventory($med->id);
+                    app(StockLedgerService::class)->syncInventory($med->id);
                 }
             });
 
             $count = count($nonEmptyIndices);
             session()->flash('message', "{$count} medicines added successfully.");
 
+            $this->importSummary = null;
 
             // Reset rows back to 3 empty rows
             $this->rows = [];
@@ -254,149 +388,6 @@ class BulkAddMedicine extends Component
             fputcsv($handle, ['Sample Medicine', 'Tablets & Capsules', 'Sample Generic', 'Sample Brand', 'Sample Mfg', 'Tablet', '10.50', '8.00', '10', '123456']);
             fclose($handle);
         }, 'medicines_template.csv');
-    }
-
-    public function importJson($jsonData)
-    {
-        $importedCount = 0;
-        $skippedCount = 0;
-
-        // Map existing categories by slug
-        $categoryMap = [];
-        foreach (\App\Models\Category::all() as $cat) {
-            $categoryMap[$cat->slug] = $cat->id;
-            $categoryMap[\Illuminate\Support\Str::slug($cat->name)] = $cat->id;
-        }
-
-        try {
-            DB::transaction(function () use ($jsonData, &$categoryMap, &$importedCount, &$skippedCount) {
-                foreach ($jsonData as $row) {
-                    if (count($row) < 7) continue;
-                    $name = trim($row[0] ?? '');
-                    if (empty($name)) continue;
-
-                    // Skip if already exists
-                    if (Medicine::where('name', $name)->exists()) {
-                        $skippedCount++;
-                        continue;
-                    }
-
-                    $csvCategory = trim($row[1] ?? '');
-                    if (empty($csvCategory)) {
-                        $csvCategory = 'Uncategorized';
-                    }
-                    
-                    $catSlug = \Illuminate\Support\Str::slug($csvCategory);
-                    
-                    if (isset($categoryMap[$catSlug])) {
-                        $categoryId = $categoryMap[$catSlug];
-                    } else {
-                        // Create the category dynamically
-                        // To be absolutely safe against duplicates, check DB one last time or append a number
-                        $existingCat = \App\Models\Category::where('slug', $catSlug)->first();
-                        if ($existingCat) {
-                            $categoryId = $existingCat->id;
-                        } else {
-                            $newCat = \App\Models\Category::create([
-                                'name' => $csvCategory,
-                                'slug' => $catSlug,
-                                'product_type' => 'medicine',
-                            ]);
-                            $categoryId = $newCat->id;
-                        }
-                        $categoryMap[$catSlug] = $categoryId;
-                    }
-                    
-                    $dosageUnit = !empty(trim($row[5] ?? '')) ? trim($row[5]) : 'Tablet';
-                    $unitPrice = (float) trim($row[6] ?? '');
-                    $purchasePrice = !empty(trim($row[7] ?? '')) ? (float) trim($row[7]) : null;
-                    $alertQty = !empty(trim($row[8] ?? '')) ? (int) trim($row[8]) : 10;
-                    $barcode = !empty(trim($row[9] ?? '')) ? trim($row[9]) : null;
-
-                    $baseUnitSlug = \Illuminate\Support\Str::slug($dosageUnit);
-                    $baseUnit = \App\Models\Unit::firstOrCreate(
-                        ['unit_id' => $baseUnitSlug],
-                        ['name' => $dosageUnit, 'symbol' => substr($dosageUnit, 0, 4), 'allow_decimal' => \Illuminate\Support\Facades\DB::raw('false'), 'status' => 'active']
-                    );
-
-                    $med = Medicine::create([
-                        'category_id' => $categoryId,
-                        'product_type' => 'medicine',
-                        'name' => $name,
-                        'generic_name' => !empty(trim($row[2] ?? '')) ? trim($row[2]) : null,
-                        'brand' => !empty(trim($row[3] ?? '')) ? trim($row[3]) : null,
-                        'manufacturer' => !empty(trim($row[4] ?? '')) ? trim($row[4]) : null,
-                        'dosage_unit' => $dosageUnit,
-                        'base_unit_id' => $baseUnit->id,
-                        'base_unit' => $dosageUnit,
-                        'primary_unit_to_secondary' => 1,
-                        'secondary_unit_to_base' => 1,
-                        'unit_price' => $unitPrice,
-                        'purchase_price' => $purchasePrice,
-                        'base_unit_selling_price' => $unitPrice,
-                        'barcode' => $barcode,
-                        'alert_quantity' => $alertQty,
-                        'reorder_level' => $alertQty,
-                        'has_expiry' => \Illuminate\Support\Facades\DB::raw('true'),
-                        'track_batches' => \Illuminate\Support\Facades\DB::raw('true'),
-                        'status' => 'active',
-                    ]);
-
-                    \App\Models\MedicinePackaging::create([
-                        'medicine_id' => $med->id,
-                        'unit_id' => $baseUnit->id,
-                        'conversion_to_base' => 1.0,
-                        'quantity_in_parent' => 1.0,
-                        'display_name' => $dosageUnit,
-                        'barcode' => $barcode,
-                        'purchase_price' => $purchasePrice,
-                        'sale_price' => $unitPrice,
-                        'allow_purchase' => \Illuminate\Support\Facades\DB::raw('true'),
-                        'allow_sale' => \Illuminate\Support\Facades\DB::raw('true'),
-                        'status' => 'active',
-                    ]);
-
-                    app(\App\Services\StockLedgerService::class)->syncInventory($med->id);
-                    $importedCount++;
-                }
-            });
-
-            $this->totalImported += $importedCount;
-            $this->totalSkipped += $skippedCount;
-
-            session()->flash('message', "{$this->totalImported} medicines imported and saved directly! ({$this->totalSkipped} skipped due to duplicates or invalid category).");
-        } catch (\Exception $e) {
-            $this->addError('general', 'An error occurred while importing: ' . $e->getMessage());
-        }
-
-        // Reset rows so payload stays small
-        $this->rows = [];
-        for ($i = 0; $i < 3; $i++) {
-            $this->addRow();
-        }
-    }
-
-    public function importData()
-    {
-        $this->validate([
-            'importFile' => 'required|file|mimes:csv,txt|max:5120', // 5MB max
-        ]);
-
-        $path = $this->importFile->getRealPath();
-        $file = fopen($path, 'r');
-        $header = fgetcsv($file);
-
-        $jsonData = [];
-        while (($row = fgetcsv($file)) !== false) {
-            $row = array_map(function ($value) {
-                return mb_convert_encoding($value ?? '', 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
-            }, $row);
-            $jsonData[] = $row;
-        }
-        fclose($file);
-
-        $this->reset('importFile');
-        $this->importJson($jsonData);
     }
 
     public function render()
