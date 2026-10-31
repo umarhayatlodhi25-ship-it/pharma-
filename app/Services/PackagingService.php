@@ -317,7 +317,7 @@ class PackagingService
         $baseUnitName = $medicine->base_unit ?: ($medicine->dosage_unit ?: ($medicine->is_general ? 'Piece' : 'Tablet'));
 
         if ($stock <= 0) {
-            return "0 {$baseUnitName}s (Total: 0 {$baseUnitName}s)";
+            return "0 " . Str::plural($baseUnitName, 0);
         }
 
         // Load and sort packagings descending by numeric conversion_to_base
@@ -372,6 +372,14 @@ class PackagingService
         }
 
         $breakdown = implode(', ', array_filter($parts));
+        $hasHigherPacks = ($packagings->isNotEmpty() && $packagings->contains(fn($p) => (float)$p->conversion_to_base > 1))
+            || (!empty($medicine->primary_unit) && (int)$this->getConversionFactor($medicine, $medicine->primary_unit) > 1)
+            || (!empty($medicine->secondary_unit) && (int)$this->getConversionFactor($medicine, $medicine->secondary_unit) > 1);
+
+        if (!$hasHigherPacks) {
+            return $breakdown;
+        }
+
         return "{$breakdown} (Total: {$stock} " . Str::plural($baseUnitName, (int)$stock) . ")";
     }
 
@@ -385,13 +393,16 @@ class PackagingService
         $requestedBaseQty = round($quantity * $conversion, 4);
 
         // Get total non-expired available stock
-        $availableBaseQty = (float) $medicine->batches()
-            ->where('quantity', '>', 0)
-            ->where(function ($q) {
-                $q->whereNull('expiry_date')
-                  ->orWhereDate('expiry_date', '>', now()->toDateString());
-            })
-            ->sum('quantity');
+        $availableBaseQty = (float) $medicine->getAvailableStock();
+
+        if ($availableBaseQty <= 0) {
+            return [
+                'valid' => false,
+                'requested_base_qty' => $requestedBaseQty,
+                'available_base_qty' => 0.0,
+                'message' => 'This medicine is currently out of stock.'
+            ];
+        }
 
         if ($requestedBaseQty > $availableBaseQty) {
             $unitName = is_object($packagingOrUnit) ? ($packagingOrUnit->unit?->name ?? 'Unit') : (string)$packagingOrUnit;
@@ -421,16 +432,23 @@ class PackagingService
     public function allocateBatchesFefo($medicine, float $requiredBaseQuantity): array
     {
         $medicine = $this->resolveMedicine($medicine);
-        $batches = MedicineBatch::where('medicine_id', $medicine->id)
+        $now = now()->toDateString();
+
+        $batchQuery = MedicineBatch::where('medicine_id', $medicine->id)
             ->where('quantity', '>', 0)
-            ->where(function ($q) {
+            ->whereNotIn('status', ['expired', 'depleted']);
+
+        if ($medicine->has_expiry) {
+            $batchQuery->where(function ($q) use ($now) {
                 $q->whereNull('expiry_date')
-                  ->orWhereDate('expiry_date', '>', now()->toDateString());
-            })
+                  ->orWhereDate('expiry_date', '>=', $now);
+            });
+        }
+
+        $batches = $batchQuery
             ->orderByRaw('CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END, expiry_date ASC, id ASC')
             ->lockForUpdate()
             ->get();
-
 
         $allocations = [];
         $remainingNeeded = $requiredBaseQuantity;

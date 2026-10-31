@@ -47,6 +47,11 @@ class PosCounter extends Component
         'productTypeFilter' => ['except' => 'all'],
     ];
 
+    protected $listeners = [
+        'stockUpdated' => '$refresh',
+        'refreshPos' => '$refresh',
+    ];
+
     public function setProductTypeFilter($type)
     {
         $this->productTypeFilter = $type;
@@ -103,8 +108,26 @@ class PosCounter extends Component
         $this->restored_hold_ref = $hold->reference_number;
         $this->calculateTotals();
 
+        // Refresh stock indicators for restored items
+        $hasOutOfStock = false;
+        foreach ($this->cart as $key => &$item) {
+            $med = Medicine::find($item['medicine_id']);
+            if ($med) {
+                $avail = (float)$med->getAvailableStock();
+                $item['total_base_available'] = $avail;
+                if ($avail <= 0 || $avail < (float)($item['base_qty'] ?? 1)) {
+                    $hasOutOfStock = true;
+                }
+            }
+        }
+        unset($item);
+
         $hold->update(['status' => 'restored']);
-        session()->flash('message', "Held Invoice {$hold->reference_number} restored to cart!");
+        if ($hasOutOfStock) {
+            session()->flash('error', "Held Invoice {$hold->reference_number} restored. WARNING: Some items have zero or insufficient available stock!");
+        } else {
+            session()->flash('message', "Held Invoice {$hold->reference_number} restored to cart!");
+        }
     }
 
     public function render()
@@ -165,15 +188,34 @@ class PosCounter extends Component
             return;
         }
 
+        // Validate physical stock and unexpired valid stock
+        $physicalStock = (float) $medicine->getPhysicalStock();
+        $totalBaseAvailable = (float) $medicine->getAvailableStock();
+
+        if ($physicalStock <= 0) {
+            session()->flash('error', "{$medicine->name} is currently out of stock.");
+            return;
+        }
+
+        if ($totalBaseAvailable <= 0) {
+            session()->flash('error', "Cannot add {$medicine->name}: All available physical stock ({$physicalStock} {$medicine->base_unit}s) is expired!");
+            return;
+        }
+
         // Determine packaging level
         $pkg = null;
         if ($packagingId) {
             $pkg = $medicine->packagings->firstWhere('id', (int)$packagingId);
+            if ($pkg && (float)$pkg->conversion_to_base > $totalBaseAvailable) {
+                $unitName = $pkg->unit?->name ?? $pkg->display_name ?? 'Unit';
+                session()->flash('error', "Insufficient stock for {$medicine->name} ({$unitName})! Available: {$totalBaseAvailable} {$medicine->base_unit}s.");
+                return;
+            }
         }
         if (!$pkg) {
-            // Default to Base Unit or smallest saleable packaging
+            // Default to Base Unit or smallest saleable packaging that fits available stock
             $pkg = $medicine->packagings->where('allow_sale', true)->firstWhere('conversion_to_base', 1.0)
-                ?: $medicine->packagings->where('allow_sale', true)->first();
+                ?: $medicine->packagings->where('allow_sale', true)->filter(fn($p) => (float)$p->conversion_to_base <= $totalBaseAvailable)->first();
         }
 
         $conversionToBase = $pkg ? (float)$pkg->conversion_to_base : 1.0;
@@ -185,26 +227,34 @@ class PosCounter extends Component
         $now = now()->toDateString();
         $availableBatches = $medicine->batches->filter(function($b) use ($medicine, $now) {
             if ($b->quantity <= 0) return false;
-            if ($medicine->has_expiry && $b->expiry_date && $b->expiry_date->format('Y-m-d') < $now) {
-                return false;
+            if ($b->status === 'expired' || $b->status === 'depleted') return false;
+            if ($medicine->has_expiry && !empty($b->expiry_date)) {
+                $exp = $b->expiry_date instanceof \DateTimeInterface 
+                    ? $b->expiry_date->format('Y-m-d') 
+                    : substr((string)$b->expiry_date, 0, 10);
+                if ($exp < $now) {
+                    return false;
+                }
             }
             return true;
         })->sortBy('expiry_date');
 
         $batch = $availableBatches->first();
 
-        // Calculate available stock in base units
-        $totalBaseAvailable = $availableBatches->sum('quantity');
+        if (!$batch) {
+            session()->flash('error', "No valid/unexpired batch available for {$medicine->name}!");
+            return;
+        }
+
         $existingCartBase = collect($this->cart)->where('medicine_id', $medicine->id)->sum('base_qty');
         $requiredBase = $existingCartBase + $conversionToBase;
 
         if ($totalBaseAvailable < $requiredBase) {
-            session()->flash('error', "Insufficient stock for {$medicine->name}! Available: {$totalBaseAvailable} {$medicine->base_unit}s.");
-            return;
-        }
-
-        if (!$batch) {
-            session()->flash('error', "No valid/unexpired batch available for {$medicine->name}!");
+            if ($existingCartBase >= $totalBaseAvailable) {
+                session()->flash('error', "Cannot add more {$medicine->name}. Maximum available stock ({$totalBaseAvailable} {$medicine->base_unit}s) already added to cart.");
+            } else {
+                session()->flash('error', "Insufficient stock for {$medicine->name} ({$unitName})! Available: {$totalBaseAvailable} {$medicine->base_unit}s.");
+            }
             return;
         }
 
@@ -290,7 +340,15 @@ class PosCounter extends Component
 
         // Check stock availability
         $otherBaseQty = collect($this->cart)->reject(fn($c, $k) => $k === $cartKey)->where('medicine_id', $medicine->id)->sum('base_qty');
-        $totalBaseAvailable = $medicine->batches->where('quantity', '>', 0)->sum('quantity');
+        $totalBaseAvailable = (float) $medicine->getAvailableStock();
+
+        if ($totalBaseAvailable <= 0) {
+            $msg = $medicine->getPhysicalStock() > 0
+                ? "Cannot change packaging for {$medicine->name}: All available stock is expired."
+                : "This medicine is currently out of stock.";
+            session()->flash('error', $msg);
+            return;
+        }
 
         if ($totalBaseAvailable < ($otherBaseQty + $newBaseQty)) {
             session()->flash('error', "Insufficient stock for unit change! Available: {$totalBaseAvailable} {$medicine->base_unit}s.");
@@ -326,7 +384,15 @@ class PosCounter extends Component
                 $newBase = round($newQty * $item['conversion_to_base'], 4);
 
                 $otherBase = collect($this->cart)->reject(fn($c, $k) => $k === $cartKey)->where('medicine_id', $medicine->id)->sum('base_qty');
-                $totalAvailable = $medicine->batches->where('quantity', '>', 0)->sum('quantity');
+                $totalAvailable = (float) $medicine->getAvailableStock();
+
+                if ($totalAvailable <= 0) {
+                    $msg = $medicine->getPhysicalStock() > 0
+                        ? "Cannot add {$medicine->name}: All available stock is expired."
+                        : "{$medicine->name} is currently out of stock.";
+                    session()->flash('error', $msg);
+                    return;
+                }
 
                 if ($totalAvailable < ($otherBase + $newBase)) {
                     session()->flash('error', "Insufficient stock! Only {$totalAvailable} {$medicine->base_unit}s available in total.");
@@ -340,6 +406,50 @@ class PosCounter extends Component
                 $this->calculateTotals();
             }
         }
+    }
+
+    public function updateQuantity($cartKey, $newQty)
+    {
+        if (!isset($this->cart[$cartKey])) {
+            return;
+        }
+
+        $qty = (float) $newQty;
+        if ($qty <= 0) {
+            $this->removeItem($cartKey);
+            return;
+        }
+
+        $item = $this->cart[$cartKey];
+        $medicine = Medicine::with('batches')->find($item['medicine_id']);
+
+        if (!$medicine) {
+            session()->flash('error', 'Product not found!');
+            return;
+        }
+
+        $totalAvailable = (float) $medicine->getAvailableStock();
+        if ($totalAvailable <= 0) {
+            $msg = $medicine->getPhysicalStock() > 0
+                ? "Cannot add {$medicine->name}: All available stock is expired."
+                : "{$medicine->name} is currently out of stock.";
+            session()->flash('error', $msg);
+            return;
+        }
+
+        $newBase = round($qty * $item['conversion_to_base'], 4);
+        $otherBase = collect($this->cart)->reject(fn($c, $k) => $k === $cartKey)->where('medicine_id', $medicine->id)->sum('base_qty');
+
+        if ($totalAvailable < ($otherBase + $newBase)) {
+            session()->flash('error', "Insufficient stock for {$medicine->name}! Only {$totalAvailable} {$medicine->base_unit}s available in total.");
+            return;
+        }
+
+        $this->cart[$cartKey]['qty'] = $qty;
+        $this->cart[$cartKey]['base_qty'] = $newBase;
+        $this->cart[$cartKey]['subtotal'] = round($qty * $item['price'], 2);
+        $this->cart[$cartKey]['total_base_available'] = $totalAvailable;
+        $this->calculateTotals();
     }
 
     public function decrementQty($cartKey)
@@ -468,6 +578,71 @@ class PosCounter extends Component
             $lastSaleId = null;
 
             DB::transaction(function () use (&$lastSaleId) {
+                $packagingService = app(PackagingService::class);
+                $stockLedgerService = app(StockLedgerService::class);
+
+                // 1. Recalculate available stock on server with row locking and validate every cart item
+                $medicineRequirements = [];
+                foreach ($this->cart as $item) {
+                    $mId = (int)$item['medicine_id'];
+                    $qty = (float)($item['qty'] ?? 1);
+                    if ($qty <= 0) {
+                        throw new \Exception("Invalid quantity for product " . ($item['name'] ?? "ID {$mId}"));
+                    }
+
+                    // Validate selected unit conversion
+                    $pkgId = $item['packaging_id'] ?? null;
+                    $conversion = 1.0;
+                    if ($pkgId) {
+                        $pkg = MedicinePackaging::find((int)$pkgId);
+                        if ($pkg && (int)$pkg->medicine_id === $mId) {
+                            $conversion = (float)($pkg->conversion_to_base ?: 1.0);
+                        }
+                    }
+                    $baseNeeded = round($qty * $conversion, 4);
+
+                    if (!isset($medicineRequirements[$mId])) {
+                        $medicineRequirements[$mId] = [
+                            'name' => $item['name'] ?? "Medicine #{$mId}",
+                            'total_base_needed' => 0.0,
+                        ];
+                    }
+                    $medicineRequirements[$mId]['total_base_needed'] += $baseNeeded;
+                }
+
+                $now = now()->toDateString();
+                foreach ($medicineRequirements as $medicineId => $req) {
+                    $med = Medicine::lockForUpdate()->find($medicineId);
+                    if (!$med) {
+                        throw new \Exception("Product '{$req['name']}' not found.");
+                    }
+
+                    $batchQuery = MedicineBatch::where('medicine_id', $medicineId)
+                        ->where('quantity', '>', 0)
+                        ->whereNotIn('status', ['expired', 'depleted']);
+
+                    if ($med->has_expiry) {
+                        $batchQuery->where(function ($q) use ($now) {
+                            $q->whereNull('expiry_date')
+                              ->orWhereDate('expiry_date', '>=', $now);
+                        });
+                    }
+
+                    $availableStock = (float) $batchQuery->lockForUpdate()->sum('quantity');
+
+                    if ($availableStock <= 0) {
+                        $physicalStock = (float) MedicineBatch::where('medicine_id', $medicineId)->where('quantity', '>', 0)->sum('quantity');
+                        if ($physicalStock > 0) {
+                            throw new \Exception("Cannot checkout {$med->name}: All available batches are expired.");
+                        }
+                        throw new \Exception("{$med->name} is currently out of stock.");
+                    }
+
+                    if ($availableStock < $req['total_base_needed']) {
+                        throw new \Exception("Insufficient valid stock for {$med->name}! Required: {$req['total_base_needed']} {$med->base_unit}s, Available: {$availableStock} {$med->base_unit}s.");
+                    }
+                }
+
                 \App\Models\User::firstOrCreate(
                     ['id' => 1],
                     ['name' => 'Admin', 'email' => 'admin@pharmacy.com', 'password' => bcrypt('password')]
@@ -506,14 +681,12 @@ class PosCounter extends Component
                 }
 
                 $lastSaleId = $sale->id;
-                $packagingService = app(PackagingService::class);
-                $stockLedgerService = app(StockLedgerService::class);
 
                 foreach ($this->cart as $item) {
-                    $medicineId = $item['medicine_id'];
+                    $medicineId = (int)$item['medicine_id'];
                     $baseQuantityNeeded = (float)$item['base_qty'];
 
-                    // Allocate batches using FEFO
+                    // Allocate batches using FEFO with row locks
                     $allocatedBatches = $packagingService->allocateBatchesFefo($medicineId, $baseQuantityNeeded);
 
                     foreach ($allocatedBatches as $allocation) {
@@ -540,6 +713,9 @@ class PosCounter extends Component
 
                         // 1. Decrement batch stock in strictly Base Units
                         $batch->decrement('quantity', $deductedBase);
+                        if ($batch->fresh()->quantity <= 0) {
+                            $batch->update(['status' => 'depleted']);
+                        }
 
                         // 2. Record immutable stock movement
                         $stockLedgerService->recordMovement(
@@ -562,6 +738,7 @@ class PosCounter extends Component
             $this->clearCart();
             $this->completedSale = Sale::with(['items.medicine', 'items.packaging', 'customer', 'user'])->find($lastSaleId);
             $this->showInvoiceModal = true;
+            $this->dispatch('stockUpdated');
             session()->flash('message', 'Sale Successful & Stock Deducted in Base Units!');
             session()->flash('last_sale_id', $lastSaleId);
 

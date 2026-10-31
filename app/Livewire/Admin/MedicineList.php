@@ -406,6 +406,7 @@ class MedicineList extends Component
             );
         });
 
+        $this->dispatch('stockUpdated');
         session()->flash('message', "Stock adjusted successfully for Batch {$batch->batch_number}.");
         $this->closeAdjustStockModal();
     }

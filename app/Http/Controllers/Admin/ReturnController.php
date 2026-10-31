@@ -374,6 +374,9 @@ class ReturnController extends Controller
                 }
 
                 $batch->increment('quantity', $returnedBaseQty);
+                if ($batch->fresh()->quantity > 0 && $batch->status === 'depleted') {
+                    $batch->update(['status' => 'active']);
+                }
 
                 // Record in immutable stock movements ledger
                 app(\App\Services\StockLedgerService::class)->recordMovement(
@@ -621,6 +624,9 @@ class ReturnController extends Controller
 
                 // Remove returned stock in strictly Base Units
                 $batch->decrement('quantity', $returnedBaseQty);
+                if ($batch->fresh()->quantity <= 0) {
+                    $batch->update(['status' => 'depleted']);
+                }
 
                 // Record in immutable stock movements ledger
                 app(\App\Services\StockLedgerService::class)->recordMovement(

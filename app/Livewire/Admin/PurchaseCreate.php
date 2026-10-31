@@ -474,6 +474,7 @@ class PurchaseCreate extends Component
         });
 
 
+        $this->dispatch('stockUpdated');
         session()->flash('message', 'Purchase created successfully and stock updated.');
 
         $this->cart = [];

@@ -1,4 +1,4 @@
-<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-6rem)]" x-data="{ showModal: false }">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-6rem)]" x-data="{ showModal: false }" wire:poll.5s>
     
     <!-- LEFT SIDE: Medicines Grid -->
     <div class="lg:col-span-7 flex flex-col bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 h-full overflow-hidden">
@@ -70,21 +70,49 @@
 
         <div class="flex-1 overflow-y-auto pr-2 grid grid-cols-2 md:grid-cols-3 gap-3 content-start">
             @forelse($medicines ?? [] as $medicine)
+                @php
+                    $physicalStock = (float) $medicine->getPhysicalStock();
+                    $validStock = (float) $medicine->getAvailableStock();
+                    $isZeroStock = $physicalStock <= 0;
+                    $isExpiredStock = !$isZeroStock && $validStock <= 0;
+                    $isDisabled = $isZeroStock || $isExpiredStock;
+                    $expiredDate = $isExpiredStock ? $medicine->getLatestExpiredDate() : null;
+                @endphp
                 <div 
                     wire:key="pos-product-{{ $medicine->id }}"
-                    class="bg-gray-50 hover:bg-blue-50/80 border border-gray-200/80 hover:border-blue-500 p-3.5 rounded-xl transition flex flex-col justify-between space-y-2 group select-none w-full shadow-xs text-left"
+                    class="{{ $isDisabled ? 'bg-gray-100/90 border-gray-200 opacity-60 cursor-not-allowed select-none' : 'bg-gray-50 hover:bg-blue-50/80 border-gray-200/80 hover:border-blue-500 shadow-xs' }} border p-3.5 rounded-xl transition flex flex-col justify-between space-y-2 group select-none w-full text-left relative"
                 >
                     <div class="w-full">
-                        <div class="flex justify-between items-start">
-                            <h4 class="font-bold text-gray-800 text-sm group-hover:text-blue-600 transition line-clamp-1 cursor-pointer" wire:click="addToCart({{ $medicine->id }})" title="{{ $medicine->name }}">{{ $medicine->name }}</h4>
-                            <button
-                                type="button"
-                                wire:click="addToCart({{ $medicine->id }})"
-                                class="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-full font-bold shrink-0 ml-1 transition cursor-pointer"
+                        <div class="flex justify-between items-start gap-1">
+                            <h4 
+                                class="font-bold text-sm line-clamp-1 {{ $isDisabled ? 'text-gray-500 cursor-not-allowed' : 'text-gray-800 group-hover:text-blue-600 cursor-pointer' }} transition"
+                                @if(!$isDisabled) wire:click="addToCart({{ $medicine->id }})" @endif
+                                title="{{ $medicine->name }}"
                             >
-                                <i class="fa-solid fa-plus text-[9px]"></i> Add
-                            </button>
+                                {{ $medicine->name }}
+                            </h4>
+
+                            @if($isDisabled)
+                                <button
+                                    type="button"
+                                    disabled
+                                    class="text-[10px] bg-gray-300 text-gray-500 px-2.5 py-1 rounded-full font-bold shrink-0 ml-1 cursor-not-allowed opacity-75"
+                                    title="{{ $isExpiredStock ? 'All batches are expired - Cannot add to cart' : 'Out of stock - Cannot add to cart' }}"
+                                >
+                                    <i class="fa-solid fa-ban text-[9px]"></i> Add
+                                </button>
+                            @else
+                                <button
+                                    type="button"
+                                    wire:click="addToCart({{ $medicine->id }})"
+                                    class="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-full font-bold shrink-0 ml-1 transition cursor-pointer shadow-xs"
+                                    title="Add to cart"
+                                >
+                                    <i class="fa-solid fa-plus text-[9px]"></i> Add
+                                </button>
+                            @endif
                         </div>
+
                         <div class="flex items-center gap-1.5 mt-1 flex-wrap">
                             @if($medicine->is_general)
                                 <span class="text-[9px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded-md">General Store</span>
@@ -93,6 +121,7 @@
                             @endif
                             <span class="text-[11px] text-gray-500 line-clamp-1">{{ $medicine->category->name ?? 'General' }}</span>
                         </div>
+
                         @if($medicine->generic_name)
                             <p class="text-[10px] text-gray-400 line-clamp-1 italic mt-0.5">{{ $medicine->generic_name }}</p>
                         @endif
@@ -101,24 +130,65 @@
                         @if($medicine->packagings->count() > 0)
                             <div class="flex flex-wrap gap-1 mt-2">
                                 @foreach($medicine->packagings->where('allow_sale', true) as $pkg)
-                                    <button
-                                        type="button"
-                                        wire:click="addToCart({{ $medicine->id }}, {{ $pkg->id }})"
-                                        class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-white border border-blue-200 text-blue-800 hover:bg-blue-600 hover:text-white transition shadow-2xs cursor-pointer"
-                                        title="Add 1 {{ $pkg->display_name ?: $pkg->unit?->name }} to cart"
-                                    >
-                                        {{ $pkg->unit?->name ?: $pkg->display_name }} (Rs.{{ number_format($pkg->sale_price ?: 0, 0) }})
-                                    </button>
+                                    @php
+                                        $pkgConv = (float)($pkg->conversion_to_base ?: 1.0);
+                                        $pkgDisabled = $isDisabled || ($pkgConv > $validStock);
+                                    @endphp
+                                    @if($pkgDisabled)
+                                        <button
+                                            type="button"
+                                            disabled
+                                            class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-gray-200/70 border border-gray-300 text-gray-400 cursor-not-allowed opacity-60"
+                                            title="Insufficient valid stock for {{ $pkg->display_name ?: $pkg->unit?->name }}"
+                                        >
+                                            {{ $pkg->unit?->name ?: $pkg->display_name }} (Rs.{{ number_format($pkg->sale_price ?: 0, 0) }})
+                                        </button>
+                                    @else
+                                        <button
+                                            type="button"
+                                            wire:click="addToCart({{ $medicine->id }}, {{ $pkg->id }})"
+                                            class="px-2 py-0.5 text-[10px] font-bold rounded-md bg-white border border-blue-200 text-blue-800 hover:bg-blue-600 hover:text-white transition shadow-2xs cursor-pointer"
+                                            title="Add 1 {{ $pkg->display_name ?: $pkg->unit?->name }} to cart"
+                                        >
+                                            {{ $pkg->unit?->name ?: $pkg->display_name }} (Rs.{{ number_format($pkg->sale_price ?: 0, 0) }})
+                                        </button>
+                                    @endif
                                 @endforeach
                             </div>
                         @endif
                     </div>
+
                     <div class="w-full flex flex-col gap-1 pt-2 border-t border-gray-200/60 mt-auto">
-                        <div class="flex justify-between items-center">
-                            <span class="text-xs font-bold text-blue-600">PKR {{ number_format($medicine->selling_price ?? $medicine->unit_price ?? 0, 2) }}</span>
-                            <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold truncate max-w-[140px]" title="{{ $medicine->formatStockInUnits() }}">
-                                {{ $medicine->formatStockInUnits() }}
+                        <div class="flex justify-between items-center gap-1">
+                            <span class="text-xs font-bold {{ $isDisabled ? 'text-gray-400' : 'text-blue-600' }}">
+                                PKR {{ number_format($medicine->selling_price ?? $medicine->unit_price ?? 0, 2) }}
                             </span>
+
+                            @if($isZeroStock)
+                                <span class="text-[10px] bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full font-bold shrink-0 tracking-wide">
+                                    <i class="fa-solid fa-ban text-[9px] mr-0.5"></i> OUT OF STOCK
+                                </span>
+                            @elseif($isExpiredStock)
+                                <div class="flex flex-col items-end">
+                                    <span class="text-[10px] bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-bold shrink-0 tracking-wide">
+                                        <i class="fa-solid fa-triangle-exclamation text-[9px] mr-0.5"></i> EXPIRED STOCK
+                                    </span>
+                                    <span class="text-[9px] text-amber-700 font-semibold mt-0.5" title="Physical stock: {{ $medicine->formatStockInUnits($physicalStock) }} (Expired)">
+                                        {{ $medicine->formatStockInUnits($physicalStock) }} (Expired{{ $expiredDate ? ': ' . $expiredDate : '' }})
+                                    </span>
+                                </div>
+                            @else
+                                <div class="flex flex-col items-end">
+                                    <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold truncate max-w-[160px]" title="Valid unexpired stock: {{ $medicine->formatAvailableStock() }}">
+                                        AVAILABLE ({{ $medicine->formatAvailableStock() }})
+                                    </span>
+                                    @if($physicalStock > $validStock)
+                                        <span class="text-[9px] text-amber-600 font-medium" title="Physical: {{ $medicine->formatStockInUnits($physicalStock) }}, Expired: {{ (int)($physicalStock - $validStock) }} {{ $medicine->base_unit }}s">
+                                            ({{ (int)($physicalStock - $validStock) }} expired excluded)
+                                        </span>
+                                    @endif
+                                </div>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -242,10 +312,27 @@
                                         <span class="px-3 py-1 text-xs font-bold text-gray-800">{{ $item['qty'] ?? 1 }}</span>
                                         <button wire:click="incrementQty('{{ $id }}')" class="px-2.5 py-1 text-gray-600 hover:bg-gray-200 transition font-bold cursor-pointer">+</button>
                                     </div>
-                                    @if(isset($item['total_base_available']))
-                                    <span class="text-[9px] text-emerald-600 font-bold" title="Max available stock across all unexpired batches">
-                                        Max: {{ floor($item['total_base_available'] / ($item['conversion_to_base'] ?: 1)) }} {{ $item['unit'] ?? '' }}s
-                                    </span>
+                                    @php
+                                        $currentValidStock = $med ? (float)$med->getAvailableStock() : 0;
+                                        $currentPhysicalStock = $med ? (float)$med->getPhysicalStock() : 0;
+                                        $itemBaseQty = (float)($item['base_qty'] ?? $item['qty']);
+                                    @endphp
+                                    @if($currentPhysicalStock <= 0)
+                                        <span class="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold" title="Product has no physical stock">
+                                            Out of Stock
+                                        </span>
+                                    @elseif($currentValidStock <= 0)
+                                        <span class="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold" title="All batches are expired">
+                                            Expired Stock
+                                        </span>
+                                    @elseif($currentValidStock < $itemBaseQty)
+                                        <span class="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold" title="Available unexpired stock is lower than cart quantity">
+                                            Only {{ floor($currentValidStock / ($item['conversion_to_base'] ?: 1)) }} left
+                                        </span>
+                                    @else
+                                        <span class="text-[9px] text-emerald-600 font-bold" title="Max valid stock across all unexpired batches">
+                                            Max: {{ floor($currentValidStock / ($item['conversion_to_base'] ?: 1)) }} {{ $item['unit'] ?? '' }}s
+                                        </span>
                                     @endif
                                 </div>
                             </td>

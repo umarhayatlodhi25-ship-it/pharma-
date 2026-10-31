@@ -65,6 +65,9 @@ class Medicine extends Model
         'selling_price',
         'is_medicine',
         'is_general',
+        'is_out_of_stock',
+        'is_expired_stock',
+        'stock_status',
     ];
 
     public function category(): BelongsTo
@@ -221,5 +224,198 @@ class Medicine extends Model
     public function formatStockInUnits(?int $baseStock = null): string
     {
         return app(PackagingService::class)->formatStockBreakdown($this, $baseStock);
+    }
+
+    /**
+     * Get available saleable stock in base units (excluding expired batches and zero/negative batches).
+     */
+    public function getAvailableStockAttribute(): float
+    {
+        return $this->getAvailableStock();
+    }
+
+    /**
+     * Calculate available saleable stock in base units.
+     */
+    public function getAvailableStock(): float
+    {
+        $now = now()->toDateString();
+
+        // If batches are pre-loaded on the model
+        if ($this->relationLoaded('batches')) {
+            return (float) $this->batches
+                ->filter(function ($b) use ($now) {
+                    if ((float)$b->quantity <= 0) return false;
+                    if ($b->status === 'expired' || $b->status === 'depleted') return false;
+                    if ($this->has_expiry && !empty($b->expiry_date)) {
+                        $expStr = $b->expiry_date instanceof \DateTimeInterface 
+                            ? $b->expiry_date->format('Y-m-d') 
+                            : substr((string)$b->expiry_date, 0, 10);
+                        if ($expStr < $now) {
+                            return false;
+                        }
+                    }
+                    return true;
+                })
+                ->sum('quantity');
+        }
+
+        $query = $this->batches()
+            ->where('quantity', '>', 0)
+            ->whereNotIn('status', ['expired', 'depleted']);
+
+        if ($this->has_expiry) {
+            $query->where(function ($q) use ($now) {
+                $q->whereNull('expiry_date')
+                  ->orWhereDate('expiry_date', '>=', $now);
+            });
+        }
+
+        return (float) $query->sum('quantity');
+    }
+
+    /**
+     * Get total physical stock in base units (all batches with quantity > 0, regardless of expiry).
+     */
+    public function getPhysicalStock(): float
+    {
+        if ($this->relationLoaded('batches')) {
+            return (float) $this->batches
+                ->filter(fn ($b) => (float)$b->quantity > 0)
+                ->sum('quantity');
+        }
+
+        return (float) $this->batches()
+            ->where('quantity', '>', 0)
+            ->sum('quantity');
+    }
+
+    public function getPhysicalStockAttribute(): float
+    {
+        return $this->getPhysicalStock();
+    }
+
+    /**
+     * Alias for valid saleable stock in base units.
+     */
+    public function getValidStock(): float
+    {
+        return $this->getAvailableStock();
+    }
+
+    public function getValidStockAttribute(): float
+    {
+        return $this->getValidStock();
+    }
+
+    /**
+     * Get total expired stock in base units.
+     */
+    public function getExpiredStock(): float
+    {
+        return max(0, $this->getPhysicalStock() - $this->getAvailableStock());
+    }
+
+    public function getExpiredStockAttribute(): float
+    {
+        return $this->getExpiredStock();
+    }
+
+    /**
+     * Get the latest expired date among expired batches (for POS display).
+     */
+    public function getLatestExpiredDate(): ?string
+    {
+        $now = now()->toDateString();
+        $batches = $this->relationLoaded('batches')
+            ? $this->batches
+            : $this->batches()->where('quantity', '>', 0)->get();
+
+        $expired = $batches->filter(function ($b) use ($now) {
+            if ((float)$b->quantity <= 0) return false;
+            if ($b->status === 'expired') return true;
+            if ($this->has_expiry && !empty($b->expiry_date)) {
+                $expStr = $b->expiry_date instanceof \DateTimeInterface
+                    ? $b->expiry_date->format('Y-m-d')
+                    : substr((string)$b->expiry_date, 0, 10);
+                return $expStr < $now;
+            }
+            return false;
+        })->sortByDesc('expiry_date')->first();
+
+        if ($expired && $expired->expiry_date) {
+            return $expired->expiry_date instanceof \DateTimeInterface
+                ? $expired->expiry_date->format('d M Y')
+                : substr((string)$expired->expiry_date, 0, 10);
+        }
+
+        return null;
+    }
+
+    /**
+     * Determine stock availability status: 'out_of_stock', 'expired_stock', or 'available'.
+     */
+    public function getStockStatusAttribute(): string
+    {
+        if ($this->getPhysicalStock() <= 0) {
+            return 'out_of_stock';
+        }
+
+        if ($this->getAvailableStock() <= 0) {
+            return 'expired_stock';
+        }
+
+        return 'available';
+    }
+
+    /**
+     * Determine if physical stock is completely zero.
+     */
+    public function getIsOutOfStockAttribute(): bool
+    {
+        return $this->getPhysicalStock() <= 0;
+    }
+
+    /**
+     * Determine if physical stock exists but is 100% expired.
+     */
+    public function getIsExpiredStockAttribute(): bool
+    {
+        return $this->getPhysicalStock() > 0 && $this->getAvailableStock() <= 0;
+    }
+
+    /**
+     * Determine if medicine has valid unexpired stock available to sell.
+     */
+    public function getIsSaleableAttribute(): bool
+    {
+        return $this->getAvailableStock() > 0;
+    }
+
+    /**
+     * Format available saleable stock breakdown for POS display.
+     */
+    public function formatAvailableStock(): string
+    {
+        $avail = $this->getAvailableStock();
+        if ($avail <= 0) {
+            return '0 ' . ($this->base_unit ?: 'Units');
+        }
+        return app(PackagingService::class)->formatStockBreakdown($this, $avail);
+    }
+
+    /**
+     * Check if a specific packaging unit or conversion multiplier has enough available stock.
+     */
+    public function isPackagingUnitAvailable($packagingOrConversion): bool
+    {
+        $conversion = 1.0;
+        if ($packagingOrConversion instanceof MedicinePackaging) {
+            $conversion = (float)($packagingOrConversion->conversion_to_base ?: 1.0);
+        } elseif (is_numeric($packagingOrConversion)) {
+            $conversion = (float)$packagingOrConversion;
+        }
+
+        return $conversion > 0 && $this->getAvailableStock() >= $conversion;
     }
 }
