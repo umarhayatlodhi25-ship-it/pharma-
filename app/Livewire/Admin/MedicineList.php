@@ -510,43 +510,31 @@ class MedicineList extends Component
         $this->showBulkDeleteModal = false;
     }
 
-    public function bulkDelete(): void
+    public function bulkDelete(\App\Services\ProductBulkDeletionService $deletionService): void
     {
         if (empty($this->selectedMedicines)) {
             $this->closeBulkDeleteModal();
             return;
         }
 
-        $count = 0;
+        $user = auth()->user();
+        if (!$user || (!$user->isAdmin() && $user->role !== 'admin')) {
+            abort(403, 'Unauthorized: Administrator access required.');
+        }
 
-        DB::transaction(function () use (&$count) {
-            foreach ($this->selectedMedicines as $id) {
-                $medicine = Medicine::find($id);
-                if (!$medicine) continue;
-
-                DB::table('sale_items')->where('medicine_id', $id)->delete();
-                DB::table('sales_return_items')->where('medicine_id', $id)->delete();
-                DB::table('purchase_return_items')->where('medicine_id', $id)->delete();
-                DB::table('purchase_invoice_items')->where('medicine_id', $id)->delete();
-                if (\Illuminate\Support\Facades\Schema::hasTable('hold_invoices')) {
-                    DB::table('hold_invoices')->where('medicine_id', $id)->delete();
-                }
-
-                StockMovement::where('medicine_id', $id)->delete();
-                MedicineBatch::where('medicine_id', $id)->delete();
-                MedicinePackaging::where('medicine_id', $id)->delete();
-                Inventory::where('medicine_id', $id)->delete();
-
-                $medicine->delete();
-                $count++;
-            }
-        });
+        $result = $deletionService->executeForIds(
+            $this->selectedMedicines,
+            $user,
+            request()->ip(),
+            request()->userAgent()
+        );
 
         $this->selectedMedicines = [];
         $this->selectAll = false;
         $this->closeBulkDeleteModal();
 
-        session()->flash('message', "{$count} products deleted permanently.");
+        $flashKey = ($result['status'] === 'success') ? 'message' : 'warning';
+        session()->flash($flashKey, $result['message']);
         $this->resetPage();
     }
 

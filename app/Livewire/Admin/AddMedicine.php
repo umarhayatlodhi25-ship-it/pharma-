@@ -148,11 +148,17 @@ class AddMedicine extends Component
     public int $deleteMedicineBatchesCount = 0;
     public bool $deleteHasSales = false;
     public bool $showBulkDeleteModal = false;
+    public array $bulkDeletePreview = [];
+    public bool $isBulkDeleting = false;
+    public string $bulkDeleteModalStep = 'confirm'; // 'confirm', 'processing', 'completed'
+    public ?string $bulkDeleteJobId = null;
+    public array $bulkDeleteJob = [];
 
     // Delete All Products Modal (Admin Only)
     public bool $showDeleteAllModal = false;
     public string $deleteAllConfirmationInput = '';
     public array $deleteAllPreview = [];
+    public string $deleteAllModalStep = 'confirm'; // 'confirm', 'processing', 'completed'
 
     // Barcode Modal
     public bool $showBarcodeModal = false;
@@ -1198,21 +1204,41 @@ class AddMedicine extends Component
     // BULK ACTIONS (PERMANENT & CLEAN CASCADE)
     // =========================================================================
 
-    public function confirmBulkDelete(): void
+    public function confirmBulkDelete(?ProductBulkDeletionService $deletionService = null): void
     {
         if (empty($this->selectedMedicines)) {
             session()->flash('error', 'No products selected.');
             return;
         }
+
+        $deletionService ??= app(ProductBulkDeletionService::class);
+        $this->bulkDeletePreview = $deletionService->getPreviewStatsForIds($this->selectedMedicines);
+        $this->bulkDeleteModalStep = 'confirm';
+        $this->bulkDeleteJobId = null;
+        $this->bulkDeleteJob = [];
+        $this->isBulkDeleting = false;
         $this->showBulkDeleteModal = true;
     }
 
-    public function closeBulkDeleteModal(): void
+    public function closeBulkDeleteModal(?ProductBulkDeletionService $deletionService = null): void
     {
+        if ($this->bulkDeleteModalStep === 'processing' && $this->bulkDeleteJobId) {
+            $deletionService ??= app(ProductBulkDeletionService::class);
+            $user = auth()->user();
+            if ($user) {
+                $deletionService->cancelJob($this->bulkDeleteJobId, $user);
+            }
+        }
+
         $this->showBulkDeleteModal = false;
+        $this->bulkDeleteModalStep = 'confirm';
+        $this->bulkDeleteJobId = null;
+        $this->bulkDeleteJob = [];
+        $this->bulkDeletePreview = [];
+        $this->isBulkDeleting = false;
     }
 
-    public function bulkDelete(ProductBulkDeletionService $deletionService): void
+    public function startBulkDeleteJob(?ProductBulkDeletionService $deletionService = null): void
     {
         if (empty($this->selectedMedicines)) {
             $this->closeBulkDeleteModal();
@@ -1224,62 +1250,167 @@ class AddMedicine extends Component
             abort(403, 'Unauthorized: Administrator access required.');
         }
 
-        $archivedCount = 0;
-        $deletedCount = 0;
+        $deletionService ??= app(ProductBulkDeletionService::class);
+        $this->isBulkDeleting = true;
 
-        DB::transaction(function () use (&$archivedCount, &$deletedCount, $deletionService) {
-            foreach ($this->selectedMedicines as $id) {
-                $medicine = Medicine::find($id);
-                if (!$medicine) continue;
+        $job = $deletionService->initJob(
+            $user,
+            $this->selectedMedicines,
+            'selected',
+            request()->ip(),
+            request()->userAgent(),
+            true
+        );
 
-                $dep = $deletionService->checkProductDependencies((int)$id);
-                if ($dep['has_history']) {
-                    $medicine->status = 'archived';
-                    $medicine->save();
-                    $medicine->delete();
-                    $archivedCount++;
-                } else {
-                    MedicinePackaging::where('medicine_id', $id)->delete();
-                    Inventory::where('medicine_id', $id)->delete();
-                    MedicineBatch::where('medicine_id', $id)->delete();
-                    $medicine->forceDelete();
-                    $deletedCount++;
-                }
-            }
-        });
+        $this->bulkDeleteJobId = $job['job_id'];
+        $this->bulkDeleteJob = $job;
+        $this->bulkDeleteModalStep = 'processing';
+
+        // Process first batch immediately
+        $this->bulkDeleteJob = $deletionService->processNextBatch($this->bulkDeleteJobId);
+
+        if ($this->bulkDeleteJob['remaining'] === 0 || in_array($this->bulkDeleteJob['status'], ['completed', 'partial', 'cancelled'])) {
+            $this->handleJobCompletion();
+        }
+    }
+
+    public function processNextDeletionBatch(?ProductBulkDeletionService $deletionService = null): void
+    {
+        if (!$this->bulkDeleteJobId || $this->bulkDeleteModalStep !== 'processing') {
+            return;
+        }
+
+        $deletionService ??= app(ProductBulkDeletionService::class);
+        $this->bulkDeleteJob = $deletionService->processNextBatch($this->bulkDeleteJobId);
+
+        if ($this->bulkDeleteJob['remaining'] === 0 || in_array($this->bulkDeleteJob['status'], ['completed', 'partial', 'cancelled'])) {
+            $this->handleJobCompletion();
+        }
+    }
+
+    public function retryFailedDeletion(?ProductBulkDeletionService $deletionService = null): void
+    {
+        if (!$this->bulkDeleteJobId) {
+            return;
+        }
+
+        $user = auth()->user();
+        if (!$user || (!$user->isAdmin() && $user->role !== 'admin')) {
+            abort(403, 'Unauthorized: Administrator access required.');
+        }
+
+        $deletionService ??= app(ProductBulkDeletionService::class);
+        $job = $deletionService->retryFailedJob($this->bulkDeleteJobId, $user);
+
+        $this->bulkDeleteJobId = $job['job_id'];
+        $this->bulkDeleteJob = $job;
+        $this->bulkDeleteModalStep = 'processing';
+
+        // Process first batch immediately
+        $this->bulkDeleteJob = $deletionService->processNextBatch($this->bulkDeleteJobId);
+
+        if ($this->bulkDeleteJob['remaining'] === 0 || in_array($this->bulkDeleteJob['status'], ['completed', 'partial', 'cancelled'])) {
+            $this->handleJobCompletion();
+        }
+    }
+
+    public function cancelBulkDeleteJob(?ProductBulkDeletionService $deletionService = null): void
+    {
+        if (!$this->bulkDeleteJobId) {
+            $this->closeBulkDeleteModal();
+            return;
+        }
+
+        $user = auth()->user();
+        if ($user) {
+            $deletionService ??= app(ProductBulkDeletionService::class);
+            $this->bulkDeleteJob = $deletionService->cancelJob($this->bulkDeleteJobId, $user);
+        }
+
+        $this->handleJobCompletion();
+    }
+
+    public function handleJobCompletion(): void
+    {
+        $this->bulkDeleteModalStep = 'completed';
+        $this->isBulkDeleting = false;
+        $this->selectedMedicines = [];
+        $this->selectAll = false;
+        $this->resetPage();
+    }
+
+    public function finishBulkDeletion(): void
+    {
+        $this->closeBulkDeleteModal();
+        $this->resetPage();
+    }
+
+    public function bulkDelete(?ProductBulkDeletionService $deletionService = null): void
+    {
+        if (empty($this->selectedMedicines)) {
+            $this->closeBulkDeleteModal();
+            return;
+        }
+
+        $user = auth()->user();
+        if (!$user || (!$user->isAdmin() && $user->role !== 'admin')) {
+            abort(403, 'Unauthorized: Administrator access required.');
+        }
+
+        $deletionService ??= app(ProductBulkDeletionService::class);
+        $this->isBulkDeleting = true;
+
+        $result = $deletionService->executeForIds(
+            $this->selectedMedicines,
+            $user,
+            request()->ip(),
+            request()->userAgent()
+        );
 
         $this->selectedMedicines = [];
         $this->selectAll = false;
         $this->closeBulkDeleteModal();
 
-        $msgParts = [];
-        if ($deletedCount > 0) $msgParts[] = "{$deletedCount} unreferenced products permanently deleted";
-        if ($archivedCount > 0) $msgParts[] = "{$archivedCount} products archived to preserve historical records and accounting balances";
-        $msg = empty($msgParts) ? "No products were modified." : implode(', ', $msgParts) . ".";
-
-        session()->flash('message', $msg);
+        $flashKey = ($result['status'] === 'success') ? 'message' : 'warning';
+        session()->flash($flashKey, $result['message']);
         $this->resetPage();
     }
 
-    public function openDeleteAllModal(ProductBulkDeletionService $deletionService): void
+    public function openDeleteAllModal(?ProductBulkDeletionService $deletionService = null): void
     {
         $user = auth()->user();
         if (!$user || (!$user->isAdmin() && $user->role !== 'admin')) {
             abort(403, 'Unauthorized: Administrator access required.');
         }
 
+        $deletionService ??= app(ProductBulkDeletionService::class);
         $this->deleteAllConfirmationInput = '';
         $this->deleteAllPreview = $deletionService->getPreviewStats();
+        $this->deleteAllModalStep = 'confirm';
+        $this->bulkDeleteJobId = null;
+        $this->bulkDeleteJob = [];
         $this->showDeleteAllModal = true;
     }
 
-    public function closeDeleteAllModal(): void
+    public function closeDeleteAllModal(?ProductBulkDeletionService $deletionService = null): void
     {
+        if ($this->deleteAllModalStep === 'processing' && $this->bulkDeleteJobId) {
+            $deletionService ??= app(ProductBulkDeletionService::class);
+            $user = auth()->user();
+            if ($user) {
+                $deletionService->cancelJob($this->bulkDeleteJobId, $user);
+            }
+        }
+
         $this->showDeleteAllModal = false;
+        $this->deleteAllModalStep = 'confirm';
         $this->deleteAllConfirmationInput = '';
+        $this->bulkDeleteJobId = null;
+        $this->bulkDeleteJob = [];
+        $this->deleteAllPreview = [];
     }
 
-    public function executeDeleteAll(ProductBulkDeletionService $deletionService): void
+    public function startDeleteAllJob(?ProductBulkDeletionService $deletionService = null): void
     {
         $user = auth()->user();
         if (!$user || (!$user->isAdmin() && $user->role !== 'admin')) {
@@ -1291,6 +1422,82 @@ class AddMedicine extends Component
             return;
         }
 
+        $deletionService ??= app(ProductBulkDeletionService::class);
+        $job = $deletionService->initJob(
+            $user,
+            'all',
+            'all',
+            request()->ip(),
+            request()->userAgent(),
+            true
+        );
+
+        $this->bulkDeleteJobId = $job['job_id'];
+        $this->bulkDeleteJob = $job;
+        $this->deleteAllModalStep = 'processing';
+
+        // Process first batch immediately
+        $this->bulkDeleteJob = $deletionService->processNextBatch($this->bulkDeleteJobId);
+
+        if ($this->bulkDeleteJob['remaining'] === 0 || in_array($this->bulkDeleteJob['status'], ['completed', 'partial', 'cancelled'])) {
+            $this->handleDeleteAllCompletion();
+        }
+    }
+
+    public function processNextDeleteAllBatch(?ProductBulkDeletionService $deletionService = null): void
+    {
+        if (!$this->bulkDeleteJobId || $this->deleteAllModalStep !== 'processing') {
+            return;
+        }
+
+        $deletionService ??= app(ProductBulkDeletionService::class);
+        $this->bulkDeleteJob = $deletionService->processNextBatch($this->bulkDeleteJobId);
+
+        if ($this->bulkDeleteJob['remaining'] === 0 || in_array($this->bulkDeleteJob['status'], ['completed', 'partial', 'cancelled'])) {
+            $this->handleDeleteAllCompletion();
+        }
+    }
+
+    public function handleDeleteAllCompletion(): void
+    {
+        $this->deleteAllModalStep = 'completed';
+        $this->selectedMedicines = [];
+        $this->selectAll = false;
+        $this->resetPage();
+    }
+
+    public function finishDeleteAll(): void
+    {
+        $this->closeDeleteAllModal();
+        $this->resetPage();
+    }
+
+    public function viewRemainingProducts(): void
+    {
+        $this->closeBulkDeleteModal();
+        $this->closeDeleteAllModal();
+        $this->search = '';
+        $this->categoryFilter = '';
+        $this->supplierFilter = '';
+        $this->stockFilter = '';
+        $this->expiryFilter = '';
+        $this->productTypeFilter = 'all';
+        $this->resetPage();
+    }
+
+    public function executeDeleteAll(?ProductBulkDeletionService $deletionService = null): void
+    {
+        $user = auth()->user();
+        if (!$user || (!$user->isAdmin() && $user->role !== 'admin')) {
+            abort(403, 'Unauthorized: Administrator access required.');
+        }
+
+        if (trim($this->deleteAllConfirmationInput) !== 'DELETE ALL PRODUCTS') {
+            session()->flash('error', 'You must type DELETE ALL PRODUCTS exactly to confirm.');
+            return;
+        }
+
+        $deletionService ??= app(ProductBulkDeletionService::class);
         $result = $deletionService->execute($user, request()->ip(), request()->userAgent());
 
         $this->closeDeleteAllModal();

@@ -2933,65 +2933,425 @@
         {{-- ========================================================= --}}
         {{-- MODAL 6: BULK DELETE CONFIRMATION --}}
         {{-- ========================================================= --}}
+        {{-- ========================================================= --}}
+        {{-- MODAL 6: BULK DELETE SELECTED PRODUCTS (REAL-TIME PROGRESS) --}}
+        {{-- ========================================================= --}}
         @if($showBulkDeleteModal)
-            <div class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-                <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200">
+            <div class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn" id="bulk-delete-selected-modal">
+                <div class="bg-white rounded-2xl shadow-2xl max-w-xl w-full border border-red-200 overflow-hidden transform transition-all">
                     
-                    <div class="p-6 text-center space-y-4">
-                        <div class="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto text-2xl shadow-inner">
-                            ⚠️
+                    {{-- Modal Header --}}
+                    <div class="px-6 py-4.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-xl shadow-inner text-white flex-shrink-0">
+                                @if($bulkDeleteModalStep === 'completed')
+                                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                @elseif($bulkDeleteModalStep === 'processing')
+                                    <svg class="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                    </svg>
+                                @else
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                @endif
+                            </div>
+                            <div>
+                                <h3 class="text-base font-extrabold tracking-tight">
+                                    @if($bulkDeleteModalStep === 'confirm')
+                                        Delete Selected Products
+                                    @elseif($bulkDeleteModalStep === 'processing')
+                                        Processing Bulk Deletion...
+                                    @else
+                                        Bulk Deletion Summary
+                                    @endif
+                                </h3>
+                                <p class="text-xs text-rose-100 font-medium flex items-center gap-1.5 mt-0.5">
+                                    <span>Selected Scope:</span>
+                                    <span class="font-bold text-white bg-white/20 px-2 py-0.5 rounded-full text-[11px]">
+                                        {{ number_format(count($selectedMedicines) > 0 ? count($selectedMedicines) : ($bulkDeleteJob['total'] ?? 0)) }} products
+                                    </span>
+                                </p>
+                            </div>
                         </div>
-
-                        <div>
-                            <h3 class="text-lg font-extrabold text-slate-900">Delete Multiple Products</h3>
-                            <p class="text-sm font-semibold text-slate-600 mt-1">
-                                Are you sure you want to delete <span class="text-red-600 font-bold">{{ count($selectedMedicines) }}</span> selected products?
-                            </p>
-                        </div>
-
-                        <p class="text-xs text-slate-500">
-                            Products with no past invoices will be permanently deleted. Products with past sales records will be archived/deactivated to preserve accounting balance.
-                        </p>
-
-                        <div class="flex items-center justify-end gap-2 pt-2">
-                            <button
-                                type="button"
-                                wire:click="closeBulkDeleteModal"
-                                class="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                wire:click="bulkDelete"
-                                class="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm transition active:scale-95"
-                            >
-                                Delete All Selected
-                            </button>
-                        </div>
+                        <button
+                            type="button"
+                            wire:click="closeBulkDeleteModal"
+                            class="text-white/80 hover:text-white rounded-lg p-1.5 hover:bg-white/10 transition"
+                            title="Close modal"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
                     </div>
+
+                    {{-- ========================================================= --}}
+                    {{-- STAGE 1: CONFIRMATION MODAL --}}
+                    {{-- ========================================================= --}}
+                    @if($bulkDeleteModalStep === 'confirm')
+                        <div class="p-6 space-y-4.5">
+                            
+                            {{-- Estimated Waiting Time Banner --}}
+                            <div class="rounded-xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-200 p-3.5 flex items-center justify-between gap-3 shadow-2xs">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-700 border border-amber-300 flex items-center justify-center flex-shrink-0 shadow-2xs">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <span class="text-[10px] font-bold uppercase tracking-wider text-amber-800">Estimated Waiting Time</span>
+                                        <div class="text-sm font-black text-amber-950 flex items-center gap-1.5">
+                                            <span>{{ $bulkDeletePreview['estimated_time_text'] ?? 'Approx. 2 - 5 seconds' }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                        Safe Batching
+                                    </span>
+                                    <p class="text-[10px] text-amber-700/80 mt-0.5">Chunks of 75 items/txn</p>
+                                </div>
+                            </div>
+
+                            {{-- 4-Card Scope Breakdown --}}
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+                                <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Selected</div>
+                                    <div class="text-lg font-black text-slate-900 mt-0.5">{{ number_format(count($selectedMedicines)) }}</div>
+                                    <div class="text-[10px] text-slate-500 mt-0.5 font-medium">Products</div>
+                                </div>
+                                <div class="bg-emerald-50/70 rounded-xl p-3 border border-emerald-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Permanent Purge</div>
+                                    <div class="text-lg font-black text-emerald-700 mt-0.5">{{ number_format($bulkDeletePreview['without_history_count'] ?? count($selectedMedicines)) }}</div>
+                                    <div class="text-[10px] text-emerald-600 mt-0.5 font-medium">No Past History</div>
+                                </div>
+                                <div class="bg-blue-50/70 rounded-xl p-3 border border-blue-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Safe Archival</div>
+                                    <div class="text-lg font-black text-blue-700 mt-0.5">{{ number_format($bulkDeletePreview['with_history_count'] ?? 0) }}</div>
+                                    <div class="text-[10px] text-blue-600 mt-0.5 font-medium">Preserves Ledgers</div>
+                                </div>
+                                <div class="bg-amber-50/70 rounded-xl p-3 border border-amber-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Sales History</div>
+                                    <div class="text-lg font-black text-amber-700 mt-0.5">{{ number_format($bulkDeletePreview['sales_history_count'] ?? 0) }}</div>
+                                    <div class="text-[10px] text-amber-600 mt-0.5 font-medium">Linked Receipts</div>
+                                </div>
+                            </div>
+
+                            {{-- Accounting and Legal Safeguard Notice --}}
+                            <div class="rounded-xl bg-slate-50 border border-slate-200 p-3.5 space-y-2 text-xs text-slate-600">
+                                <div class="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                                    <svg class="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                    </svg>
+                                    <span>Irreversible Deletion & Legal Compliance Guarantee:</span>
+                                </div>
+                                <ul class="space-y-1.5 pl-1 text-[11px] leading-relaxed text-slate-600">
+                                    <li class="flex items-start gap-1.5">
+                                        <span class="text-emerald-600 font-bold">✓</span>
+                                        <span><strong>Permanent Clean Deletion:</strong> Products with zero sales, purchases, or ledger references are permanently removed without leaving orphan records.</span>
+                                    </li>
+                                    <li class="flex items-start gap-1.5">
+                                        <span class="text-blue-600 font-bold">✓</span>
+                                        <span><strong>Zero Financial Disruption:</strong> Products with sales history or purchase invoices are archived and deactivated. Your accounting, tax reports, customer bills, and audit logs are never destroyed.</span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            {{-- Confirmation Warning --}}
+                            <div class="p-3 bg-red-50/70 border border-red-200 rounded-xl text-xs text-red-800 flex items-start gap-2.5">
+                                <svg class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                </svg>
+                                <span class="leading-relaxed">
+                                    <strong>Warning:</strong> Deletion of unreferenced items is irreversible. Ensure you have reviewed the counts above before executing.
+                                </span>
+                            </div>
+
+                            {{-- Action Buttons --}}
+                            <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    wire:click="closeBulkDeleteModal"
+                                    class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    wire:click="startBulkDeleteJob"
+                                    class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-sm hover:shadow-md transition active:scale-95"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                    <span>Delete Selected Products ({{ number_format(count($selectedMedicines)) }})</span>
+                                </button>
+                            </div>
+
+                        </div>
+
+                    {{-- ========================================================= --}}
+                    {{-- STAGE 2: REAL-TIME PROCESSING UI --}}
+                    {{-- ========================================================= --}}
+                    @elseif($bulkDeleteModalStep === 'processing')
+                        <div 
+                            wire:poll.50ms="processNextDeletionBatch" 
+                            class="p-6 space-y-4"
+                            id="bulk-delete-processing-view"
+                        >
+                            {{-- Status Header Banner --}}
+                            <div class="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                                <div class="flex items-center gap-2 text-xs font-bold text-slate-800">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping"></span>
+                                    <span>Processing Database Batch Operations...</span>
+                                </div>
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-200">
+                                    Batch {{ $bulkDeleteJob['current_batch'] ?? 1 }} of {{ $bulkDeleteJob['total_batches'] ?? 1 }}
+                                </span>
+                            </div>
+
+                            {{-- Live Progress Bar --}}
+                            <div class="space-y-1.5">
+                                <div class="flex justify-between items-center text-xs font-bold">
+                                    <span class="text-slate-700">Deletion Progress</span>
+                                    <span class="text-red-700 font-mono font-black text-sm">{{ $bulkDeleteJob['percent'] ?? 0 }}%</span>
+                                </div>
+                                <div class="w-full bg-slate-200 rounded-full h-3.5 overflow-hidden p-0.5 border border-slate-300/80 shadow-inner">
+                                    <div 
+                                        class="bg-gradient-to-r from-red-600 via-rose-500 to-emerald-500 h-full rounded-full transition-all duration-300 ease-out"
+                                        style="width: {{ $bulkDeleteJob['percent'] ?? 0 }}%"
+                                    ></div>
+                                </div>
+                            </div>
+
+                            {{-- Real-Time Telemetry Counters (6 Metrics) --}}
+                            <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center pt-1">
+                                <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Total</div>
+                                    <div class="text-base font-black text-slate-900 mt-0.5">{{ number_format($bulkDeleteJob['total'] ?? 0) }}</div>
+                                </div>
+                                <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Processed</div>
+                                    <div class="text-base font-black text-slate-800 mt-0.5">{{ number_format($bulkDeleteJob['processed'] ?? 0) }}</div>
+                                </div>
+                                <div class="bg-emerald-50/80 rounded-xl p-2.5 border border-emerald-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">Deleted</div>
+                                    <div class="text-base font-black text-emerald-700 mt-0.5">{{ number_format($bulkDeleteJob['deleted'] ?? 0) }}</div>
+                                </div>
+                                <div class="bg-blue-50/80 rounded-xl p-2.5 border border-blue-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-blue-700 uppercase tracking-wider">Archived</div>
+                                    <div class="text-base font-black text-blue-700 mt-0.5">{{ number_format($bulkDeleteJob['archived'] ?? 0) }}</div>
+                                </div>
+                                <div class="bg-rose-50/80 rounded-xl p-2.5 border border-rose-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-rose-700 uppercase tracking-wider">Failed</div>
+                                    <div class="text-base font-black text-rose-700 mt-0.5">{{ number_format($bulkDeleteJob['failed'] ?? 0) }}</div>
+                                </div>
+                                <div class="bg-amber-50/80 rounded-xl p-2.5 border border-amber-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-amber-700 uppercase tracking-wider">Remaining</div>
+                                    <div class="text-base font-black text-amber-700 mt-0.5">{{ number_format($bulkDeleteJob['remaining'] ?? 0) }}</div>
+                                </div>
+                            </div>
+
+                            {{-- Performance Speed & Remaining Time Row --}}
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                    <span class="text-base">⚡</span>
+                                    <div>
+                                        <div class="text-[10px] text-slate-500 font-semibold uppercase">Processing Speed</div>
+                                        <div class="font-extrabold text-slate-800">{{ $bulkDeleteJob['speed'] ?? 0 }} products / sec</div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                    <span class="text-base">⏱️</span>
+                                    <div>
+                                        <div class="text-[10px] text-slate-500 font-semibold uppercase">Estimated Remaining</div>
+                                        <div class="font-extrabold text-slate-800">
+                                            @if(($bulkDeleteJob['estimated_remaining_seconds'] ?? 0) > 0)
+                                                Approx. {{ $bulkDeleteJob['estimated_remaining_seconds'] }}s
+                                            @else
+                                                Finishing up...
+                                            @endif
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Reassurance hint --}}
+                            <p class="text-[11px] text-slate-500 text-center font-medium">
+                                🔒 Processing safe transactional database batches. Please keep this tab open.
+                            </p>
+
+                            {{-- Safe Stop Button --}}
+                            <div class="flex items-center justify-end pt-2 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    wire:click="cancelBulkDeleteJob"
+                                    class="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5"
+                                >
+                                    <span>Stop Deletion</span>
+                                    <span class="text-[10px] text-slate-500">(Keeps completed batches safe)</span>
+                                </button>
+                            </div>
+                        </div>
+
+                    {{-- ========================================================= --}}
+                    {{-- STAGE 3: COMPLETION SCREEN --}}
+                    {{-- ========================================================= --}}
+                    @elseif($bulkDeleteModalStep === 'completed')
+                        <div class="p-6 space-y-4">
+
+                            {{-- Completion Hero Banner --}}
+                            @if(($bulkDeleteJob['failed'] ?? 0) === 0)
+                                <div class="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-center space-y-1">
+                                    <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-xl shadow-inner font-black">
+                                        ✓
+                                    </div>
+                                    <h4 class="text-base font-black text-emerald-900 mt-1">Bulk Deletion Completed Successfully!</h4>
+                                    <p class="text-xs text-emerald-700">
+                                        All targeted products were safely processed in <span class="font-bold font-mono">{{ $bulkDeleteJob['elapsed_seconds'] ?? 0 }} seconds</span>.
+                                    </p>
+                                </div>
+                            @else
+                                <div class="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-center space-y-1">
+                                    <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto text-xl shadow-inner font-black">
+                                        ⚠️
+                                    </div>
+                                    <h4 class="text-base font-black text-amber-900 mt-1">Bulk Deletion Completed with Exceptions</h4>
+                                    <p class="text-xs text-amber-800">
+                                        {{ $bulkDeleteJob['failed'] }} items could not be deleted due to database locks. You may retry them below.
+                                    </p>
+                                </div>
+                            @endif
+
+                            {{-- Completion Telemetry Cards --}}
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+                                <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Processed</div>
+                                    <div class="text-lg font-black text-slate-900 mt-0.5">{{ number_format($bulkDeleteJob['processed'] ?? 0) }}</div>
+                                    <div class="text-[10px] text-slate-500 mt-0.5 font-medium">Products</div>
+                                </div>
+                                <div class="bg-emerald-50 rounded-xl p-3 border border-emerald-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Permanently Deleted</div>
+                                    <div class="text-lg font-black text-emerald-700 mt-0.5">{{ number_format($bulkDeleteJob['deleted'] ?? 0) }}</div>
+                                    <div class="text-[10px] text-emerald-600 mt-0.5 font-medium">Zero History</div>
+                                </div>
+                                <div class="bg-blue-50 rounded-xl p-3 border border-blue-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Safely Archived</div>
+                                    <div class="text-lg font-black text-blue-700 mt-0.5">{{ number_format($bulkDeleteJob['archived'] ?? 0) }}</div>
+                                    <div class="text-[10px] text-blue-600 mt-0.5 font-medium">Ledgers Protected</div>
+                                </div>
+                                <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Time</div>
+                                    <div class="text-lg font-black text-slate-900 mt-0.5">{{ $bulkDeleteJob['elapsed_seconds'] ?? 0 }}s</div>
+                                    <div class="text-[10px] text-slate-500 mt-0.5 font-medium">Elapsed</div>
+                                </div>
+                            </div>
+
+                            {{-- Failed Details (if any) --}}
+                            @if(!empty($bulkDeleteJob['failed_items']))
+                                <div class="rounded-xl bg-red-50/70 border border-red-200 p-3.5 space-y-2">
+                                    <div class="flex items-center justify-between text-xs font-bold text-red-900">
+                                        <span>Failed Items ({{ count($bulkDeleteJob['failed_items']) }})</span>
+                                        <span class="text-[10px] font-normal text-red-700">Protected from partial errors</span>
+                                    </div>
+                                    <div class="max-h-28 overflow-y-auto space-y-1 text-[11px] text-red-800 font-mono pr-1">
+                                        @foreach($bulkDeleteJob['failed_items'] as $fItem)
+                                            <div class="bg-white/80 p-1.5 rounded border border-red-200 flex items-center justify-between gap-2">
+                                                <span class="font-bold truncate">{{ $fItem['name'] ?? "ID #{$fItem['id']}" }}</span>
+                                                <span class="text-red-600 truncate text-[10px]">{{ $fItem['error'] ?? 'Constraint violation' }}</span>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+
+                            {{-- Footer Actions --}}
+                            <div class="flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    wire:click="viewRemainingProducts"
+                                    class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                    </svg>
+                                    <span>View Remaining Products</span>
+                                </button>
+
+                                <div class="flex items-center gap-2">
+                                    @if(($bulkDeleteJob['failed'] ?? 0) > 0)
+                                        <button
+                                            type="button"
+                                            wire:click="retryFailedDeletion"
+                                            class="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold shadow-sm transition active:scale-95 flex items-center gap-1.5"
+                                        >
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                            </svg>
+                                            <span>Retry Failed Items</span>
+                                        </button>
+                                    @endif
+
+                                    <button
+                                        type="button"
+                                        wire:click="finishBulkDeletion"
+                                        class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm transition active:scale-95"
+                                    >
+                                        Done
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+                    @endif
 
                 </div>
             </div>
         @endif
 
         {{-- ========================================================= --}}
-        {{-- MODAL 6B: DELETE ALL PRODUCTS CONFIRMATION (ADMIN ONLY) --}}
+        {{-- MODAL 6B: DELETE ALL PRODUCTS (REAL-TIME PROGRESS) --}}
         {{-- ========================================================= --}}
         @if($showDeleteAllModal && auth()->check() && (auth()->user()->role === 'admin' || auth()->user()->isAdmin()))
-            <div class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn" id="delete-all-products-modal">
+            <div class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn" id="delete-all-products-modal">
                 <div class="bg-white rounded-2xl shadow-2xl max-w-xl w-full border border-red-200 overflow-hidden transform transition-all">
                     
                     {{-- Modal Header --}}
                     <div class="px-6 py-4.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-xl shadow-inner text-white">
-                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                                </svg>
+                            <div class="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-xl shadow-inner text-white flex-shrink-0">
+                                @if($deleteAllModalStep === 'completed')
+                                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                @elseif($deleteAllModalStep === 'processing')
+                                    <svg class="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                    </svg>
+                                @else
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                    </svg>
+                                @endif
                             </div>
                             <div>
-                                <h3 class="text-base font-extrabold tracking-tight">Bulk Operation: Delete All Products</h3>
+                                <h3 class="text-base font-extrabold tracking-tight">
+                                    @if($deleteAllModalStep === 'confirm')
+                                        Bulk Operation: Delete All Products
+                                    @elseif($deleteAllModalStep === 'processing')
+                                        Deleting All Products in Real Time...
+                                    @else
+                                        Delete All Products Summary
+                                    @endif
+                                </h3>
                                 <p class="text-xs text-rose-100 font-medium">Administrator Authorization Required</p>
                             </div>
                         </div>
@@ -3005,110 +3365,300 @@
                         </button>
                     </div>
 
-                    {{-- Modal Content --}}
-                    <div class="p-6 space-y-4">
+                    {{-- ========================================================= --}}
+                    {{-- STAGE 1: DELETE ALL CONFIRMATION --}}
+                    {{-- ========================================================= --}}
+                    @if($deleteAllModalStep === 'confirm')
+                        <div class="p-6 space-y-4">
 
-                        {{-- Preview Stats Banner --}}
-                        <div class="rounded-xl bg-gradient-to-br from-red-50 to-rose-50/60 border border-red-200/80 p-4">
-                            <div class="flex items-center justify-between mb-3">
-                                <span class="text-xs font-bold uppercase tracking-wider text-red-800">Affected Scope Preview</span>
-                                <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-red-600 text-white shadow-xs">
-                                    {{ number_format($deleteAllPreview['total_products'] ?? 0) }} Active Products
-                                </span>
+                            {{-- Expected Duration Banner --}}
+                            <div class="rounded-xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-200 p-3.5 flex items-center justify-between gap-3 shadow-2xs">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-700 border border-amber-300 flex items-center justify-center flex-shrink-0 shadow-2xs">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <span class="text-[10px] font-bold uppercase tracking-wider text-amber-800">Expected Processing Duration</span>
+                                        <div class="text-sm font-black text-amber-950 flex items-center gap-1.5">
+                                            <span>{{ $deleteAllPreview['estimated_time_text'] ?? 'Approx. 3 - 6 seconds' }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                        Batch Isolation
+                                    </span>
+                                    <p class="text-[10px] text-amber-700/80 mt-0.5">Safe row transactions</p>
+                                </div>
                             </div>
+
+                            {{-- Affected Scope Preview Cards --}}
                             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                                <div class="bg-white/90 rounded-lg p-2.5 border border-red-100 shadow-2xs">
+                                <div class="bg-white rounded-lg p-2.5 border border-slate-200 shadow-2xs">
                                     <div class="text-lg font-black text-slate-800">{{ number_format($deleteAllPreview['total_products'] ?? 0) }}</div>
                                     <div class="text-[10px] uppercase font-semibold text-slate-500">Total Products</div>
                                 </div>
-                                <div class="bg-white/90 rounded-lg p-2.5 border border-amber-100 shadow-2xs">
-                                    <div class="text-lg font-black text-amber-700">{{ number_format($deleteAllPreview['with_history_count'] ?? 0) }}</div>
-                                    <div class="text-[10px] uppercase font-semibold text-slate-500">With History (Archived)</div>
-                                </div>
-                                <div class="bg-white/90 rounded-lg p-2.5 border border-emerald-100 shadow-2xs">
+                                <div class="bg-emerald-50 rounded-lg p-2.5 border border-emerald-200 shadow-2xs">
                                     <div class="text-lg font-black text-emerald-700">{{ number_format($deleteAllPreview['without_history_count'] ?? 0) }}</div>
-                                    <div class="text-[10px] uppercase font-semibold text-slate-500">Unreferenced (Deleted)</div>
+                                    <div class="text-[10px] uppercase font-semibold text-slate-500">Permanent Purge</div>
                                 </div>
-                                <div class="bg-white/90 rounded-lg p-2.5 border border-blue-100 shadow-2xs">
-                                    <div class="text-lg font-black text-blue-700">{{ number_format($deleteAllPreview['batches_count'] ?? 0) }}</div>
-                                    <div class="text-[10px] uppercase font-semibold text-slate-500">Batches Affected</div>
+                                <div class="bg-blue-50 rounded-lg p-2.5 border border-blue-200 shadow-2xs">
+                                    <div class="text-lg font-black text-blue-700">{{ number_format($deleteAllPreview['with_history_count'] ?? 0) }}</div>
+                                    <div class="text-[10px] uppercase font-semibold text-slate-500">Safe Archival</div>
+                                </div>
+                                <div class="bg-amber-50 rounded-lg p-2.5 border border-amber-200 shadow-2xs">
+                                    <div class="text-lg font-black text-amber-700">{{ number_format($deleteAllPreview['sales_history_count'] ?? 0) }}</div>
+                                    <div class="text-[10px] uppercase font-semibold text-slate-500">Sales History</div>
                                 </div>
                             </div>
-                        </div>
 
-                        {{-- Data Integrity & Financial Explanation --}}
-                        <div class="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2 text-xs text-slate-600">
-                            <div class="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
-                                <svg class="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-                                </svg>
-                                <span>Regulatory & Financial Data Integrity Safeguards:</span>
-                            </div>
-                            <ul class="list-disc list-inside space-y-1 pl-1 text-[11px] leading-relaxed text-slate-600">
-                                <li><strong>Preserved Financial Records:</strong> Invoices, sales items, purchase records, returns, and stock movement logs are strictly preserved.</li>
-                                <li><strong>Soft Deletion & Archiving:</strong> Products with existing sales or ledger dependencies will be safely archived and hidden from active inventory, maintaining receipt links without cascade deletions.</li>
-                                <li><strong>Safe Permanent Deletion:</strong> Products with zero transaction dependencies will be permanently deleted safely.</li>
-                                <li><strong>Audit Logging:</strong> This bulk operation is logged with your administrator identity, IP address, and timestamp.</li>
-                            </ul>
-                        </div>
-
-                        {{-- Confirmation Input Requirement --}}
-                        <div class="pt-2">
-                            <label for="delete-all-confirmation-input" class="block text-xs font-bold text-slate-800 mb-1.5">
-                                Type <span class="font-mono bg-red-100 text-red-800 px-1.5 py-0.5 rounded border border-red-200 select-all">DELETE ALL PRODUCTS</span> below to confirm:
-                            </label>
-                            <input
-                                type="text"
-                                id="delete-all-confirmation-input"
-                                wire:model.live="deleteAllConfirmationInput"
-                                placeholder="DELETE ALL PRODUCTS"
-                                autocomplete="off"
-                                spellcheck="false"
-                                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-red-500 focus:ring-2 focus:ring-red-200 text-sm font-semibold tracking-wide text-slate-900 transition placeholder:text-slate-400 uppercase"
-                            />
-                            @if(!empty($deleteAllConfirmationInput) && trim($deleteAllConfirmationInput) !== 'DELETE ALL PRODUCTS')
-                                <p class="text-[11px] text-red-600 mt-1 font-semibold flex items-center gap-1">
-                                    <span>✕</span> Phrase does not match exactly.
-                                </p>
-                            @elseif(trim($deleteAllConfirmationInput) === 'DELETE ALL PRODUCTS')
-                                <p class="text-[11px] text-emerald-600 mt-1 font-semibold flex items-center gap-1">
-                                    <span>✓</span> Phrase confirmed. You may proceed.
-                                </p>
-                            @endif
-                        </div>
-
-                        {{-- Action Buttons --}}
-                        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-                            <button
-                                type="button"
-                                wire:click="closeDeleteAllModal"
-                                class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
-                            >
-                                Cancel
-                            </button>
-
-                            <button
-                                type="button"
-                                wire:click="executeDeleteAll"
-                                wire:loading.attr="disabled"
-                                id="btn-confirm-delete-all"
-                                @if(trim($deleteAllConfirmationInput) !== 'DELETE ALL PRODUCTS') disabled @endif
-                                class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none @if(trim($deleteAllConfirmationInput) === 'DELETE ALL PRODUCTS') bg-red-600 hover:bg-red-700 text-white shadow-red-200 @else bg-slate-200 text-slate-400 @endif"
-                            >
-                                <span wire:loading.remove wire:target="executeDeleteAll">
-                                    Confirm Bulk Delete
-                                </span>
-                                <span wire:loading wire:target="executeDeleteAll" class="inline-flex items-center gap-1.5">
-                                    <svg class="animate-spin w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24">
-                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                            {{-- Data Integrity & Financial Explanation --}}
+                            <div class="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2 text-xs text-slate-600">
+                                <div class="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                                    <svg class="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                                     </svg>
-                                    Processing Bulk Deletion...
-                                </span>
-                            </button>
+                                    <span>Regulatory & Financial Data Integrity Safeguards:</span>
+                                </div>
+                                <ul class="list-disc list-inside space-y-1 pl-1 text-[11px] leading-relaxed text-slate-600">
+                                    <li><strong>Preserved Financial Records:</strong> Invoices, sales items, purchase records, returns, and stock movement logs are strictly preserved.</li>
+                                    <li><strong>Soft Deletion & Archiving:</strong> Products with existing sales or ledger dependencies will be safely archived and hidden from active inventory, maintaining receipt links without cascade deletions.</li>
+                                    <li><strong>Safe Permanent Deletion:</strong> Products with zero transaction dependencies will be permanently deleted safely.</li>
+                                    <li><strong>Audit Logging:</strong> This bulk operation is logged with your administrator identity, IP address, and timestamp.</li>
+                                </ul>
+                            </div>
+
+                            {{-- Confirmation Input Requirement --}}
+                            <div class="pt-2">
+                                <label for="delete-all-confirmation-input" class="block text-xs font-bold text-slate-800 mb-1.5">
+                                    Type <span class="font-mono bg-red-100 text-red-800 px-1.5 py-0.5 rounded border border-red-200 select-all">DELETE ALL PRODUCTS</span> below to confirm:
+                                </label>
+                                <input
+                                    type="text"
+                                    id="delete-all-confirmation-input"
+                                    wire:model.live="deleteAllConfirmationInput"
+                                    placeholder="DELETE ALL PRODUCTS"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-red-500 focus:ring-2 focus:ring-red-200 text-sm font-semibold tracking-wide text-slate-900 transition placeholder:text-slate-400 uppercase"
+                                />
+                                @if(!empty($deleteAllConfirmationInput) && trim($deleteAllConfirmationInput) !== 'DELETE ALL PRODUCTS')
+                                    <p class="text-[11px] text-red-600 mt-1 font-semibold flex items-center gap-1">
+                                        <span>✕</span> Phrase does not match exactly.
+                                    </p>
+                                @elseif(trim($deleteAllConfirmationInput) === 'DELETE ALL PRODUCTS')
+                                    <p class="text-[11px] text-emerald-600 mt-1 font-semibold flex items-center gap-1">
+                                        <span>✓</span> Phrase confirmed. You may proceed with deletion.
+                                    </p>
+                                @endif
+                            </div>
+
+                            {{-- Action Buttons --}}
+                            <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    wire:click="closeDeleteAllModal"
+                                    class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
+                                >
+                                    Cancel
+                                </button>
+
+                                <button
+                                    type="button"
+                                    wire:click="startDeleteAllJob"
+                                    id="btn-confirm-delete-all"
+                                    @if(trim($deleteAllConfirmationInput) !== 'DELETE ALL PRODUCTS') disabled @endif
+                                    class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold shadow-sm transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none @if(trim($deleteAllConfirmationInput) === 'DELETE ALL PRODUCTS') bg-red-600 hover:bg-red-700 text-white shadow-red-200 @else bg-slate-200 text-slate-400 @endif"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                    <span>Confirm Bulk Delete All</span>
+                                </button>
+                            </div>
+
                         </div>
 
-                    </div>
+                    {{-- ========================================================= --}}
+                    {{-- STAGE 2: DELETE ALL REAL-TIME PROCESSING UI --}}
+                    {{-- ========================================================= --}}
+                    @elseif($deleteAllModalStep === 'processing')
+                        <div 
+                            wire:poll.50ms="processNextDeleteAllBatch" 
+                            class="p-6 space-y-4"
+                            id="delete-all-processing-view"
+                        >
+                            {{-- Status Header Banner --}}
+                            <div class="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                                <div class="flex items-center gap-2 text-xs font-bold text-slate-800">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping"></span>
+                                    <span>Batch Deleting All Products...</span>
+                                </div>
+                                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-200">
+                                    Batch {{ $bulkDeleteJob['current_batch'] ?? 1 }} of {{ $bulkDeleteJob['total_batches'] ?? 1 }}
+                                </span>
+                            </div>
+
+                            {{-- Live Progress Bar --}}
+                            <div class="space-y-1.5">
+                                <div class="flex justify-between items-center text-xs font-bold">
+                                    <span class="text-slate-700">Overall Progress</span>
+                                    <span class="text-red-700 font-mono font-black text-sm">{{ $bulkDeleteJob['percent'] ?? 0 }}%</span>
+                                </div>
+                                <div class="w-full bg-slate-200 rounded-full h-3.5 overflow-hidden p-0.5 border border-slate-300/80 shadow-inner">
+                                    <div 
+                                        class="bg-gradient-to-r from-red-600 via-rose-500 to-emerald-500 h-full rounded-full transition-all duration-300 ease-out"
+                                        style="width: {{ $bulkDeleteJob['percent'] ?? 0 }}%"
+                                    ></div>
+                                </div>
+                            </div>
+
+                            {{-- Real-Time Telemetry Counters (6 Metrics) --}}
+                            <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center pt-1">
+                                <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Total</div>
+                                    <div class="text-base font-black text-slate-900 mt-0.5">{{ number_format($bulkDeleteJob['total'] ?? 0) }}</div>
+                                </div>
+                                <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Processed</div>
+                                    <div class="text-base font-black text-slate-800 mt-0.5">{{ number_format($bulkDeleteJob['processed'] ?? 0) }}</div>
+                                </div>
+                                <div class="bg-emerald-50/80 rounded-xl p-2.5 border border-emerald-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">Deleted</div>
+                                    <div class="text-base font-black text-emerald-700 mt-0.5">{{ number_format($bulkDeleteJob['deleted'] ?? 0) }}</div>
+                                </div>
+                                <div class="bg-blue-50/80 rounded-xl p-2.5 border border-blue-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-blue-700 uppercase tracking-wider">Archived</div>
+                                    <div class="text-base font-black text-blue-700 mt-0.5">{{ number_format($bulkDeleteJob['archived'] ?? 0) }}</div>
+                                </div>
+                                <div class="bg-rose-50/80 rounded-xl p-2.5 border border-rose-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-rose-700 uppercase tracking-wider">Failed</div>
+                                    <div class="text-base font-black text-rose-700 mt-0.5">{{ number_format($bulkDeleteJob['failed'] ?? 0) }}</div>
+                                </div>
+                                <div class="bg-amber-50/80 rounded-xl p-2.5 border border-amber-200 shadow-2xs">
+                                    <div class="text-[9px] font-bold text-amber-700 uppercase tracking-wider">Remaining</div>
+                                    <div class="text-base font-black text-amber-700 mt-0.5">{{ number_format($bulkDeleteJob['remaining'] ?? 0) }}</div>
+                                </div>
+                            </div>
+
+                            {{-- Performance Speed & Remaining Time Row --}}
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                    <span class="text-base">⚡</span>
+                                    <div>
+                                        <div class="text-[10px] text-slate-500 font-semibold uppercase">Processing Speed</div>
+                                        <div class="font-extrabold text-slate-800">{{ $bulkDeleteJob['speed'] ?? 0 }} products / sec</div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                    <span class="text-base">⏱️</span>
+                                    <div>
+                                        <div class="text-[10px] text-slate-500 font-semibold uppercase">Estimated Remaining</div>
+                                        <div class="font-extrabold text-slate-800">
+                                            @if(($bulkDeleteJob['estimated_remaining_seconds'] ?? 0) > 0)
+                                                Approx. {{ $bulkDeleteJob['estimated_remaining_seconds'] }}s
+                                            @else
+                                                Finishing up...
+                                            @endif
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Safe Stop Button --}}
+                            <div class="flex items-center justify-end pt-2 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    wire:click="closeDeleteAllModal"
+                                    class="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5"
+                                >
+                                    <span>Stop Deletion</span>
+                                    <span class="text-[10px] text-slate-500">(Keeps completed batches safe)</span>
+                                </button>
+                            </div>
+                        </div>
+
+                    {{-- ========================================================= --}}
+                    {{-- STAGE 3: DELETE ALL COMPLETION SCREEN --}}
+                    {{-- ========================================================= --}}
+                    @elseif($deleteAllModalStep === 'completed')
+                        <div class="p-6 space-y-4">
+
+                            {{-- Completion Hero Banner --}}
+                            @if(($bulkDeleteJob['failed'] ?? 0) === 0)
+                                <div class="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-center space-y-1">
+                                    <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-xl shadow-inner font-black">
+                                        ✓
+                                    </div>
+                                    <h4 class="text-base font-black text-emerald-900 mt-1">Inventory Cleared Successfully!</h4>
+                                    <p class="text-xs text-emerald-700">
+                                        All products were processed in <span class="font-bold font-mono">{{ $bulkDeleteJob['elapsed_seconds'] ?? 0 }} seconds</span> without ledger disruption.
+                                    </p>
+                                </div>
+                            @else
+                                <div class="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-center space-y-1">
+                                    <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto text-xl shadow-inner font-black">
+                                        ⚠️
+                                    </div>
+                                    <h4 class="text-base font-black text-amber-900 mt-1">Operation Completed with Exceptions</h4>
+                                    <p class="text-xs text-amber-800">
+                                        {{ $bulkDeleteJob['failed'] }} items could not be safely deleted.
+                                    </p>
+                                </div>
+                            @endif
+
+                            {{-- Completion Telemetry Cards --}}
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+                                <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Processed</div>
+                                    <div class="text-lg font-black text-slate-900 mt-0.5">{{ number_format($bulkDeleteJob['processed'] ?? 0) }}</div>
+                                    <div class="text-[10px] text-slate-500 mt-0.5 font-medium">Products</div>
+                                </div>
+                                <div class="bg-emerald-50 rounded-xl p-3 border border-emerald-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Permanently Deleted</div>
+                                    <div class="text-lg font-black text-emerald-700 mt-0.5">{{ number_format($bulkDeleteJob['deleted'] ?? 0) }}</div>
+                                    <div class="text-[10px] text-emerald-600 mt-0.5 font-medium">Zero History</div>
+                                </div>
+                                <div class="bg-blue-50 rounded-xl p-3 border border-blue-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Safely Archived</div>
+                                    <div class="text-lg font-black text-blue-700 mt-0.5">{{ number_format($bulkDeleteJob['archived'] ?? 0) }}</div>
+                                    <div class="text-[10px] text-blue-600 mt-0.5 font-medium">Ledgers Protected</div>
+                                </div>
+                                <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 shadow-2xs">
+                                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Time</div>
+                                    <div class="text-lg font-black text-slate-900 mt-0.5">{{ $bulkDeleteJob['elapsed_seconds'] ?? 0 }}s</div>
+                                    <div class="text-[10px] text-slate-500 mt-0.5 font-medium">Elapsed</div>
+                                </div>
+                            </div>
+
+                            {{-- Footer Actions --}}
+                            <div class="flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    wire:click="viewRemainingProducts"
+                                    class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                    </svg>
+                                    <span>View Remaining Products</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    wire:click="finishDeleteAll"
+                                    class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm transition active:scale-95"
+                                >
+                                    Done
+                                </button>
+                            </div>
+
+                        </div>
+                    @endif
 
                 </div>
             </div>

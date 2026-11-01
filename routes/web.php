@@ -442,6 +442,13 @@ Route::middleware(['auth'])->group(function () {
         // Bulk Product Deletion & Archiving (Admin Only - Protected by Auth, Role, CSRF, Server Validation)
         Route::get('/medicines/delete-all/preview', [\App\Http\Controllers\Admin\MedicineBulkActionController::class, 'preview'])->name('admin.medicines.delete-all.preview');
         Route::match(['post', 'delete'], '/medicines/delete-all', [\App\Http\Controllers\Admin\MedicineBulkActionController::class, 'deleteAll'])->name('admin.medicines.delete-all');
+        Route::prefix('admin/medicines/bulk-delete')->name('admin.medicines.bulk-delete.')->group(function () {
+            Route::post('/init', [\App\Http\Controllers\Admin\MedicineBulkActionController::class, 'initJob'])->name('init');
+            Route::post('/batch', [\App\Http\Controllers\Admin\MedicineBulkActionController::class, 'processBatch'])->name('batch');
+            Route::get('/status/{jobId}', [\App\Http\Controllers\Admin\MedicineBulkActionController::class, 'jobStatus'])->name('status');
+            Route::post('/retry/{jobId}', [\App\Http\Controllers\Admin\MedicineBulkActionController::class, 'retryJob'])->name('retry');
+            Route::post('/cancel/{jobId}', [\App\Http\Controllers\Admin\MedicineBulkActionController::class, 'cancelJob'])->name('cancel');
+        });
     });
 
     // 2. ADMIN & PHARMACIST & ASSISTANT ADMIN ROUTES (Dashboard, Medicines, Purchases, Suppliers, Reports)
