@@ -1,0 +1,3 @@
+medicineName,brandName,genericName,composition,strength,dosageForm,category,manufacturer,registrationNumber,packSize,stockUnit,source,sourceReference,verificationStatus
+Panadol Extra,Panadol Extra,Paracetamol,Paracetamol 500 mg,500 mg,Tablet,Analgesic,GlaxoSmithKline,,10 Tablets,Tablet,DRAP,DRAP-REF-001,verified
+Augmentin 625,Augmentin 625,Amoxicillin + Clavulanic Acid,Amoxicillin 500 mg + Clavulanic Acid 125 mg,625 mg,Tablet,Antibiotic,GlaxoSmithKline,,10 Tablets,Tablet,DRAP,DRAP-REF-002,verified

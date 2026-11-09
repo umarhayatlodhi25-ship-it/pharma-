@@ -1,0 +1,34 @@
+[
+  {
+    "medicineName": "Panadol Extra",
+    "brandName": "Panadol Extra",
+    "genericName": "Paracetamol",
+    "composition": "Paracetamol 500 mg",
+    "strength": "500 mg",
+    "dosageForm": "Tablet",
+    "category": "Analgesic",
+    "manufacturer": "GlaxoSmithKline",
+    "registrationNumber": "",
+    "packSize": "10 Tablets",
+    "stockUnit": "Tablet",
+    "source": "DRAP",
+    "sourceReference": "DRAP-REF-001",
+    "verificationStatus": "verified"
+  },
+  {
+    "medicineName": "Augmentin 625",
+    "brandName": "Augmentin 625",
+    "genericName": "Amoxicillin + Clavulanic Acid",
+    "composition": "Amoxicillin 500 mg + Clavulanic Acid 125 mg",
+    "strength": "625 mg",
+    "dosageForm": "Tablet",
+    "category": "Antibiotic",
+    "manufacturer": "GlaxoSmithKline",
+    "registrationNumber": "",
+    "packSize": "10 Tablets",
+    "stockUnit": "Tablet",
+    "source": "DRAP",
+    "sourceReference": "DRAP-REF-002",
+    "verificationStatus": "verified"
+  }
+]

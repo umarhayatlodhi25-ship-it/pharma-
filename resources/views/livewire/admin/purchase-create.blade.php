@@ -377,8 +377,60 @@
                                     </div>
                                 </button>
                             @empty
-                                <div class="px-4 py-6 text-center text-xs text-gray-500">No matching product found.</div>
+                                @if(empty($masterMedicines) || $masterMedicines->isEmpty())
+                                    <div class="px-4 py-6 text-center text-xs text-gray-500">No matching product found.</div>
+                                @endif
                             @endforelse
+
+                            {{-- MASTER DRUG FORMULARY ITEMS --}}
+                            @if(isset($masterMedicines) && $masterMedicines->isNotEmpty())
+                                <div class="px-3 py-1.5 bg-purple-50 border-t border-b border-purple-100 flex items-center justify-between">
+                                    <span class="text-xs font-bold text-purple-800 flex items-center gap-1">
+                                        <i class="fa-solid fa-cloud-arrow-down text-[10px]"></i> Master Drug Formulary
+                                    </span>
+                                    <span class="text-[10px] text-purple-600 font-medium">{{ $masterMedicines->count() }} new item(s)</span>
+                                </div>
+
+                                @foreach($masterMedicines as $master)
+                                    <div
+                                        wire:key="master-search-{{ $master->id }}"
+                                        class="w-full px-3.5 py-2.5 text-left hover:bg-purple-50/80 transition border-b border-purple-50 flex items-center justify-between gap-3"
+                                    >
+                                        <div 
+                                            class="min-w-0 cursor-pointer flex-1"
+                                            wire:click="promoteAndSelectMaster({{ $master->id }})"
+                                            @click="open = false"
+                                            title="Click to import and select"
+                                        >
+                                            <div class="flex items-center gap-1.5 flex-wrap">
+                                                <span class="text-sm font-semibold text-gray-800 truncate">{{ $master->medicine_name }}</span>
+                                                <span class="text-[9px] px-1.5 py-0.5 rounded font-bold bg-purple-100 text-purple-800 border border-purple-200">Master</span>
+                                            </div>
+                                            <div class="text-[11px] text-gray-500 mt-0.5">
+                                                {{ $master->dosage_form ?: 'Tablet' }}
+                                                @if($master->generic_name)
+                                                    <span class="mx-1">•</span>{{ $master->generic_name }}
+                                                @endif
+                                                @if($master->manufacturer)
+                                                    <span class="mx-1">•</span>{{ $master->manufacturer }}
+                                                @endif
+                                            </div>
+                                        </div>
+
+                                        <div class="text-right shrink-0 flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                wire:click="promoteAndAddToPurchase({{ $master->id }})"
+                                                @click="open = false"
+                                                class="text-[10px] bg-purple-600 hover:bg-purple-700 text-white px-2.5 py-1.5 rounded-xl font-bold transition shadow-xs flex items-center gap-1 cursor-pointer"
+                                                title="Import and add directly to purchase items"
+                                            >
+                                                <i class="fa-solid fa-plus text-[9px]"></i> Add
+                                            </button>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            @endif
                         </div>
                     </div>
 

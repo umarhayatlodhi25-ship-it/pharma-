@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'quick-admin-login',
             'login/firebase',
             'logout',
+            'api/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

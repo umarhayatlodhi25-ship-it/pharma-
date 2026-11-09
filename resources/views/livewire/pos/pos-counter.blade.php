@@ -193,10 +193,73 @@
                     </div>
                 </div>
             @empty
-                <div class="col-span-full py-12 text-center text-gray-400 text-sm">
-                    No products found matching your query.
-                </div>
+                @if(empty($masterMedicines) || $masterMedicines->isEmpty())
+                    <div class="col-span-full py-12 text-center text-gray-400 text-sm">
+                        No products found matching your query.
+                    </div>
+                @endif
             @endforelse
+
+            {{-- MASTER CATALOG RESULTS SECTION --}}
+            @if(isset($masterMedicines) && $masterMedicines->isNotEmpty())
+                @foreach($masterMedicines as $master)
+                    <div 
+                        wire:key="pos-master-{{ $master->id }}"
+                        class="bg-purple-50/50 hover:bg-purple-50 border-purple-200/90 hover:border-purple-400 border p-3.5 rounded-xl transition flex flex-col justify-between space-y-2 group select-none w-full text-left relative shadow-xs"
+                    >
+                        <div class="w-full">
+                            <div class="flex justify-between items-start gap-1">
+                                <h4 
+                                    class="font-bold text-sm line-clamp-1 text-gray-800 group-hover:text-purple-700 cursor-pointer transition"
+                                    wire:click="promoteAndAddToCart({{ $master->id }})"
+                                    title="Click to import and add: {{ $master->medicine_name }}"
+                                >
+                                    {{ $master->medicine_name }}
+                                </h4>
+
+                                <button
+                                    type="button"
+                                    wire:click="promoteAndAddToCart({{ $master->id }})"
+                                    class="text-[10px] bg-purple-600 hover:bg-purple-700 text-white px-2.5 py-1 rounded-full font-bold shrink-0 ml-1 transition cursor-pointer shadow-xs flex items-center gap-1"
+                                    title="Import from Master & add to cart"
+                                >
+                                    <i class="fa-solid fa-plus text-[9px]"></i> Add
+                                </button>
+                            </div>
+
+                            <div class="flex items-center gap-1.5 mt-1 flex-wrap">
+                                <span class="text-[9px] bg-purple-100 text-purple-800 border border-purple-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1">
+                                    <i class="fa-solid fa-cloud-arrow-down text-[8px]"></i> Master
+                                </span>
+                                <span class="text-[11px] text-gray-500 line-clamp-1">{{ $master->category ?: ($master->dosage_form ?: 'Medicine') }}</span>
+                            </div>
+
+                            @if($master->generic_name)
+                                <p class="text-[10px] text-gray-400 line-clamp-1 italic mt-0.5">{{ $master->generic_name }}</p>
+                            @endif
+
+                            @if($master->manufacturer)
+                                <p class="text-[10px] text-gray-400 line-clamp-1 mt-0.5">By: {{ $master->manufacturer }}</p>
+                            @endif
+                        </div>
+
+                        <div class="w-full flex flex-col gap-1 pt-2 border-t border-purple-200/50 mt-auto">
+                            <div class="flex justify-between items-center gap-1">
+                                <span class="text-[10px] text-purple-700 font-medium">
+                                    Form: {{ $master->dosage_form ?: 'Tablet' }}
+                                </span>
+                                <button
+                                    type="button"
+                                    wire:click="promoteAndAddToCart({{ $master->id }})"
+                                    class="text-[10px] text-purple-700 hover:text-purple-900 font-bold hover:underline cursor-pointer"
+                                >
+                                    Click to Import →
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            @endif
         </div>
     </div>
 

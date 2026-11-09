@@ -11,6 +11,9 @@ class CheckRole
     public function handle(Request $request, Closure $next, ...$roles): Response
     {
         if (!auth()->check()) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json(['message' => 'Unauthenticated.'], 401);
+            }
             return redirect('/login');
         }
 
@@ -27,6 +30,10 @@ class CheckRole
         // Admin always has access, or if user's role is explicitly allowed
         if ($user->role === 'admin' || in_array($user->role, $allowedRoles, true)) {
             return $next($request);
+        }
+
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json(['message' => 'Unauthorized: Insufficient role permissions.'], 403);
         }
 
         // Determine safe fallback destination based on user role to avoid infinite redirect loops

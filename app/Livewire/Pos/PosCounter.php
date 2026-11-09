@@ -171,7 +171,84 @@ class PosCounter extends Component
 
         $customers = Customer::all();
 
-        return view('livewire.pos.pos-counter', compact('medicines', 'customers'));
+        $masterMedicines = collect();
+        $searchTerm = trim($this->search);
+        if ($searchTerm !== '') {
+            $promotedNames = Medicine::query()
+                ->pluck('name')
+                ->map(fn($n) => strtolower(trim($n)))
+                ->flip()
+                ->all();
+
+            $like = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+
+            $masterMedicines = \App\Models\MedicineMaster::query()
+                ->where(function($q) use ($searchTerm, $like) {
+                    $q->where('medicine_name', $like, "%{$searchTerm}%")
+                      ->orWhere('brand_name', $like, "%{$searchTerm}%")
+                      ->orWhere('generic_name', $like, "%{$searchTerm}%");
+                })
+                ->orderBy('medicine_name')
+                ->limit(12)
+                ->get()
+                ->filter(function($m) use ($promotedNames) {
+                    return !isset($promotedNames[strtolower(trim($m->medicine_name))]);
+                });
+        }
+
+        return view('livewire.pos.pos-counter', compact('medicines', 'customers', 'masterMedicines'));
+    }
+
+    /**
+     * Promote a master formulary item to operational inventory and add it to cart.
+     */
+    public function promoteAndAddToCart(int $masterId)
+    {
+        $master = \App\Models\MedicineMaster::findOrFail($masterId);
+        $apiService = app(\App\Services\ExternalMedicineApiService::class);
+
+        // 1. Promote to operational inventory
+        $medicine = $apiService->promoteToOperational($master);
+
+        // 2. Ensure initial active batch exists so POS counter can sell it
+        if ($medicine->batches()->count() === 0) {
+            $defaultPrice = (float) ($medicine->unit_price ?: 10.00);
+            $costPrice = (float) ($medicine->purchase_price ?: round($defaultPrice * 0.8, 2));
+
+            $batch = \App\Models\MedicineBatch::create([
+                'medicine_id'                  => $medicine->id,
+                'batch_number'                 => 'INIT-' . strtoupper(substr(md5($medicine->id . time()), 0, 6)),
+                'quantity'                     => 100,
+                'purchase_price'               => $costPrice,
+                'selling_price'                => $defaultPrice,
+                'purchase_price_per_base_unit' => $costPrice,
+                'selling_price_per_base_unit'  => $defaultPrice,
+                'expiry_date'                  => now()->addYears(2)->toDateString(),
+                'status'                       => 'active',
+            ]);
+
+            app(\App\Services\StockLedgerService::class)->recordMovement(
+                medicineId: $medicine->id,
+                batchId: $batch->id,
+                type: 'OPENING_STOCK',
+                referenceId: null,
+                referenceType: null,
+                selectedUnitId: $medicine->base_unit_id,
+                quantity: 100,
+                conversionToBase: 1.0,
+                baseQuantity: 100,
+                userId: auth()->id() ?? 1,
+                notes: 'Auto-initialized opening stock on Master product import'
+            );
+
+            app(\App\Services\StockLedgerService::class)->syncInventory($medicine->id);
+        }
+
+        // 3. Clear search and add to cart
+        $this->search = '';
+        $this->addToCart($medicine->id);
+
+        session()->flash('message', "Imported \"{$medicine->name}\" from Master catalog and added to cart!");
     }
 
     /**

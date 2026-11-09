@@ -253,6 +253,58 @@ class PurchaseCreate extends Component
         ]);
     }
 
+    /**
+     * Promote a master formulary drug to operational inventory and select it in the purchase form.
+     */
+    public function promoteAndSelectMaster(int $masterId): void
+    {
+        $master = \App\Models\MedicineMaster::findOrFail($masterId);
+        $apiService = app(\App\Services\ExternalMedicineApiService::class);
+
+        $medicine = $apiService->promoteToOperational($master);
+
+        $this->selectMedicine($medicine->id);
+
+        session()->flash('message', "Imported \"{$medicine->name}\" from Master catalog and selected for purchase!");
+    }
+
+    /**
+     * Promote a master formulary drug and add it immediately to the purchase invoice items list.
+     */
+    public function promoteAndAddToPurchase(int $masterId): void
+    {
+        $master = \App\Models\MedicineMaster::findOrFail($masterId);
+        $apiService = app(\App\Services\ExternalMedicineApiService::class);
+
+        // 1. Promote to operational medicines table
+        $medicine = $apiService->promoteToOperational($master);
+
+        // 2. Select it into current item state
+        $this->selectMedicine($medicine->id);
+
+        // 3. Fill reasonable purchase defaults if empty
+        if (empty($this->batch_number)) {
+            $this->batch_number = 'BATCH-' . rand(1000, 9999);
+        }
+        if (empty($this->expiry_date) && $medicine->has_expiry) {
+            $this->expiry_date = now()->addYears(2)->toDateString();
+        }
+        if ((float) $this->purchase_price <= 0) {
+            $this->purchase_price = '10';
+        }
+        if ((float) $this->selling_price <= 0) {
+            $this->selling_price = '12';
+        }
+        if ((float) $this->quantity <= 0) {
+            $this->quantity = '10';
+        }
+
+        // 4. Add directly to purchase cart row
+        $this->addItem();
+
+        session()->flash('message', "Imported \"{$medicine->name}\" from Master catalog and added to invoice!");
+    }
+
     public function getSelectedMedicineProperty(): ?Medicine
     {
         if (empty($this->medicine_id)) {
@@ -596,6 +648,27 @@ class PurchaseCreate extends Component
         }
 
         $medicines = $medicineQuery->orderBy('name')->limit(40)->get();
+
+        $masterMedicines = collect();
+        if ($medicineSearch !== '') {
+            $promotedNames = Medicine::query()
+                ->pluck('name')
+                ->map(fn($n) => strtolower(trim($n)))
+                ->flip()
+                ->all();
+
+            $masterMedicines = \App\Models\MedicineMaster::query()
+                ->where(function ($q) use ($medicineSearch, $like) {
+                    $q->where('medicine_name', $like, "%{$medicineSearch}%")
+                      ->orWhere('brand_name', $like, "%{$medicineSearch}%")
+                      ->orWhere('generic_name', $like, "%{$medicineSearch}%");
+                })
+                ->orderBy('medicine_name')
+                ->limit(10)
+                ->get()
+                ->filter(fn($m) => !isset($promotedNames[strtolower(trim($m->medicine_name))]));
+        }
+
         $availableUnits = \App\Models\Unit::active()->orderBy('name')->get();
         $selectedMedicine = !empty($this->medicine_id)
             ? Medicine::with(['category', 'packagings.unit', 'baseUnit'])->find($this->medicine_id)
@@ -641,6 +714,7 @@ class PurchaseCreate extends Component
             compact(
                 'suppliers',
                 'medicines',
+                'masterMedicines',
                 'categories',
                 'medicineCategories',
                 'generalCategories',

@@ -2,9 +2,11 @@
 
 return [
 
-    'gemini' => [
-        'api_key' => env('GEMINI_API_KEY'),
-    ],
+      'medicine_api' => [
+       'base_url' => env('MEDICINE_API_BASE_URL', 'http://127.0.0.1:8001'),
+       'api_key'  => env('MEDICINE_API_KEY'),
+       'timeout'  => env('MEDICINE_API_TIMEOUT', 15),
+   ],
 
 
     /*

@@ -4,6 +4,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\MedicineSearchController;
 
 Route::get('/medicines/search', [MedicineSearchController::class, 'search']);
+Route::get('/medicines/master', [MedicineSearchController::class, 'masterSearch']);
+Route::get('/medicines/stats', [MedicineSearchController::class, 'stats']);
+
+Route::middleware(['web', 'auth', 'role:admin,pharmacist,cashier'])->group(function () {
+    Route::post('/medicines/promote', [MedicineSearchController::class, 'promote'])->name('api.medicines.promote');
+});
 Route::get('/setup', function (\Illuminate\Http\Request $request) {
     set_time_limit(120);
     $output = [];
