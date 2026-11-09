@@ -16,7 +16,7 @@ class MedicineMasterSeeder extends Seeder
         $service = app(ExternalMedicineApiService::class);
         $totalUpserted = 0;
 
-        $jsonFile = database_path('seeders/medicine_master_synced.json');
+        $jsonFile = __DIR__ . '/medicine_master_synced.json';
         if (file_exists($jsonFile)) {
             $syncedRows = json_decode(file_get_contents($jsonFile), true);
             if (is_array($syncedRows) && !empty($syncedRows)) {
@@ -69,6 +69,19 @@ class MedicineMasterSeeder extends Seeder
         }
 
         $items = [
+            [
+                'id' => '1',
+                'name' => 'Acogest',
+                'category' => 'General Medicines',
+                'generic' => 'Acotiamide',
+                'brand' => 'Acogest',
+                'strength' => '100mg',
+                'form' => 'Tablet',
+                'company' => 'Getz Pharma',
+                'reg_no' => '018001',
+                'pack' => '10 Tablets',
+                'unit' => 'Tablet',
+            ],
             [
                 'id' => '101',
                 'name' => 'CAC 1000 Plus',
@@ -450,7 +463,8 @@ class MedicineMasterSeeder extends Seeder
 
         $service = app(ExternalMedicineApiService::class);
         $count = $service->upsertChunk($items, 'verified');
+        $totalUpserted += $count;
 
-        $this->command->info("Seeded {$count} master medicines into medicine_master table.");
+        $this->command?->info("Seeded {$totalUpserted} master medicines into medicine_master table.");
     }
 }
