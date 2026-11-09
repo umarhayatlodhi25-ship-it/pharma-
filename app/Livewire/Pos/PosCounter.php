@@ -742,7 +742,8 @@ class PosCounter extends Component
                         });
                     }
 
-                    $availableStock = (float) $batchQuery->lockForUpdate()->sum('quantity');
+                    $availableBatches = $batchQuery->lockForUpdate()->get();
+                    $availableStock = (float) $availableBatches->sum('quantity');
 
                     if ($availableStock <= 0) {
                         $physicalStock = (float) MedicineBatch::where('medicine_id', $medicineId)->where('quantity', '>', 0)->sum('quantity');
