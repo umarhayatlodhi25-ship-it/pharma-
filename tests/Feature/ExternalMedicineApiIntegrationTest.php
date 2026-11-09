@@ -450,4 +450,29 @@ class ExternalMedicineApiIntegrationTest extends TestCase
             'name' => 'Purchase Master Drug',
         ]);
     }
+
+    public function test_purchase_create_can_promote_and_select_master_for_price_entry(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $master = MedicineMaster::create([
+            'medicine_id'         => 'ext_purch_77',
+            'medicine_name'       => 'Purchase Select Drug',
+            'dosage_form'         => 'Tablet',
+            'source'              => 'External_API',
+            'source_reference'    => 'purch_77',
+            'verification_status' => 'verified',
+        ]);
+
+        Livewire::actingAs($admin)
+            ->test(PurchaseCreate::class)
+            ->set('medicineSearch', 'Purchase Select')
+            ->call('promoteAndSelectMaster', $master->id)
+            ->assertSet('medicineSearch', 'Purchase Select Drug')
+            ->assertSet('purchase_price', '');
+
+        $this->assertDatabaseHas('medicines', [
+            'name' => 'Purchase Select Drug',
+        ]);
+    }
 }

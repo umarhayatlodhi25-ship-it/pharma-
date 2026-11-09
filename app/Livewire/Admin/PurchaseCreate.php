@@ -228,13 +228,13 @@ class PurchaseCreate extends Component
         if ($primaryPkg) {
             $this->packaging_id = (string) $primaryPkg->id;
             $this->purchase_unit = $primaryPkg->unit?->name ?? $primaryPkg->display_name ?? 'Unit';
-            $this->purchase_price = $primaryPkg->purchase_price !== null ? (string)$primaryPkg->purchase_price : ($medicine->purchase_price !== null ? (string)$medicine->purchase_price : '0');
-            $this->selling_price = $primaryPkg->sale_price !== null ? (string)$primaryPkg->sale_price : ($medicine->unit_price !== null ? (string)$medicine->unit_price : '0');
+            $this->purchase_price = ($primaryPkg->purchase_price !== null && (float)$primaryPkg->purchase_price > 0) ? (string)$primaryPkg->purchase_price : (($medicine->purchase_price !== null && (float)$medicine->purchase_price > 0) ? (string)$medicine->purchase_price : '');
+            $this->selling_price = ($primaryPkg->sale_price !== null && (float)$primaryPkg->sale_price > 0) ? (string)$primaryPkg->sale_price : (($medicine->unit_price !== null && (float)$medicine->unit_price > 0) ? (string)$medicine->unit_price : '');
         } else {
             $this->packaging_id = '';
             $this->purchase_unit = $medicine->base_unit ?: ($medicine->is_general ? 'Piece' : 'Tablet');
-            $this->purchase_price = $medicine->purchase_price !== null ? (string)$medicine->purchase_price : '0';
-            $this->selling_price = $medicine->unit_price !== null ? (string)$medicine->unit_price : '0';
+            $this->purchase_price = ($medicine->purchase_price !== null && (float)$medicine->purchase_price > 0) ? (string)$medicine->purchase_price : '';
+            $this->selling_price = ($medicine->unit_price !== null && (float)$medicine->unit_price > 0) ? (string)$medicine->unit_price : '';
         }
 
         if ($medicine->has_expiry) {
@@ -265,7 +265,7 @@ class PurchaseCreate extends Component
 
         $this->selectMedicine($medicine->id);
 
-        session()->flash('message', "Imported \"{$medicine->name}\" from Master catalog and selected for purchase!");
+        session()->flash('message', "Imported \"{$medicine->name}\" from Master catalog. Please enter Purchase Price and Quantity, then click + Add.");
     }
 
     /**
