@@ -679,7 +679,7 @@
                             type="number"
                             min="0"
                             step="0.01"
-                            wire:model.live="purchase_price"
+                            wire:model.live.debounce.400ms="purchase_price"
                             class="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400"
                             placeholder="e.g. 8"
                         >
@@ -695,7 +695,7 @@
                             type="number"
                             min="0"
                             step="0.01"
-                            wire:model.live="selling_price"
+                            wire:model.live.debounce.400ms="selling_price"
                             class="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400"
                             placeholder="e.g. 12"
                         >
@@ -1006,17 +1006,31 @@
 
                                     <div class="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label class="block text-[11px] text-slate-600 font-medium mb-0.5">Purchase Price</label>
+                                            <div class="flex items-center justify-between mb-0.5">
+                                                <label class="block text-[11px] text-slate-600 font-medium">Purchase Price</label>
+                                                @if($manual_base_purchase)
+                                                    <button type="button" wire:click="resetPackagingPrice('base_purchase')" class="text-[10px] text-emerald-700 hover:text-emerald-900 underline transition cursor-pointer" title="Reset to auto">Reset to auto</button>
+                                                @elseif(!empty($base_unit_purchase_price))
+                                                    <span class="text-[9px] font-semibold text-emerald-700 bg-emerald-100/70 border border-emerald-200 px-1 py-0.2 rounded">auto</span>
+                                                @endif
+                                            </div>
                                             <div class="relative">
                                                 <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">Rs.</span>
-                                                <input type="number" min="0" step="0.01" wire:model.live="base_unit_purchase_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white" placeholder="{{ $purchase_price ?: '8' }}">
+                                                <input type="number" min="0" step="0.01" wire:model.live.debounce.400ms="base_unit_purchase_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white" placeholder="{{ $purchase_price ?: '8' }}">
                                             </div>
                                         </div>
                                         <div>
-                                            <label class="block text-[11px] text-slate-600 font-medium mb-0.5">Sale Price</label>
+                                            <div class="flex items-center justify-between mb-0.5">
+                                                <label class="block text-[11px] text-slate-600 font-medium">Sale Price</label>
+                                                @if($manual_base_selling)
+                                                    <button type="button" wire:click="resetPackagingPrice('base_selling')" class="text-[10px] text-emerald-700 hover:text-emerald-900 underline transition cursor-pointer" title="Reset to auto">Reset to auto</button>
+                                                @elseif(!empty($base_unit_selling_price))
+                                                    <span class="text-[9px] font-semibold text-emerald-700 bg-emerald-100/70 border border-emerald-200 px-1 py-0.2 rounded">auto</span>
+                                                @endif
+                                            </div>
                                             <div class="relative">
                                                 <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">Rs.</span>
-                                                <input type="number" min="0" step="0.01" wire:model.live="base_unit_selling_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white font-bold text-emerald-700" placeholder="{{ $selling_price ?: '12' }}">
+                                                <input type="number" min="0" step="0.01" wire:model.live.debounce.400ms="base_unit_selling_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white font-bold text-emerald-700" placeholder="{{ $selling_price ?: '12' }}">
                                             </div>
                                         </div>
                                     </div>
@@ -1232,24 +1246,38 @@
                                             1 {{ $secondary_unit ?: 'Strip' }} contains
                                         </label>
                                         <div class="flex items-center gap-2">
-                                            <input type="number" min="1" wire:model.live="secondary_unit_to_base" class="w-24 h-8 px-2.5 border border-blue-300 rounded-md text-sm bg-white font-bold text-blue-900">
+                                            <input type="number" min="1" wire:model.live.debounce.400ms="secondary_unit_to_base" class="w-24 h-8 px-2.5 border border-blue-300 rounded-md text-sm bg-white font-bold text-blue-900">
                                             <span class="text-xs font-semibold text-slate-700">{{ $base_unit ?: 'Tablets' }}</span>
                                         </div>
                                     </div>
 
                                     <div class="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label class="block text-[11px] text-slate-600 font-medium mb-0.5">Purchase Price</label>
+                                            <div class="flex items-center justify-between mb-0.5">
+                                                <label class="block text-[11px] text-slate-600 font-medium">Purchase Price</label>
+                                                @if($manual_secondary_purchase)
+                                                    <button type="button" wire:click="resetPackagingPrice('secondary_purchase')" class="text-[10px] text-blue-700 hover:text-blue-900 underline transition cursor-pointer" title="Reset to auto">Reset to auto</button>
+                                                @elseif(!empty($secondary_unit_purchase_price))
+                                                    <span class="text-[9px] font-semibold text-emerald-700 bg-emerald-100/70 border border-emerald-200 px-1 py-0.2 rounded">auto</span>
+                                                @endif
+                                            </div>
                                             <div class="relative">
                                                 <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">Rs.</span>
-                                                <input type="number" min="0" step="0.01" wire:model="secondary_unit_purchase_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white" placeholder="e.g. 80">
+                                                <input type="number" min="0" step="0.01" wire:model.live.debounce.400ms="secondary_unit_purchase_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white" placeholder="e.g. 80">
                                             </div>
                                         </div>
                                         <div>
-                                            <label class="block text-[11px] text-slate-600 font-medium mb-0.5">Sale Price</label>
+                                            <div class="flex items-center justify-between mb-0.5">
+                                                <label class="block text-[11px] text-slate-600 font-medium">Sale Price</label>
+                                                @if($manual_secondary_selling)
+                                                    <button type="button" wire:click="resetPackagingPrice('secondary_selling')" class="text-[10px] text-blue-700 hover:text-blue-900 underline transition cursor-pointer" title="Reset to auto">Reset to auto</button>
+                                                @elseif(!empty($secondary_unit_selling_price))
+                                                    <span class="text-[9px] font-semibold text-blue-700 bg-blue-100/70 border border-blue-200 px-1 py-0.2 rounded">auto</span>
+                                                @endif
+                                            </div>
                                             <div class="relative">
                                                 <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">Rs.</span>
-                                                <input type="number" min="0" step="0.01" wire:model="secondary_unit_selling_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white font-bold text-blue-700" placeholder="e.g. 110">
+                                                <input type="number" min="0" step="0.01" wire:model.live.debounce.400ms="secondary_unit_selling_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white font-bold text-blue-700" placeholder="e.g. 110">
                                             </div>
                                         </div>
                                     </div>
@@ -1462,24 +1490,38 @@
                                             1 {{ $primary_unit ?: 'Pack' }} contains
                                         </label>
                                         <div class="flex items-center gap-2">
-                                            <input type="number" min="1" wire:model.live="primary_unit_to_secondary" class="w-24 h-8 px-2.5 border border-indigo-300 rounded-md text-sm bg-white font-bold text-indigo-900">
+                                            <input type="number" min="1" wire:model.live.debounce.400ms="primary_unit_to_secondary" class="w-24 h-8 px-2.5 border border-indigo-300 rounded-md text-sm bg-white font-bold text-indigo-900">
                                             <span class="text-xs font-semibold text-slate-700">{{ $secondary_unit ?: ($base_unit ?: 'Units') }}</span>
                                         </div>
                                     </div>
 
                                     <div class="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label class="block text-[11px] text-slate-600 font-medium mb-0.5">Purchase Price</label>
+                                            <div class="flex items-center justify-between mb-0.5">
+                                                <label class="block text-[11px] text-slate-600 font-medium">Purchase Price</label>
+                                                @if($manual_primary_purchase)
+                                                    <button type="button" wire:click="resetPackagingPrice('primary_purchase')" class="text-[10px] text-indigo-700 hover:text-indigo-900 underline transition cursor-pointer" title="Reset to auto">Reset to auto</button>
+                                                @elseif(!empty($primary_unit_purchase_price))
+                                                    <span class="text-[9px] font-semibold text-emerald-700 bg-emerald-100/70 border border-emerald-200 px-1 py-0.2 rounded">auto</span>
+                                                @endif
+                                            </div>
                                             <div class="relative">
                                                 <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">Rs.</span>
-                                                <input type="number" min="0" step="0.01" wire:model="primary_unit_purchase_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white" placeholder="e.g. 800">
+                                                <input type="number" min="0" step="0.01" wire:model.live.debounce.400ms="primary_unit_purchase_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white" placeholder="e.g. 800">
                                             </div>
                                         </div>
                                         <div>
-                                            <label class="block text-[11px] text-slate-600 font-medium mb-0.5">Sale Price</label>
+                                            <div class="flex items-center justify-between mb-0.5">
+                                                <label class="block text-[11px] text-slate-600 font-medium">Sale Price</label>
+                                                @if($manual_primary_selling)
+                                                    <button type="button" wire:click="resetPackagingPrice('primary_selling')" class="text-[10px] text-indigo-700 hover:text-indigo-900 underline transition cursor-pointer" title="Reset to auto">Reset to auto</button>
+                                                @elseif(!empty($primary_unit_selling_price))
+                                                    <span class="text-[9px] font-semibold text-indigo-700 bg-indigo-100/70 border border-indigo-200 px-1 py-0.2 rounded">auto</span>
+                                                @endif
+                                            </div>
                                             <div class="relative">
                                                 <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">Rs.</span>
-                                                <input type="number" min="0" step="0.01" wire:model="primary_unit_selling_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white font-bold text-indigo-700" placeholder="e.g. 1000">
+                                                <input type="number" min="0" step="0.01" wire:model.live.debounce.400ms="primary_unit_selling_price" class="w-full h-8 pl-8 pr-2 border border-slate-300 rounded-md text-xs bg-white font-bold text-indigo-700" placeholder="e.g. 1000">
                                             </div>
                                         </div>
                                     </div>

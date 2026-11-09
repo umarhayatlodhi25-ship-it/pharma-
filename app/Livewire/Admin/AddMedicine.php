@@ -69,6 +69,14 @@ class AddMedicine extends Component
     public string $secondary_unit_barcode = '';
     public string $base_unit_barcode = '';
 
+    // Manual Edit Tracking for Packaging Prices
+    public bool $manual_base_purchase = false;
+    public bool $manual_base_selling = false;
+    public bool $manual_secondary_purchase = false;
+    public bool $manual_secondary_selling = false;
+    public bool $manual_primary_purchase = false;
+    public bool $manual_primary_selling = false;
+
     // Data Table Filters & State
     public string $search = '';
     public string $productTypeFilter = 'all';
@@ -600,8 +608,199 @@ class AddMedicine extends Component
     public function getCalculatedPrimaryConversionProperty(): int
     {
         $p2s = max(1, (int) ($this->primary_unit_to_secondary ?: 1));
-        $s2b = max(1, (int) ($this->secondary_unit_to_base ?: 1));
+        $s2b = (!empty($this->secondary_unit) && $this->product_type === 'medicine')
+            ? max(1, (int) ($this->secondary_unit_to_base ?: 1))
+            : 1;
         return $p2s * $s2b;
+    }
+
+    public function updatedPurchasePrice(): void
+    {
+        $this->autoCalculatePackagingPrices();
+    }
+
+    public function updatedSellingPrice(): void
+    {
+        $this->autoCalculatePackagingPrices();
+    }
+
+    public function updatedSecondaryUnit(): void
+    {
+        $this->autoCalculatePackagingPrices();
+    }
+
+    public function updatedSecondaryUnitToBase(): void
+    {
+        $this->autoCalculatePackagingPrices();
+    }
+
+    public function updatedPrimaryUnit(): void
+    {
+        $this->autoCalculatePackagingPrices();
+    }
+
+    public function updatedPrimaryUnitToSecondary(): void
+    {
+        $this->autoCalculatePackagingPrices();
+    }
+
+    public function updatedBaseUnitPurchasePrice($value): void
+    {
+        if ($value === '' || $value === null) {
+            $this->manual_base_purchase = false;
+            $this->autoCalculatePackagingPrices();
+        } else {
+            $this->manual_base_purchase = true;
+        }
+    }
+
+    public function updatedBaseUnitSellingPrice($value): void
+    {
+        if ($value === '' || $value === null) {
+            $this->manual_base_selling = false;
+            $this->autoCalculatePackagingPrices();
+        } else {
+            $this->manual_base_selling = true;
+        }
+    }
+
+    public function updatedSecondaryUnitPurchasePrice($value): void
+    {
+        if ($value === '' || $value === null) {
+            $this->manual_secondary_purchase = false;
+            $this->autoCalculatePackagingPrices();
+        } else {
+            $this->manual_secondary_purchase = true;
+        }
+    }
+
+    public function updatedSecondaryUnitSellingPrice($value): void
+    {
+        if ($value === '' || $value === null) {
+            $this->manual_secondary_selling = false;
+            $this->autoCalculatePackagingPrices();
+        } else {
+            $this->manual_secondary_selling = true;
+        }
+    }
+
+    public function updatedPrimaryUnitPurchasePrice($value): void
+    {
+        if ($value === '' || $value === null) {
+            $this->manual_primary_purchase = false;
+            $this->autoCalculatePackagingPrices();
+        } else {
+            $this->manual_primary_purchase = true;
+        }
+    }
+
+    public function updatedPrimaryUnitSellingPrice($value): void
+    {
+        if ($value === '' || $value === null) {
+            $this->manual_primary_selling = false;
+            $this->autoCalculatePackagingPrices();
+        } else {
+            $this->manual_primary_selling = true;
+        }
+    }
+
+    public function resetPackagingPrice(string $field): void
+    {
+        switch ($field) {
+            case 'base_purchase':
+                $this->manual_base_purchase = false;
+                break;
+            case 'base_selling':
+                $this->manual_base_selling = false;
+                break;
+            case 'secondary_purchase':
+                $this->manual_secondary_purchase = false;
+                break;
+            case 'secondary_selling':
+                $this->manual_secondary_selling = false;
+                break;
+            case 'primary_purchase':
+                $this->manual_primary_purchase = false;
+                break;
+            case 'primary_selling':
+                $this->manual_primary_selling = false;
+                break;
+        }
+        $this->autoCalculatePackagingPrices();
+    }
+
+    public function autoCalculatePackagingPrices(): void
+    {
+        $hasBasePurchase = is_numeric($this->purchase_price) && (float)$this->purchase_price >= 0;
+        $hasBaseSelling = is_numeric($this->selling_price) && (float)$this->selling_price >= 0;
+
+        $basePurchase = $hasBasePurchase ? (float)$this->purchase_price : null;
+        $baseSelling = $hasBaseSelling ? (float)$this->selling_price : null;
+
+        // 1. Base Unit Card
+        if (!$this->manual_base_purchase) {
+            $this->base_unit_purchase_price = $hasBasePurchase ? number_format($basePurchase, 2, '.', '') : '';
+        }
+        if (!$this->manual_base_selling) {
+            $this->base_unit_selling_price = $hasBaseSelling ? number_format($baseSelling, 2, '.', '') : '';
+        }
+
+        // 2. Secondary Unit Card
+        $isSecondaryFilled = !empty(trim((string)$this->secondary_unit)) 
+            && is_numeric($this->secondary_unit_to_base) 
+            && (float)$this->secondary_unit_to_base > 0;
+
+        $secMultiplier = $isSecondaryFilled ? (float)$this->secondary_unit_to_base : 0;
+
+        if ($isSecondaryFilled) {
+            if (!$this->manual_secondary_purchase) {
+                $this->secondary_unit_purchase_price = $hasBasePurchase 
+                    ? number_format($basePurchase * $secMultiplier, 2, '.', '') 
+                    : '';
+            }
+            if (!$this->manual_secondary_selling) {
+                $this->secondary_unit_selling_price = $hasBaseSelling 
+                    ? number_format($baseSelling * $secMultiplier, 2, '.', '') 
+                    : '';
+            }
+        } else {
+            if (!$this->manual_secondary_purchase) {
+                $this->secondary_unit_purchase_price = '';
+            }
+            if (!$this->manual_secondary_selling) {
+                $this->secondary_unit_selling_price = '';
+            }
+        }
+
+        // 3. Primary Unit Card
+        $isPrimaryFilled = !empty(trim((string)$this->primary_unit)) 
+            && is_numeric($this->primary_unit_to_secondary) 
+            && (float)$this->primary_unit_to_secondary > 0;
+
+        $primMultiplier = $isPrimaryFilled ? (float)$this->primary_unit_to_secondary : 0;
+
+        if ($isPrimaryFilled) {
+            $effectiveSecMultiplier = $isSecondaryFilled ? $secMultiplier : 1;
+            $totalPrimMultiplier = $primMultiplier * $effectiveSecMultiplier;
+
+            if (!$this->manual_primary_purchase) {
+                $this->primary_unit_purchase_price = $hasBasePurchase 
+                    ? number_format($basePurchase * $totalPrimMultiplier, 2, '.', '') 
+                    : '';
+            }
+            if (!$this->manual_primary_selling) {
+                $this->primary_unit_selling_price = $hasBaseSelling 
+                    ? number_format($baseSelling * $totalPrimMultiplier, 2, '.', '') 
+                    : '';
+            }
+        } else {
+            if (!$this->manual_primary_purchase) {
+                $this->primary_unit_purchase_price = '';
+            }
+            if (!$this->manual_primary_selling) {
+                $this->primary_unit_selling_price = '';
+            }
+        }
     }
 
     public function confirmSaveNewProduct(): void
@@ -878,6 +1077,9 @@ class AddMedicine extends Component
             'primary_unit_purchase_price', 'secondary_unit_purchase_price', 'base_unit_purchase_price',
             'primary_unit_selling_price', 'secondary_unit_selling_price', 'base_unit_selling_price',
             'primary_unit_barcode', 'secondary_unit_barcode', 'base_unit_barcode',
+            'manual_base_purchase', 'manual_base_selling',
+            'manual_secondary_purchase', 'manual_secondary_selling',
+            'manual_primary_purchase', 'manual_primary_selling',
         ]);
 
         $this->batch_number = 'BAT-' . strtoupper(Str::random(6));
