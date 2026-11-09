@@ -13,75 +13,19 @@ class MedicineMasterSeeder extends Seeder
      */
     public function run(): void
     {
-        $service = app(ExternalMedicineApiService::class);
-        $totalUpserted = 0;
-
-        $jsonFile = __DIR__ . '/medicine_master_synced.json';
+        $jsonFile = __DIR__ . '/medicine_master_records.json';
         if (file_exists($jsonFile)) {
-            $syncedRows = json_decode(file_get_contents($jsonFile), true);
-            if (is_array($syncedRows) && !empty($syncedRows)) {
-                $now = now();
-                foreach (array_chunk($syncedRows, 50) as $chunk) {
-                    $insertData = [];
-                    foreach ($chunk as $r) {
-                        $insertData[] = [
-                            'medicine_id'         => $r['medicine_id'],
-                            'medicine_name'       => $r['medicine_name'],
-                            'brand_name'          => $r['brand_name'] ?? null,
-                            'generic_name'        => $r['generic_name'] ?? null,
-                            'composition'         => $r['composition'] ?? null,
-                            'strength'            => $r['strength'] ?? null,
-                            'dosage_form'         => $r['dosage_form'] ?? null,
-                            'category'            => $r['category'] ?? null,
-                            'manufacturer'        => $r['manufacturer'] ?? null,
-                            'registration_number' => $r['registration_number'] ?? null,
-                            'pack_size'           => $r['pack_size'] ?? null,
-                            'stock_unit'          => $r['stock_unit'] ?? null,
-                            'source'              => $r['source'] ?? 'External_API',
-                            'source_reference'    => $r['source_reference'] ?? $r['medicine_id'],
-                            'verification_status' => $r['verification_status'] ?? 'verified',
-                            'created_at'          => $now,
-                            'updated_at'          => $now,
-                        ];
-                    }
-                    \Illuminate\Support\Facades\DB::table('medicine_master')->upsert(
-                        $insertData,
-                        ['medicine_id'],
-                        [
-                            'medicine_name',
-                            'brand_name',
-                            'generic_name',
-                            'composition',
-                            'strength',
-                            'dosage_form',
-                            'category',
-                            'manufacturer',
-                            'registration_number',
-                            'pack_size',
-                            'stock_unit',
-                            'verification_status',
-                            'updated_at',
-                        ]
-                    );
-                    $totalUpserted += count($insertData);
+            $records = json_decode(file_get_contents($jsonFile), true);
+            if (!empty($records) && is_array($records)) {
+                $service = app(ExternalMedicineApiService::class);
+                $count = $service->upsertChunk($records, 'verified');
+                if ($this->command) {
+                    $this->command->info("Seeded {$count} master medicines into medicine_master table from JSON dump.");
                 }
+                return;
             }
         }
-
         $items = [
-            [
-                'id' => '1',
-                'name' => 'Acogest',
-                'category' => 'General Medicines',
-                'generic' => 'Acotiamide',
-                'brand' => 'Acogest',
-                'strength' => '100mg',
-                'form' => 'Tablet',
-                'company' => 'Getz Pharma',
-                'reg_no' => '018001',
-                'pack' => '10 Tablets',
-                'unit' => 'Tablet',
-            ],
             [
                 'id' => '101',
                 'name' => 'CAC 1000 Plus',
@@ -463,8 +407,7 @@ class MedicineMasterSeeder extends Seeder
 
         $service = app(ExternalMedicineApiService::class);
         $count = $service->upsertChunk($items, 'verified');
-        $totalUpserted += $count;
 
-        $this->command?->info("Seeded {$totalUpserted} master medicines into medicine_master table.");
+        $this->command->info("Seeded {$count} master medicines into medicine_master table.");
     }
 }

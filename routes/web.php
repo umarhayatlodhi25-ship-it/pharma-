@@ -123,18 +123,22 @@ Route::get('/run-migrations-live', function () {
             config(['database.default' => 'pgsql']);
             \Illuminate\Support\Facades\Artisan::call('migrate', ['--database' => 'pgsql', '--force' => true]);
             try {
-                \Illuminate\Support\Facades\Artisan::call('db:seed', [
-                    '--class' => 'Database\\Seeders\\MedicineMasterSeeder',
-                    '--force' => true,
-                ]);
+                if (\App\Models\MedicineMaster::where('medicine_name', 'like', '%Acogest%')->count() === 0) {
+                    \Illuminate\Support\Facades\Artisan::call('db:seed', [
+                        '--class' => 'Database\\Seeders\\MedicineMasterSeeder',
+                        '--force' => true,
+                    ]);
+                }
             } catch (\Throwable $e) {}
         } else {
             \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
             try {
-                \Illuminate\Support\Facades\Artisan::call('db:seed', [
-                    '--class' => 'Database\\Seeders\\MedicineMasterSeeder',
-                    '--force' => true,
-                ]);
+                if (\App\Models\MedicineMaster::where('medicine_name', 'like', '%Acogest%')->count() === 0) {
+                    \Illuminate\Support\Facades\Artisan::call('db:seed', [
+                        '--class' => 'Database\\Seeders\\MedicineMasterSeeder',
+                        '--force' => true,
+                    ]);
+                }
             } catch (\Throwable $e) {}
         }
         $migrateOutput = \Illuminate\Support\Facades\Artisan::output();

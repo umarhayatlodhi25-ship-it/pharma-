@@ -127,7 +127,7 @@ class ExternalMedicineApiService
 
         // Generate clean unique medicine_id if none provided
         $medId = !empty($extId)
-            ? 'ext_' . $extId
+            ? (str_starts_with($extId, 'ext_') ? $extId : 'ext_' . $extId)
             : 'ext_' . substr(md5(strtolower($name . '|' . $generic . '|' . $strength)), 0, 16);
 
         return [
