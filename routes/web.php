@@ -122,8 +122,24 @@ Route::get('/run-migrations-live', function () {
 
             config(['database.default' => 'pgsql']);
             \Illuminate\Support\Facades\Artisan::call('migrate', ['--database' => 'pgsql', '--force' => true]);
+            try {
+                if (\App\Models\MedicineMaster::count() === 0) {
+                    \Illuminate\Support\Facades\Artisan::call('db:seed', [
+                        '--class' => 'Database\\Seeders\\MedicineMasterSeeder',
+                        '--force' => true,
+                    ]);
+                }
+            } catch (\Throwable $e) {}
         } else {
             \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+            try {
+                if (\App\Models\MedicineMaster::count() === 0) {
+                    \Illuminate\Support\Facades\Artisan::call('db:seed', [
+                        '--class' => 'Database\\Seeders\\MedicineMasterSeeder',
+                        '--force' => true,
+                    ]);
+                }
+            } catch (\Throwable $e) {}
         }
         $migrateOutput = \Illuminate\Support\Facades\Artisan::output();
 
@@ -662,5 +678,29 @@ Route::get('/seed-medicines', function () {
         return "100+ Medicines Seeded Successfully! <a href='/medicines'>Go Back</a>";
     } catch (\Exception $e) {
         return "Error seeding: " . $e->getMessage();
+    }
+});
+
+Route::get('/seed-master-medicines', function () {
+    try {
+        $dbConfig = config('database.connections.pgsql');
+        $hasPgsql = (!empty($dbConfig['url']) || !empty($dbConfig['host']));
+        if ($hasPgsql) {
+            config(['database.default' => 'pgsql']);
+        }
+        \Illuminate\Support\Facades\Artisan::call('db:seed', [
+            '--class' => 'Database\\Seeders\\MedicineMasterSeeder',
+            '--force' => true,
+        ]);
+        return response()->json([
+            'status' => 'success',
+            'output' => trim(\Illuminate\Support\Facades\Artisan::output()),
+            'master_count' => \App\Models\MedicineMaster::count(),
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage(),
+        ], 500);
     }
 });

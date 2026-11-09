@@ -174,26 +174,32 @@ class PosCounter extends Component
         $masterMedicines = collect();
         $searchTerm = trim($this->search);
         if ($searchTerm !== '') {
-            $promotedNames = Medicine::query()
-                ->pluck('name')
-                ->map(fn($n) => strtolower(trim($n)))
-                ->flip()
-                ->all();
+            try {
+                if (\Illuminate\Support\Facades\Schema::hasTable('medicine_master')) {
+                    $promotedNames = Medicine::query()
+                        ->pluck('name')
+                        ->map(fn($n) => strtolower(trim($n)))
+                        ->flip()
+                        ->all();
 
-            $like = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+                    $like = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
 
-            $masterMedicines = \App\Models\MedicineMaster::query()
-                ->where(function($q) use ($searchTerm, $like) {
-                    $q->where('medicine_name', $like, "%{$searchTerm}%")
-                      ->orWhere('brand_name', $like, "%{$searchTerm}%")
-                      ->orWhere('generic_name', $like, "%{$searchTerm}%");
-                })
-                ->orderBy('medicine_name')
-                ->limit(12)
-                ->get()
-                ->filter(function($m) use ($promotedNames) {
-                    return !isset($promotedNames[strtolower(trim($m->medicine_name))]);
-                });
+                    $masterMedicines = \App\Models\MedicineMaster::query()
+                        ->where(function($q) use ($searchTerm, $like) {
+                            $q->where('medicine_name', $like, "%{$searchTerm}%")
+                              ->orWhere('brand_name', $like, "%{$searchTerm}%")
+                              ->orWhere('generic_name', $like, "%{$searchTerm}%");
+                        })
+                        ->orderBy('medicine_name')
+                        ->limit(12)
+                        ->get()
+                        ->filter(function($m) use ($promotedNames) {
+                            return !isset($promotedNames[strtolower(trim($m->medicine_name))]);
+                        });
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Master search in PosCounter skipped: " . $e->getMessage());
+            }
         }
 
         return view('livewire.pos.pos-counter', compact('medicines', 'customers', 'masterMedicines'));

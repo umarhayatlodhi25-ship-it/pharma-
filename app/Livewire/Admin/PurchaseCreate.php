@@ -651,22 +651,28 @@ class PurchaseCreate extends Component
 
         $masterMedicines = collect();
         if ($medicineSearch !== '') {
-            $promotedNames = Medicine::query()
-                ->pluck('name')
-                ->map(fn($n) => strtolower(trim($n)))
-                ->flip()
-                ->all();
+            try {
+                if (\Illuminate\Support\Facades\Schema::hasTable('medicine_master')) {
+                    $promotedNames = Medicine::query()
+                        ->pluck('name')
+                        ->map(fn($n) => strtolower(trim($n)))
+                        ->flip()
+                        ->all();
 
-            $masterMedicines = \App\Models\MedicineMaster::query()
-                ->where(function ($q) use ($medicineSearch, $like) {
-                    $q->where('medicine_name', $like, "%{$medicineSearch}%")
-                      ->orWhere('brand_name', $like, "%{$medicineSearch}%")
-                      ->orWhere('generic_name', $like, "%{$medicineSearch}%");
-                })
-                ->orderBy('medicine_name')
-                ->limit(10)
-                ->get()
-                ->filter(fn($m) => !isset($promotedNames[strtolower(trim($m->medicine_name))]));
+                    $masterMedicines = \App\Models\MedicineMaster::query()
+                        ->where(function ($q) use ($medicineSearch, $like) {
+                            $q->where('medicine_name', $like, "%{$medicineSearch}%")
+                              ->orWhere('brand_name', $like, "%{$medicineSearch}%")
+                              ->orWhere('generic_name', $like, "%{$medicineSearch}%");
+                        })
+                        ->orderBy('medicine_name')
+                        ->limit(10)
+                        ->get()
+                        ->filter(fn($m) => !isset($promotedNames[strtolower(trim($m->medicine_name))]));
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Master search in PurchaseCreate skipped: " . $e->getMessage());
+            }
         }
 
         $availableUnits = \App\Models\Unit::active()->orderBy('name')->get();
