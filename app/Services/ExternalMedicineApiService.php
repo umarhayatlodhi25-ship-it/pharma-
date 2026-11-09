@@ -352,10 +352,28 @@ class ExternalMedicineApiService
             $slug = Str::slug($name);
         }
 
-        $cat = Category::firstOrCreate(
-            ['slug' => $slug],
-            ['name' => $name, 'product_type' => 'medicine']
-        );
+        // 1. Check if category exists by name OR by slug
+        $cat = Category::where('name', $name)
+            ->orWhere('slug', $slug)
+            ->orWhereRaw('LOWER(name) = ?', [strtolower($name)])
+            ->first();
+
+        if ($cat) {
+            return (int) $cat->id;
+        }
+
+        // 2. Ensure unique slug if generating new
+        $uniqueSlug = $slug;
+        $counter = 1;
+        while (Category::where('slug', $uniqueSlug)->exists()) {
+            $uniqueSlug = $slug . '-' . $counter++;
+        }
+
+        $cat = Category::create([
+            'name'         => $name,
+            'slug'         => $uniqueSlug,
+            'product_type' => 'medicine',
+        ]);
 
         return (int) $cat->id;
     }
@@ -367,29 +385,52 @@ class ExternalMedicineApiService
     {
         $raw = strtolower(trim(($dosageForm ?? '') . ' ' . ($stockUnit ?? '')));
 
+        $unitId = 'tablet';
+        $name = 'Tablet';
+        $symbol = 'Tab';
+
         if (str_contains($raw, 'syrup') || str_contains($raw, 'suspension') || str_contains($raw, 'bottle')) {
-            return Unit::firstOrCreate(['unit_id' => 'bottle'], ['name' => 'Bottle', 'symbol' => 'Btl']);
-        }
-        if (str_contains($raw, 'ampoule')) {
-            return Unit::firstOrCreate(['unit_id' => 'ampoule'], ['name' => 'Ampoule', 'symbol' => 'Amp']);
-        }
-        if (str_contains($raw, 'vial') || str_contains($raw, 'inject')) {
-            return Unit::firstOrCreate(['unit_id' => 'vial'], ['name' => 'Vial', 'symbol' => 'Vil']);
-        }
-        if (str_contains($raw, 'capsule') || str_contains($raw, 'cap')) {
-            return Unit::firstOrCreate(['unit_id' => 'capsule'], ['name' => 'Capsule', 'symbol' => 'Cap']);
-        }
-        if (str_contains($raw, 'tube') || str_contains($raw, 'ointment') || str_contains($raw, 'cream')) {
-            return Unit::firstOrCreate(['unit_id' => 'tube'], ['name' => 'Tube', 'symbol' => 'Tub']);
-        }
-        if (str_contains($raw, 'sachet')) {
-            return Unit::firstOrCreate(['unit_id' => 'sachet'], ['name' => 'Sachet', 'symbol' => 'Sch']);
-        }
-        if (str_contains($raw, 'drop')) {
-            return Unit::firstOrCreate(['unit_id' => 'drop'], ['name' => 'Drop', 'symbol' => 'Drp']);
+            $unitId = 'bottle';
+            $name = 'Bottle';
+            $symbol = 'Btl';
+        } elseif (str_contains($raw, 'ampoule')) {
+            $unitId = 'ampoule';
+            $name = 'Ampoule';
+            $symbol = 'Amp';
+        } elseif (str_contains($raw, 'vial') || str_contains($raw, 'inject')) {
+            $unitId = 'vial';
+            $name = 'Vial';
+            $symbol = 'Vil';
+        } elseif (str_contains($raw, 'capsule') || str_contains($raw, 'cap')) {
+            $unitId = 'capsule';
+            $name = 'Capsule';
+            $symbol = 'Cap';
+        } elseif (str_contains($raw, 'tube') || str_contains($raw, 'ointment') || str_contains($raw, 'cream')) {
+            $unitId = 'tube';
+            $name = 'Tube';
+            $symbol = 'Tub';
+        } elseif (str_contains($raw, 'sachet')) {
+            $unitId = 'sachet';
+            $name = 'Sachet';
+            $symbol = 'Sch';
+        } elseif (str_contains($raw, 'drop')) {
+            $unitId = 'drop';
+            $name = 'Drop';
+            $symbol = 'Drp';
         }
 
-        // Default to Tablet
-        return Unit::firstOrCreate(['unit_id' => 'tablet'], ['name' => 'Tablet', 'symbol' => 'Tab']);
+        $unit = Unit::where('unit_id', $unitId)
+            ->orWhereRaw('LOWER(name) = ?', [strtolower($name)])
+            ->first();
+
+        if ($unit) {
+            return $unit;
+        }
+
+        return Unit::create([
+            'unit_id' => $unitId,
+            'name'    => $name,
+            'symbol'  => $symbol,
+        ]);
     }
 }
