@@ -475,4 +475,34 @@ class ExternalMedicineApiIntegrationTest extends TestCase
             'name' => 'Purchase Select Drug',
         ]);
     }
+
+    public function test_add_medicine_screen_searches_and_auto_fills_from_master_formulary(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $master = MedicineMaster::create([
+            'medicine_id'         => 'ext_add_med_99',
+            'medicine_name'       => 'Panadol CF Caplet',
+            'brand_name'          => 'Panadol',
+            'generic_name'        => 'Paracetamol + Pseudoephedrine',
+            'dosage_form'         => 'Tablet',
+            'category'            => 'Pain Relief & Analgesics',
+            'manufacturer'        => 'GSK Pakistan',
+            'source'              => 'External_API',
+            'source_reference'    => 'add_med_99',
+            'verification_status' => 'verified',
+        ]);
+
+        Livewire::actingAs($admin)
+            ->test(\App\Livewire\Admin\AddMedicine::class)
+            ->set('product_search', 'Panadol CF')
+            ->assertSee('Panadol CF Caplet')
+            ->assertSee('Master Formulary Catalog')
+            ->call('selectMasterProduct', $master->id)
+            ->assertSet('name', 'Panadol CF Caplet')
+            ->assertSet('generic_name', 'Paracetamol + Pseudoephedrine')
+            ->assertSet('manufacturer', 'GSK Pakistan')
+            ->assertSet('dosage_form', 'Tablet')
+            ->assertSet('base_unit', 'Tablet');
+    }
 }

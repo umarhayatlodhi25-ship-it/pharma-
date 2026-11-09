@@ -247,6 +247,126 @@ class AddMedicine extends Component
 
         return collect();
     }
+
+    #[Computed]
+    public function suggestedMasterProducts()
+    {
+        $q = trim((string)$this->product_search);
+        if (empty($q) || strlen($q) < 2) {
+            return collect();
+        }
+
+        if (!\Illuminate\Support\Facades\Schema::hasTable('medicine_master')) {
+            return collect();
+        }
+
+        $like = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+        $prefix = strtolower($q) . '%';
+
+        // Preload operational names to avoid duplicates if already in medicines
+        $existingNames = \App\Models\Medicine::query()
+            ->pluck('name')
+            ->map(fn($n) => strtolower(trim($n)))
+            ->flip()
+            ->all();
+
+        $masterItems = \App\Models\MedicineMaster::query()
+            ->where(function($query) use ($q, $like) {
+                $query->where('medicine_name', $like, "%{$q}%")
+                      ->orWhere('brand_name', $like, "%{$q}%")
+                      ->orWhere('generic_name', $like, "%{$q}%");
+            })
+            ->orderByRaw(
+                "CASE 
+                    WHEN LOWER(medicine_name) LIKE ? THEN 0 
+                    WHEN LOWER(brand_name) LIKE ? THEN 1 
+                    WHEN LOWER(generic_name) LIKE ? THEN 2 
+                    ELSE 3 
+                END, medicine_name ASC",
+                [$prefix, $prefix, $prefix]
+            )
+            ->limit(15)
+            ->get()
+            ->filter(function($m) use ($existingNames) {
+                return !isset($existingNames[strtolower(trim($m->medicine_name))]);
+            })
+            ->take(10);
+
+        if ($masterItems->count() > 0) {
+            $this->ai_suggestion = null;
+        }
+
+        // Live Fallback to external API if master items are few and API is reachable
+        if ($masterItems->count() < 5 && config('services.medicine_api.base_url')) {
+            try {
+                $apiService = app(\App\Services\ExternalMedicineApiService::class);
+                $page = $apiService->fetchPage(1, 10, $q);
+                if (!empty($page['data'])) {
+                    $apiService->upsertChunk($page['data'], 'verified');
+                    $masterItems = \App\Models\MedicineMaster::query()
+                        ->where(function($query) use ($q, $like) {
+                            $query->where('medicine_name', $like, "%{$q}%")
+                                  ->orWhere('brand_name', $like, "%{$q}%")
+                                  ->orWhere('generic_name', $like, "%{$q}%");
+                        })
+                        ->orderByRaw(
+                            "CASE 
+                                WHEN LOWER(medicine_name) LIKE ? THEN 0 
+                                WHEN LOWER(brand_name) LIKE ? THEN 1 
+                                WHEN LOWER(generic_name) LIKE ? THEN 2 
+                                ELSE 3 
+                            END, medicine_name ASC",
+                            [$prefix, $prefix, $prefix]
+                        )
+                        ->limit(15)
+                        ->get()
+                        ->filter(function($m) use ($existingNames) {
+                            return !isset($existingNames[strtolower(trim($m->medicine_name))]);
+                        })
+                        ->take(10);
+                }
+            } catch (\Throwable $e) {
+                // External API offline or unreachable, silently continue
+            }
+        }
+
+        return $masterItems;
+    }
+
+    public function selectMasterProduct(int $id): void
+    {
+        $master = \App\Models\MedicineMaster::find($id);
+        if (!$master) {
+            return;
+        }
+
+        $apiService = app(\App\Services\ExternalMedicineApiService::class);
+
+        $this->name = $master->medicine_name;
+        $this->product_search = $master->medicine_name;
+        $this->brand = $master->brand_name ?? $master->medicine_name;
+        $this->generic_name = $master->generic_name ?? '';
+        $this->manufacturer = $master->manufacturer ?? '';
+        $this->strength = $master->strength ?? '';
+        $this->dosage_form = $master->dosage_form ?? 'Tablet';
+
+        // Auto resolve category
+        $catId = $apiService->resolveCategory($master->category, $master->dosage_form);
+        $this->category_id = (string) $catId;
+        $cat = \App\Models\Category::find($catId);
+        $this->category_search = $cat ? $cat->name : '';
+
+        // Auto resolve base unit
+        $baseUnit = $apiService->resolveBaseUnit($master->dosage_form, $master->stock_unit);
+        $this->base_unit = $baseUnit->name;
+        $this->dosage_unit = $baseUnit->name;
+
+        $this->verified_product_match = true;
+        $this->showProductSuggestions = false;
+        $this->ai_suggestion = null;
+
+        session()->flash('ai_success', "Loaded \"{$master->medicine_name}\" details from Master Formulary Catalog!");
+    }
     
     public function askAiForProduct(): void
     {
