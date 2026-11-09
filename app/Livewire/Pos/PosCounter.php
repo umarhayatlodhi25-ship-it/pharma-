@@ -132,7 +132,7 @@ class PosCounter extends Component
 
     public function render()
     {
-        $medicines = Medicine::with([
+        $medicinesQuery = Medicine::with([
                 'batches' => function ($q) {
                     $q->where('quantity', '>', 0);
                 },
@@ -165,24 +165,45 @@ class PosCounter extends Component
                           }
                       });
                 });
-            })
-            ->take(24)
-            ->get();
+            });
+
+        $searchTerm = trim($this->search);
+        if ($searchTerm !== '') {
+            $prefix = strtolower($searchTerm) . '%';
+            $medicines = $medicinesQuery->orderByRaw(
+                "CASE 
+                    WHEN LOWER(name) LIKE ? THEN 0 
+                    WHEN LOWER(brand) LIKE ? THEN 1 
+                    WHEN LOWER(generic_name) LIKE ? THEN 2 
+                    ELSE 3 
+                END, name ASC",
+                [$prefix, $prefix, $prefix]
+            )->take(24)->get();
+        } else {
+            $medicines = $medicinesQuery->orderBy('name')->take(24)->get();
+        }
 
         $customers = Customer::all();
 
         $masterMedicines = collect();
-        $searchTerm = trim($this->search);
         if ($searchTerm !== '') {
             try {
                 if (\Illuminate\Support\Facades\Schema::hasTable('medicine_master')) {
                     $promotedNames = Medicine::query()
-                        ->pluck('name')
-                        ->map(fn($n) => strtolower(trim($n)))
+                        ->get(['name', 'brand'])
+                        ->flatMap(function ($m) {
+                            $keys = [strtolower(trim($m->name))];
+                            if (!empty($m->brand)) {
+                                $keys[] = strtolower(trim($m->brand));
+                            }
+                            return $keys;
+                        })
+                        ->filter()
                         ->flip()
                         ->all();
 
                     $like = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+                    $prefix = strtolower($searchTerm) . '%';
 
                     $masterMedicines = \App\Models\MedicineMaster::query()
                         ->where(function($q) use ($searchTerm, $like) {
@@ -190,11 +211,21 @@ class PosCounter extends Component
                               ->orWhere('brand_name', $like, "%{$searchTerm}%")
                               ->orWhere('generic_name', $like, "%{$searchTerm}%");
                         })
-                        ->orderBy('medicine_name')
+                        ->orderByRaw(
+                            "CASE 
+                                WHEN LOWER(medicine_name) LIKE ? THEN 0 
+                                WHEN LOWER(brand_name) LIKE ? THEN 1 
+                                WHEN LOWER(generic_name) LIKE ? THEN 2 
+                                ELSE 3 
+                            END, medicine_name ASC",
+                            [$prefix, $prefix, $prefix]
+                        )
                         ->limit(12)
                         ->get()
                         ->filter(function($m) use ($promotedNames) {
-                            return !isset($promotedNames[strtolower(trim($m->medicine_name))]);
+                            $nameKey = strtolower(trim($m->medicine_name));
+                            $brandKey = !empty($m->brand_name) ? strtolower(trim($m->brand_name)) : null;
+                            return !isset($promotedNames[$nameKey]) && (!$brandKey || !isset($promotedNames[$brandKey]));
                         });
                 }
             } catch (\Throwable $e) {

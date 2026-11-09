@@ -189,6 +189,13 @@ class ExternalMedicineApiIntegrationTest extends TestCase
         ]);
     }
 
+    public function test_unauthenticated_access_rejected_on_all_endpoints(): void
+    {
+        $this->getJson('/api/medicines/search?q=test')->assertStatus(401);
+        $this->getJson('/api/medicines/master?q=test')->assertStatus(401);
+        $this->postJson('/api/medicines/promote', ['name' => 'Test'])->assertStatus(401);
+    }
+
     public function test_promote_endpoint_is_protected_by_auth_and_roles(): void
     {
         $master = MedicineMaster::create([
@@ -221,7 +228,23 @@ class ExternalMedicineApiIntegrationTest extends TestCase
         $cashierResponse->assertStatus(200);
         $cashierResponse->assertJson(['success' => true]);
 
-        // 4. Authorized role (admin) must succeed
+        // 4. Authorized role (pharmacist) must succeed (200)
+        $pharmacist = User::factory()->create(['role' => 'pharmacist']);
+        $masterPharm = MedicineMaster::create([
+            'medicine_id'         => 'ext_auth_pharm',
+            'medicine_name'       => 'Pharm Protected Drug',
+            'source'              => 'External_API',
+            'source_reference'    => 'auth_pharm',
+            'verification_status' => 'verified',
+        ]);
+        $pharmacistResponse = $this->actingAs($pharmacist)->postJson('/api/medicines/promote', [
+            'master_id'  => $masterPharm->id,
+            'unit_price' => 15.00,
+        ]);
+        $pharmacistResponse->assertStatus(200);
+        $pharmacistResponse->assertJson(['success' => true]);
+
+        // 5. Authorized role (admin) must succeed (200)
         $admin = User::factory()->create(['role' => 'admin']);
         $master2 = MedicineMaster::create([
             'medicine_id'         => 'ext_auth_2',
@@ -236,8 +259,72 @@ class ExternalMedicineApiIntegrationTest extends TestCase
         $adminResponse->assertStatus(200);
     }
 
+    public function test_search_order_prioritizes_inventory_first_then_master_with_starts_with_before_contains(): void
+    {
+        $user = User::factory()->create(['role' => 'cashier']);
+        $cat = Category::firstOrCreate(['slug' => 'test-cat'], ['name' => 'Test Cat', 'product_type' => 'medicine']);
+
+        // Create inventory medicines: one starts-with, one contains
+        $invStartsWith = Medicine::create([
+            'category_id'  => $cat->id,
+            'name'         => 'Acogest 10mg Tab',
+            'product_type' => 'medicine',
+            'status'       => 'active',
+            'base_unit'    => 'Tablet',
+            'unit_price'   => 10.00,
+        ]);
+        $invContains = Medicine::create([
+            'category_id'  => $cat->id,
+            'name'         => 'Plus Acogest 20mg Tab',
+            'product_type' => 'medicine',
+            'status'       => 'active',
+            'base_unit'    => 'Tablet',
+            'unit_price'   => 15.00,
+        ]);
+
+        // Create master medicines: one starts-with, one contains
+        $masterStartsWith = MedicineMaster::create([
+            'medicine_id'         => 'ext_order_1',
+            'medicine_name'       => 'Acogest Forte Syrup',
+            'dosage_form'         => 'Syrup',
+            'source'              => 'External_API',
+            'source_reference'    => 'order_1',
+            'verification_status' => 'verified',
+        ]);
+        $masterContains = MedicineMaster::create([
+            'medicine_id'         => 'ext_order_2',
+            'medicine_name'       => 'Super Acogest Drops',
+            'dosage_form'         => 'Drop',
+            'source'              => 'External_API',
+            'source_reference'    => 'order_2',
+            'verification_status' => 'verified',
+        ]);
+
+        $response = $this->actingAs($user)->getJson('/api/medicines/search?q=Acogest');
+        $response->assertStatus(200);
+        $items = $response->json();
+
+        $this->assertCount(4, $items);
+
+        // Inventory results first: starts-with then contains
+        $this->assertEquals('inventory', $items[0]['source']);
+        $this->assertEquals('Acogest 10mg Tab', $items[0]['name']);
+
+        $this->assertEquals('inventory', $items[1]['source']);
+        $this->assertEquals('Plus Acogest 20mg Tab', $items[1]['name']);
+
+        // Master results second: starts-with then contains
+        $this->assertEquals('master', $items[2]['source']);
+        $this->assertEquals('Acogest Forte Syrup', $items[2]['name']);
+
+        $this->assertEquals('master', $items[3]['source']);
+        $this->assertEquals('Super Acogest Drops', $items[3]['name']);
+    }
+
     public function test_search_endpoint_returns_source_and_excludes_promoted_master_duplicates(): void
     {
+        $admin = User::factory()->create(['role' => 'admin']);
+
         // 1. Create a Master Drug
         $master = MedicineMaster::create([
             'medicine_id'         => 'ext_dup_100',
@@ -249,7 +336,7 @@ class ExternalMedicineApiIntegrationTest extends TestCase
         ]);
 
         // 2. Search before promotion -> must have source 'master'
-        $response1 = $this->getJson('/api/medicines/search?q=Unique Test Syrup');
+        $response1 = $this->actingAs($admin)->getJson('/api/medicines/search?q=Unique Test Syrup');
         $response1->assertStatus(200);
         $items1 = $response1->json();
         $this->assertCount(1, $items1);
@@ -257,14 +344,13 @@ class ExternalMedicineApiIntegrationTest extends TestCase
         $this->assertEquals('Unique Test Syrup', $items1[0]['name']);
 
         // 3. Promote it into operational medicines table
-        $admin = User::factory()->create(['role' => 'admin']);
         $this->actingAs($admin)->postJson('/api/medicines/promote', [
             'master_id'  => $master->id,
             'unit_price' => 50.00,
         ])->assertStatus(200);
 
         // 4. Search after promotion -> must have source 'inventory' and NO duplicates!
-        $response2 = $this->getJson('/api/medicines/search?q=Unique Test Syrup');
+        $response2 = $this->actingAs($admin)->getJson('/api/medicines/search?q=Unique Test Syrup');
         $response2->assertStatus(200);
         $items2 = $response2->json();
 
@@ -272,6 +358,48 @@ class ExternalMedicineApiIntegrationTest extends TestCase
         $this->assertCount(1, $items2);
         $this->assertEquals('inventory', $items2[0]['source']);
         $this->assertEquals('Unique Test Syrup', $items2[0]['name']);
+    }
+
+    public function test_double_promote_creates_only_one_medicine_and_one_packaging_record(): void
+    {
+        $cashier = User::factory()->create(['role' => 'cashier']);
+
+        $master = MedicineMaster::create([
+            'medicine_id'         => 'ext_double_1',
+            'medicine_name'       => 'Double Promote Medicine',
+            'dosage_form'         => 'Tablet',
+            'source'              => 'External_API',
+            'source_reference'    => 'double_1',
+            'verification_status' => 'verified',
+        ]);
+
+        // First promotion
+        $res1 = $this->actingAs($cashier)->postJson('/api/medicines/promote', [
+            'master_id'  => $master->id,
+            'unit_price' => 20.00,
+        ]);
+        $res1->assertStatus(200);
+        $medId1 = $res1->json('data.id');
+
+        // Second promotion of the exact same master item
+        $res2 = $this->actingAs($cashier)->postJson('/api/medicines/promote', [
+            'master_id'  => $master->id,
+            'unit_price' => 20.00,
+        ]);
+        $res2->assertStatus(200);
+        $medId2 = $res2->json('data.id');
+
+        // Must return the exact same medicine ID
+        $this->assertEquals($medId1, $medId2);
+
+        // Assert exactly 1 medicine record in database
+        $this->assertEquals(1, Medicine::where('name', 'Double Promote Medicine')->count());
+
+        // Assert exactly 1 packaging record in database for this medicine
+        $this->assertEquals(1, \App\Models\MedicinePackaging::where('medicine_id', $medId1)->count());
+
+        // Assert exactly 1 inventory record in database
+        $this->assertEquals(1, \App\Models\Inventory::where('medicine_id', $medId1)->count());
     }
 
     public function test_pos_counter_can_promote_and_add_to_cart(): void

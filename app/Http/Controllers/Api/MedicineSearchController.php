@@ -39,14 +39,22 @@ class MedicineSearchController extends Controller
         }
 
         $results = [];
-        $promotedNames = [];
 
-        // Preload all active operational medicine names to guarantee no master duplicates
-        $promotedNames = Medicine::query()
-            ->pluck('name')
-            ->map(fn($n) => strtolower(trim($n)))
+        // Preload all active operational medicine names (and brands) to guarantee no master duplicates
+        $operationalNames = Medicine::query()
+            ->get(['name', 'brand'])
+            ->flatMap(function ($m) {
+                $keys = [strtolower(trim($m->name))];
+                if (!empty($m->brand)) {
+                    $keys[] = strtolower(trim($m->brand));
+                }
+                return $keys;
+            })
+            ->filter()
             ->flip()
             ->all();
+
+        $prefix = strtolower($search) . '%';
 
         // 1. Tier 1: Search Operational Inventory (medicines table)
         if (in_array($source, ['all', 'inventory', 'operational'], true)) {
@@ -70,7 +78,15 @@ class MedicineSearchController extends Controller
                         ->orWhere('brand', 'like', "%{$search}%")
                         ->orWhere('barcode', 'like', "%{$search}%");
                 })
-                ->orderBy('name')
+                ->orderByRaw(
+                    "CASE 
+                        WHEN LOWER(name) LIKE ? THEN 0 
+                        WHEN LOWER(brand) LIKE ? THEN 1 
+                        WHEN LOWER(generic_name) LIKE ? THEN 2 
+                        ELSE 3 
+                    END, name ASC",
+                    [$prefix, $prefix, $prefix]
+                )
                 ->limit($limit)
                 ->get();
 
@@ -104,23 +120,32 @@ class MedicineSearchController extends Controller
                         ->orWhere('generic_name', 'like', "%{$search}%")
                         ->orWhere('manufacturer', 'like', "%{$search}%");
                 })
-                ->orderBy('medicine_name')
+                ->orderByRaw(
+                    "CASE 
+                        WHEN LOWER(medicine_name) LIKE ? THEN 0 
+                        WHEN LOWER(brand_name) LIKE ? THEN 1 
+                        WHEN LOWER(generic_name) LIKE ? THEN 2 
+                        ELSE 3 
+                    END, medicine_name ASC",
+                    [$prefix, $prefix, $prefix]
+                )
                 ->limit($remaining * 3) // Fetch slightly more to account for filtered duplicates
                 ->get();
 
             foreach ($masterItems as $m) {
                 $nameKey = strtolower(trim($m->medicine_name));
+                $brandKey = !empty($m->brand_name) ? strtolower(trim($m->brand_name)) : null;
 
                 // Duplicate Prevention: Check if already present in operational inventory
-                if (isset($promotedNames[$nameKey])) {
-                    continue;
-                }
-                if (!empty($m->brand_name) && isset($promotedNames[strtolower(trim($m->brand_name))])) {
+                if (isset($operationalNames[$nameKey]) || ($brandKey && isset($operationalNames[$brandKey]))) {
                     continue;
                 }
 
-                // Add to promotedNames to avoid duplicates within master query itself
-                $promotedNames[$nameKey] = true;
+                // Add to operationalNames to avoid duplicates within master query itself
+                $operationalNames[$nameKey] = true;
+                if ($brandKey) {
+                    $operationalNames[$brandKey] = true;
+                }
 
                 $results[] = [
                     'id'               => $m->id,

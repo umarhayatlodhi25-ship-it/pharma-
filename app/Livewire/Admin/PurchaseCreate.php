@@ -645,30 +645,60 @@ class PurchaseCreate extends Component
                         }
                     });
             });
+            $prefix = strtolower($medicineSearch) . '%';
+            $medicines = $medicineQuery->orderByRaw(
+                "CASE 
+                    WHEN LOWER(name) LIKE ? THEN 0 
+                    WHEN LOWER(brand) LIKE ? THEN 1 
+                    WHEN LOWER(generic_name) LIKE ? THEN 2 
+                    ELSE 3 
+                END, name ASC",
+                [$prefix, $prefix, $prefix]
+            )->limit(40)->get();
+        } else {
+            $medicines = $medicineQuery->orderBy('name')->limit(40)->get();
         }
-
-        $medicines = $medicineQuery->orderBy('name')->limit(40)->get();
 
         $masterMedicines = collect();
         if ($medicineSearch !== '') {
             try {
                 if (\Illuminate\Support\Facades\Schema::hasTable('medicine_master')) {
                     $promotedNames = Medicine::query()
-                        ->pluck('name')
-                        ->map(fn($n) => strtolower(trim($n)))
+                        ->get(['name', 'brand'])
+                        ->flatMap(function ($m) {
+                            $keys = [strtolower(trim($m->name))];
+                            if (!empty($m->brand)) {
+                                $keys[] = strtolower(trim($m->brand));
+                            }
+                            return $keys;
+                        })
+                        ->filter()
                         ->flip()
                         ->all();
 
+                    $prefix = strtolower($medicineSearch) . '%';
                     $masterMedicines = \App\Models\MedicineMaster::query()
                         ->where(function ($q) use ($medicineSearch, $like) {
                             $q->where('medicine_name', $like, "%{$medicineSearch}%")
                               ->orWhere('brand_name', $like, "%{$medicineSearch}%")
                               ->orWhere('generic_name', $like, "%{$medicineSearch}%");
                         })
-                        ->orderBy('medicine_name')
+                        ->orderByRaw(
+                            "CASE 
+                                WHEN LOWER(medicine_name) LIKE ? THEN 0 
+                                WHEN LOWER(brand_name) LIKE ? THEN 1 
+                                WHEN LOWER(generic_name) LIKE ? THEN 2 
+                                ELSE 3 
+                            END, medicine_name ASC",
+                            [$prefix, $prefix, $prefix]
+                        )
                         ->limit(10)
                         ->get()
-                        ->filter(fn($m) => !isset($promotedNames[strtolower(trim($m->medicine_name))]));
+                        ->filter(function($m) use ($promotedNames) {
+                            $nameKey = strtolower(trim($m->medicine_name));
+                            $brandKey = !empty($m->brand_name) ? strtolower(trim($m->brand_name)) : null;
+                            return !isset($promotedNames[$nameKey]) && (!$brandKey || !isset($promotedNames[$brandKey]));
+                        });
                 }
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning("Master search in PurchaseCreate skipped: " . $e->getMessage());

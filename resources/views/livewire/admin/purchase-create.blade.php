@@ -394,13 +394,13 @@
                                 @foreach($masterMedicines as $master)
                                     <div
                                         wire:key="master-search-{{ $master->id }}"
-                                        class="w-full px-3.5 py-2.5 text-left hover:bg-purple-50/80 transition border-b border-purple-50 flex items-center justify-between gap-3"
+                                        wire:click="promoteAndAddToPurchase({{ $master->id }})"
+                                        @click="open = false"
+                                        class="w-full px-3.5 py-2.5 text-left hover:bg-purple-50/80 transition border-b border-purple-50 flex items-center justify-between gap-3 cursor-pointer"
                                     >
                                         <div 
-                                            class="min-w-0 cursor-pointer flex-1"
-                                            wire:click="promoteAndSelectMaster({{ $master->id }})"
-                                            @click="open = false"
-                                            title="Click to import and select"
+                                            class="min-w-0 flex-1"
+                                            title="Click to import and add to purchase"
                                         >
                                             <div class="flex items-center gap-1.5 flex-wrap">
                                                 <span class="text-sm font-semibold text-gray-800 truncate">{{ $master->medicine_name }}</span>
@@ -420,7 +420,7 @@
                                         <div class="text-right shrink-0 flex items-center gap-2">
                                             <button
                                                 type="button"
-                                                wire:click="promoteAndAddToPurchase({{ $master->id }})"
+                                                wire:click.stop="promoteAndAddToPurchase({{ $master->id }})"
                                                 @click="open = false"
                                                 class="text-[10px] bg-purple-600 hover:bg-purple-700 text-white px-2.5 py-1.5 rounded-xl font-bold transition shadow-xs flex items-center gap-1 cursor-pointer"
                                                 title="Import and add directly to purchase items"

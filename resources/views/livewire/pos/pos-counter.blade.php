@@ -205,13 +205,13 @@
                 @foreach($masterMedicines as $master)
                     <div 
                         wire:key="pos-master-{{ $master->id }}"
-                        class="bg-purple-50/50 hover:bg-purple-50 border-purple-200/90 hover:border-purple-400 border p-3.5 rounded-xl transition flex flex-col justify-between space-y-2 group select-none w-full text-left relative shadow-xs"
+                        wire:click="promoteAndAddToCart({{ $master->id }})"
+                        class="bg-purple-50/50 hover:bg-purple-50 border-purple-200/90 hover:border-purple-400 border p-3.5 rounded-xl transition flex flex-col justify-between space-y-2 group select-none w-full text-left relative shadow-xs cursor-pointer"
                     >
                         <div class="w-full">
                             <div class="flex justify-between items-start gap-1">
                                 <h4 
-                                    class="font-bold text-sm line-clamp-1 text-gray-800 group-hover:text-purple-700 cursor-pointer transition"
-                                    wire:click="promoteAndAddToCart({{ $master->id }})"
+                                    class="font-bold text-sm line-clamp-1 text-gray-800 group-hover:text-purple-700 transition"
                                     title="Click to import and add: {{ $master->medicine_name }}"
                                 >
                                     {{ $master->medicine_name }}
@@ -219,7 +219,7 @@
 
                                 <button
                                     type="button"
-                                    wire:click="promoteAndAddToCart({{ $master->id }})"
+                                    wire:click.stop="promoteAndAddToCart({{ $master->id }})"
                                     class="text-[10px] bg-purple-600 hover:bg-purple-700 text-white px-2.5 py-1 rounded-full font-bold shrink-0 ml-1 transition cursor-pointer shadow-xs flex items-center gap-1"
                                     title="Import from Master & add to cart"
                                 >
