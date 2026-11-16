@@ -23,6 +23,8 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 .vercel
+/database/database.sqlite
+/database/*.sqlite
 .env*
 .tmp*
 scratch/
