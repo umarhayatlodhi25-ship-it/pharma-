@@ -99,6 +99,28 @@ return [
             'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 
+        // ── Neon Production (medicine sync target) ────────────────────────
+        // Set PROD_DB_* in your .env (never commit credentials).
+        // DB_CONNECTION stays sqlite; this is a named secondary connection.
+        'pgsql_prod' => [
+            'driver'         => 'pgsql',
+            'url'            => env('PROD_DB_URL'),           // optional full DSN
+            'host'           => env('PROD_DB_HOST', '127.0.0.1'),
+            'port'           => env('PROD_DB_PORT', '5432'),
+            'database'       => env('PROD_DB_DATABASE', 'neondb'),
+            'username'       => env('PROD_DB_USERNAME', ''),
+            'password'       => env('PROD_DB_PASSWORD', ''),
+            'charset'        => 'utf8',
+            'prefix'         => '',
+            'prefix_indexes' => true,
+            'search_path'    => 'public',
+            'sslmode'        => env('PROD_DB_SSLMODE', 'require'),
+            'options'        => [
+                PDO::ATTR_TIMEOUT            => 30,
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            ],
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),
