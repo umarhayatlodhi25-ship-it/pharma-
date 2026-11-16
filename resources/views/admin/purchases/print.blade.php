@@ -232,7 +232,19 @@
 
         <div class="company">
 
-            <h1>Pharmacy Management System</h1>
+            @if($accountProfile?->hasLogo())
+                <img src="{{ $accountProfile->logo_url }}" alt="{{ $accountProfile->account_name }}" style="max-height: 48px; max-width: 140px; margin-bottom: 6px; display: block;">
+            @endif
+
+            <h1>{{ $accountProfile?->account_name ?: 'Pharmacy Management System' }}</h1>
+
+            @if($accountProfile?->formatted_address)
+                <p>{{ $accountProfile->formatted_address }}</p>
+            @endif
+
+            @if($accountProfile?->phone)
+                <p>Phone: {{ $accountProfile->phone }}</p>
+            @endif
 
             <p>Purchase Management</p>
 
@@ -516,7 +528,7 @@
         </p>
 
         <p>
-            Pharmacy Management System
+            {{ $accountProfile?->account_name ?: 'Pharmacy Management System' }}
         </p>
 
     </div>

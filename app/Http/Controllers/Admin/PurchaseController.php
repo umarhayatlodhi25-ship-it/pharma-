@@ -347,9 +347,11 @@ class PurchaseController extends Controller
             'items.medicine.category',
         ])->findOrFail($id);
 
+        $accountProfile = \App\Models\AccountProfile::current();
+
         return view(
             'admin.purchases.print',
-            compact('invoice')
+            compact('invoice', 'accountProfile')
         );
     }
 
@@ -810,10 +812,11 @@ class PurchaseController extends Controller
         ])->findOrFail($id);
 
         $pdf = app('dompdf.wrapper');
+        $accountProfile = \App\Models\AccountProfile::current();
 
         $pdf->loadView(
             'admin.purchases.pdf',
-            compact('invoice')
+            compact('invoice', 'accountProfile')
         );
 
         $pdf->setPaper(

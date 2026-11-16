@@ -118,7 +118,7 @@
 <div class="header">
 
     <div class="title">
-        Pharmacy Management System
+        {{ $accountProfile?->account_name ?: 'Pharmacy Management System' }}
     </div>
 
     <div class="subtitle">
@@ -315,7 +315,7 @@
 
 <div class="footer">
 
-    Pharmacy Management System
+    {{ $accountProfile?->account_name ?: 'Pharmacy Management System' }}
 
     <br>
 

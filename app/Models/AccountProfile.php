@@ -58,11 +58,16 @@ class AccountProfile extends Model
     }
 
     /**
-     * Clear in-memory cache.
+     * Clear in-memory and application cache.
      */
     public static function clearCache(): void
     {
         static::$cachedCurrent = null;
+        try {
+            \Illuminate\Support\Facades\Cache::forget('account_profile_current');
+        } catch (\Throwable $e) {
+            // Non-blocking in early bootstraps
+        }
     }
 
     /**
@@ -74,19 +79,60 @@ class AccountProfile extends Model
             return static::$cachedCurrent;
         }
 
-        $profile = static::first();
+        try {
+            $profile = \Illuminate\Support\Facades\Cache::remember('account_profile_current', 300, function () {
+                return static::first();
+            });
+        } catch (\Throwable $e) {
+            $profile = static::first();
+        }
 
         if (!$profile) {
-            $profile = static::create([
-                'account_name'        => config('app.name', 'Pharmacy & Hospital Management'),
+            $profile = static::firstOrCreate([], [
+                'account_name'        => config('app.name', 'PHARMACY MANAGEMENT'),
+                'address'             => 'Landhi, Karachi, Pakistan',
+                'phone'               => '0300-1234567',
                 'currency'            => 'PKR',
                 'timezone'            => 'Asia/Karachi',
-                'footer_text'         => 'Thank you for choosing our healthcare services.',
+                'footer_text'         => 'Software Developed By Pharmacy Team',
                 'daily_token_reset'   => true,
             ]);
         }
 
         return static::$cachedCurrent = $profile;
+    }
+
+    /**
+     * Receipt business name with fallback.
+     */
+    public function getReceiptBusinessNameAttribute(): string
+    {
+        return !empty(trim((string)$this->account_name)) ? $this->account_name : 'PHARMACY MANAGEMENT';
+    }
+
+    /**
+     * Receipt address with fallback.
+     */
+    public function getReceiptAddressAttribute(): ?string
+    {
+        $addr = $this->formatted_address;
+        return !empty(trim((string)$addr)) ? $addr : null;
+    }
+
+    /**
+     * Receipt phone with fallback.
+     */
+    public function getReceiptPhoneAttribute(): ?string
+    {
+        return !empty(trim((string)$this->phone)) ? $this->phone : null;
+    }
+
+    /**
+     * Receipt footer text with fallback.
+     */
+    public function getReceiptFooterAttribute(): string
+    {
+        return !empty(trim((string)$this->footer_text)) ? $this->footer_text : 'Software Developed By Pharmacy Team';
     }
 
     /**

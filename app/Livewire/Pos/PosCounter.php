@@ -55,6 +55,22 @@ class PosCounter extends Component
     public function setProductTypeFilter($type)
     {
         $this->productTypeFilter = $type;
+        $this->dispatch('focus-product-search');
+    }
+
+    public function setPaymentType($type)
+    {
+        $type = in_array($type, ['full', 'partial', 'credit'], true) ? $type : 'full';
+        $this->payment_type = $type;
+
+        if ($type === 'full') {
+            $this->paid_amount = $this->totalAmount;
+        } elseif ($type === 'credit') {
+            $this->paid_amount = 0;
+        }
+
+        $this->calculateTotals();
+        $this->dispatch('focus-paid-amount');
     }
 
     public function mount()
@@ -401,6 +417,7 @@ class PosCounter extends Component
             ];
         }
 
+        $this->dispatch('focus-product-search');
         $this->calculateTotals();
     }
 
@@ -758,10 +775,14 @@ class PosCounter extends Component
                     }
                 }
 
-                \App\Models\User::firstOrCreate(
-                    ['id' => 1],
-                    ['name' => 'Admin', 'email' => 'admin@pharmacy.com', 'password' => bcrypt('password')]
-                );
+                if (!\App\Models\User::where('id', 1)->exists() && !\App\Models\User::where('email', 'admin@pharmacy.com')->exists()) {
+                    \App\Models\User::create([
+                        'id' => 1,
+                        'name' => 'Admin',
+                        'email' => 'admin@pharmacy.com',
+                        'password' => bcrypt('password'),
+                    ]);
+                }
 
                 $paid = is_numeric($this->paid_amount) ? (float)$this->paid_amount : 0;
                 
@@ -854,6 +875,7 @@ class PosCounter extends Component
             $this->completedSale = Sale::with(['items.medicine', 'items.packaging', 'customer', 'user'])->find($lastSaleId);
             $this->showInvoiceModal = true;
             $this->dispatch('stockUpdated');
+            $this->dispatch('focus-product-search');
             session()->flash('message', 'Sale Successful & Stock Deducted in Base Units!');
             session()->flash('last_sale_id', $lastSaleId);
 
@@ -866,5 +888,6 @@ class PosCounter extends Component
     {
         $this->showInvoiceModal = false;
         $this->completedSale = null;
+        $this->dispatch('focus-product-search');
     }
 }

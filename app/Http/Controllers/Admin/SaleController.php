@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccountProfile;
 use App\Models\Sale;
 
 class SaleController extends Controller
@@ -18,6 +19,7 @@ class SaleController extends Controller
     public function show($id)
     {
         $sale = Sale::with('items.medicine', 'items.batch')->findOrFail($id);
-        return view('admin.sales.receipt', compact('sale'));
+        $accountProfile = AccountProfile::current();
+        return view('admin.sales.receipt', compact('sale', 'accountProfile'));
     }
 }

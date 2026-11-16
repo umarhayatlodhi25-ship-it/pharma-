@@ -17,11 +17,7 @@
     <div class="max-w-sm mx-auto bg-white p-6 shadow-md rounded-lg space-y-4">
         
         <!-- Pharmacy Header -->
-        <div class="text-center space-y-1">
-            <h2 class="text-lg font-bold">PHARMACY MANAGEMENT</h2>
-            <p class="text-gray-500">Landhi, Karachi, Pakistan</p>
-            <p class="text-gray-500">Phone: 0300-1234567</p>
-        </div>
+        <x-receipt-header />
 
         <hr class="border-dashed">
 
@@ -70,7 +66,7 @@
         <!-- Footer -->
         <div class="text-center text-gray-500 pt-2 space-y-1">
             <p>Thank you for your purchase!</p>
-            <p class="text-[10px]">Software Developed By Pharmacy Team</p>
+            <p class="text-[10px]">{{ $accountProfile?->receipt_footer ?? 'Software Developed By Pharmacy Team' }}</p>
         </div>
 
         <!-- Print Button -->
