@@ -24,7 +24,10 @@ Homestead.yaml
 Thumbs.db
 .vercel
 /database/database.sqlite
+/database/bootstrap.sqlite
 /database/*.sqlite
+!/database/production.sqlite
+/database/medicine_export/
 .env*
 .tmp*
 scratch/

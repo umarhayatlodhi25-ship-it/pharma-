@@ -223,3 +223,4 @@ class SyncMedicineToProduction extends Command
         return $totalFailed > 0 ? self::FAILURE : self::SUCCESS;
     }
 }
+

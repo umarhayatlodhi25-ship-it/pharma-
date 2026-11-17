@@ -47,17 +47,17 @@ if ($usePostgres) {
 } else {
     // ── SQLite fallback path ──────────────────────────────────────────────
     $targetDb = '/tmp/database/database.sqlite';
-    $sourceDb = __DIR__ . '/../database/database.sqlite'; // gitignored — may not exist
+    $prodDb   = __DIR__ . '/../database/production.sqlite';
+    $sourceDb = __DIR__ . '/../database/database.sqlite';
 
     $isFreshContainer = !file_exists($targetDb) || filesize($targetDb) === 0 || isset($_GET['reset_db']);
 
     if ($isFreshContainer) {
-        if (file_exists($sourceDb) && filesize($sourceDb) > 0) {
-            // Bundle path: sqlite file exists (legacy)
+        if (file_exists($prodDb) && filesize($prodDb) > 0) {
+            @copy($prodDb, $targetDb);
+        } elseif (file_exists($sourceDb) && filesize($sourceDb) > 0) {
             @copy($sourceDb, $targetDb);
         } else {
-            // SQLite removed from repo — create empty file.
-            // ⚠️  App cannot serve requests until DATABASE_URL is set in Vercel.
             @touch($targetDb);
         }
     }
@@ -76,9 +76,9 @@ putenv('SESSION_DRIVER=cookie');
 $_ENV['SESSION_DRIVER']    = 'cookie';
 $_SERVER['SESSION_DRIVER'] = 'cookie';
 
-putenv('APP_DEBUG=false');
-$_ENV['APP_DEBUG']    = 'false';
-$_SERVER['APP_DEBUG'] = 'false';
+putenv('APP_DEBUG=true');
+$_ENV['APP_DEBUG']    = 'true';
+$_SERVER['APP_DEBUG'] = 'true';
 
 putenv('CACHE_STORE=array');
 $_ENV['CACHE_STORE']    = 'array';
@@ -98,4 +98,12 @@ if (empty($_ENV['APP_KEY']) && empty(getenv('APP_KEY'))) {
     putenv('APP_KEY=base64:nd/sNgRY/g4eQBVZL0iNa7GJPDz+iAEIna2N+UL8fys=');
 }
 
-require __DIR__ . '/../public/index.php';
+try {
+    require __DIR__ . '/../public/index.php';
+} catch (\Throwable $e) {
+    http_response_code(500);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "Application Error on Vercel:\n";
+    echo $e->getMessage() . "\n\n";
+    echo $e->getTraceAsString();
+}

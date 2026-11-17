@@ -562,3 +562,4 @@ class SyncMedicinesToNeon extends Command
         file_put_contents($this->progressFilePath, json_encode($progress, JSON_PRETTY_PRINT));
     }
 }
+
