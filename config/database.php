@@ -102,24 +102,31 @@ return [
         // ── Neon Production (medicine sync target) ────────────────────────
         // Set PROD_DB_* in your .env (never commit credentials).
         // DB_CONNECTION stays sqlite; this is a named secondary connection.
-        'pgsql_prod' => [
-            'driver'         => 'pgsql',
-            'url'            => env('PROD_DB_URL'),           // optional full DSN
-            'host'           => env('PROD_DB_HOST', '127.0.0.1'),
-            'port'           => env('PROD_DB_PORT', '5432'),
-            'database'       => env('PROD_DB_DATABASE', 'neondb'),
-            'username'       => env('PROD_DB_USERNAME', ''),
-            'password'       => env('PROD_DB_PASSWORD', ''),
-            'charset'        => 'utf8',
-            'prefix'         => '',
-            'prefix_indexes' => true,
-            'search_path'    => 'public',
-            'sslmode'        => env('PROD_DB_SSLMODE', 'require'),
-            'options'        => [
-                PDO::ATTR_TIMEOUT            => 30,
-                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-            ],
-        ],
+        'pgsql_prod' => (function () {
+            $host = env('PROD_DB_HOST', '127.0.0.1');
+            $sslmode = env('PROD_DB_SSLMODE', 'require');
+
+            // Automatically inject Neon endpoint ID if connecting to Neon without SNI
+            if (str_contains($host, '.neon.tech') && !str_contains($sslmode, 'endpoint=')) {
+                $endpoint = explode('.', explode('-pooler', $host)[0])[0];
+                $sslmode .= ";options='endpoint={$endpoint}'";
+            }
+
+            return [
+                'driver'         => 'pgsql',
+                'url'            => null, // use discrete host/user/pass with injected endpoint
+                'host'           => $host,
+                'port'           => env('PROD_DB_PORT', '5432'),
+                'database'       => env('PROD_DB_DATABASE', 'neondb'),
+                'username'       => env('PROD_DB_USERNAME', ''),
+                'password'       => env('PROD_DB_PASSWORD', ''),
+                'charset'        => 'utf8',
+                'prefix'         => '',
+                'prefix_indexes' => true,
+                'search_path'    => 'public',
+                'sslmode'        => $sslmode,
+            ];
+        })(),
 
         'sqlsrv' => [
             'driver' => 'sqlsrv',

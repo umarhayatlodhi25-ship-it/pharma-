@@ -31,9 +31,10 @@ if ($usePostgres) {
     $_ENV['DB_CONNECTION']    = 'pgsql';
     $_SERVER['DB_CONNECTION'] = 'pgsql';
 
-    // Clean Neon URL: strip unsupported options= param that breaks pdo_pgsql
-    if ($databaseUrl && strpos($databaseUrl, 'options=') !== false) {
-        $cleanUrl = preg_replace('/(\&|\?)options=[^\&]+/', '', $databaseUrl);
+    // Clean Neon URL: strip unsupported params that break pdo_pgsql on serverless runtimes
+    if ($databaseUrl) {
+        $cleanUrl = preg_replace('/(\&|\?)channel_binding=[^\&]+/', '', $databaseUrl);
+        $cleanUrl = preg_replace('/(\&|\?)options=[^\&]+/', '', $cleanUrl);
         putenv("DATABASE_URL={$cleanUrl}");
         $_ENV['DATABASE_URL']    = $cleanUrl;
         $_SERVER['DATABASE_URL'] = $cleanUrl;
