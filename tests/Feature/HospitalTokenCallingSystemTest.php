@@ -284,6 +284,98 @@ class HospitalTokenCallingSystemTest extends TestCase
         $this->assertNotEmpty($json['active_tokens']);
         $this->assertEquals('MED-007', $json['active_tokens'][0]['formatted_token_number']);
         $this->assertEquals('Room 101', $json['active_tokens'][0]['room_number']);
+        $this->assertArrayHasKey('previous_tokens', $json);
+        $this->assertArrayHasKey('active_token', $json);
+    }
+
+    public function test_lcd_previous_tokens_displays_completed_and_skipped_tokens_without_duplicating_active_token()
+    {
+        // 1. Active Token
+        $activeToken = PatientToken::create([
+            'patient_id'     => $this->patient->id,
+            'doctor_id'      => $this->doctorA->id,
+            'token_number'   => 15,
+            'queue_sequence' => 15,
+            'token_prefix'   => 'MED',
+            'token_date'     => now()->toDateString(),
+            'status'         => 'called',
+            'called_at'      => now(),
+            'room_number'    => 'Room 101',
+        ]);
+
+        // 2. Completed Token
+        $completedToken = PatientToken::create([
+            'patient_id'     => $this->patient->id,
+            'doctor_id'      => $this->doctorA->id,
+            'token_number'   => 14,
+            'queue_sequence' => 14,
+            'token_prefix'   => 'MED',
+            'token_date'     => now()->toDateString(),
+            'status'         => 'completed',
+            'called_at'      => now()->subMinutes(10),
+            'completed_at'   => now()->subMinutes(2),
+            'room_number'    => 'Room 101',
+        ]);
+
+        // 3. Skipped Token
+        $skippedToken = PatientToken::create([
+            'patient_id'     => $this->patient->id,
+            'doctor_id'      => $this->doctorA->id,
+            'token_number'   => 13,
+            'queue_sequence' => 13,
+            'token_prefix'   => 'MED',
+            'token_date'     => now()->toDateString(),
+            'status'         => 'skipped',
+            'called_at'      => now()->subMinutes(20),
+            'room_number'    => 'Room 101',
+        ]);
+
+        $apiResponse = $this->get(route('token.display.live'));
+        $apiResponse->assertStatus(200);
+        $json = $apiResponse->json();
+
+        // Active token is MED-015
+        $this->assertEquals('MED-015', $json['active_token']['formatted_token_number']);
+
+        // Previous tokens must contain MED-014 (completed) and MED-013 (skipped), but NOT MED-015
+        $prevTokenNumbers = array_column($json['previous_tokens'], 'formatted_token_number');
+        $this->assertContains('MED-014', $prevTokenNumbers);
+        $this->assertContains('MED-013', $prevTokenNumbers);
+        $this->assertNotContains('MED-015', $prevTokenNumbers);
+    }
+
+    public function test_lcd_detects_recall_flag_when_call_count_greater_than_one()
+    {
+        $queueService = app(\App\Services\TokenQueueService::class);
+
+        $token = PatientToken::create([
+            'patient_id'     => $this->patient->id,
+            'doctor_id'      => $this->doctorA->id,
+            'token_number'   => 21,
+            'queue_sequence' => 21,
+            'token_prefix'   => 'MED',
+            'token_date'     => now()->toDateString(),
+            'status'         => 'waiting',
+        ]);
+
+        // First call
+        $queueService->callToken($token, 'Room 102', $this->doctorUserA->id);
+        $res1 = $this->get(route('token.display.live'))->json();
+        $this->assertFalse($res1['latest_announcement']['is_recall'] ?? false);
+
+        // Recall (second call)
+        $queueService->callToken($token, 'Room 102', $this->doctorUserA->id);
+        $res2 = $this->get(route('token.display.live'))->json();
+        $this->assertTrue($res2['latest_announcement']['is_recall']);
+        $this->assertEquals('recall', $res2['latest_announcement']['action']);
+        $this->assertEquals(2, $res2['active_token']['call_count']);
+    }
+
+    public function test_lcd_empty_state_when_no_active_or_waiting_tokens()
+    {
+        $pageResponse = $this->get(route('token.display'));
+        $pageResponse->assertStatus(200);
+        $pageResponse->assertSee('Currently no token is being called.');
     }
 
     public function test_token_reports_page_and_stats()

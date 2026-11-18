@@ -18,21 +18,45 @@ class TokenDisplayController extends Controller
         $profile = AccountProfile::current();
         $today = now()->toDateString();
 
-        $activeTokens = PatientToken::with(['patient', 'doctor'])
+        // 1. Current Active Token
+        $activeToken = PatientToken::with(['patient', 'doctor'])
             ->where('token_date', $today)
             ->whereIn('status', ['called', 'in_consultation'])
-            ->orderBy('called_at', 'desc')
-            ->take(4)
-            ->get();
+            ->orderByDesc('called_at')
+            ->first();
 
+        // 2. Upcoming Waiting Tokens (Next 5)
         $waitingTokens = PatientToken::with(['patient', 'doctor'])
             ->where('token_date', $today)
             ->where('status', 'waiting')
             ->orderBy('token_number', 'asc')
-            ->take(6)
+            ->take(5)
             ->get();
 
-        return view('display.token-display', compact('profile', 'activeTokens', 'waitingTokens', 'today'));
+        // 3. Previously Called Tokens (Latest 8, excluding active)
+        $previousQuery = PatientToken::with(['doctor'])
+            ->where('token_date', $today)
+            ->where(function ($q) {
+                $q->whereNotNull('called_at')
+                  ->orWhereIn('status', ['completed', 'skipped', 'hold']);
+            });
+
+        if ($activeToken) {
+            $previousQuery->where('id', '!=', $activeToken->id);
+        }
+
+        $previousTokens = $previousQuery
+            ->orderByRaw("COALESCE(completed_at, called_at, updated_at) DESC")
+            ->take(8)
+            ->get();
+
+        return view('display.token-display', compact(
+            'profile',
+            'activeToken',
+            'waitingTokens',
+            'previousTokens',
+            'today'
+        ));
     }
 
     /**
@@ -43,44 +67,44 @@ class TokenDisplayController extends Controller
         $profile = AccountProfile::current();
         $today = now()->toDateString();
 
-        // Active tokens currently called or consulting
-        $activeTokens = PatientToken::with(['patient', 'doctor'])
+        // 1. Current Active Token
+        $activeToken = PatientToken::with(['patient', 'doctor'])
             ->where('token_date', $today)
             ->whereIn('status', ['called', 'in_consultation'])
-            ->orderBy('called_at', 'desc')
-            ->take(4)
-            ->get()
-            ->map(function ($token) {
-                // Get latest call log id for this token to enable audio deduplication
-                $latestLog = TokenCallLog::where('patient_token_id', $token->id)
-                    ->whereIn('action', ['call', 'recall'])
-                    ->latest('id')
-                    ->first();
+            ->orderByDesc('called_at')
+            ->first();
 
-                return [
-                    'id'                     => $token->id,
-                    'uuid'                   => $token->uuid,
-                    'token_number'           => $token->token_number,
-                    'queue_sequence'         => $token->queue_sequence ?? $token->token_number,
-                    'formatted_token_number' => $token->formatted_token_number,
-                    'prefix'                 => $token->token_prefix,
-                    'status'                 => $token->status,
-                    'doctor_name'            => $token->doctor ? 'Dr. ' . $token->doctor->name : 'Attending Doctor',
-                    'department'             => $token->doctor?->specialization ?? 'OPD Clinic',
-                    'room_number'            => $token->room_number ?? $token->doctor?->room_number ?? 'OPD Room',
-                    'call_count'             => $token->call_count ?? 1,
-                    'called_at'              => $token->called_at?->format('h:i A'),
-                    'called_at_timestamp'    => $token->called_at?->timestamp,
-                    'latest_call_log_id'     => $latestLog?->id ?? ($token->id . '_' . ($token->called_at?->timestamp ?? 0)),
-                ];
-            });
+        $activeTokenData = null;
+        if ($activeToken) {
+            $latestLog = TokenCallLog::where('patient_token_id', $activeToken->id)
+                ->whereIn('action', ['call', 'recall', 'start_consultation'])
+                ->latest('id')
+                ->first();
 
-        // Next waiting tokens in sequence
-        $waitingTokens = PatientToken::with(['patient', 'doctor'])
+            $activeTokenData = [
+                'id'                     => $activeToken->id,
+                'token_number'           => $activeToken->token_number,
+                'queue_sequence'         => $activeToken->queue_sequence ?? $activeToken->token_number,
+                'formatted_token_number' => $activeToken->formatted_token_number,
+                'prefix'                 => $activeToken->token_prefix,
+                'status'                 => $activeToken->status,
+                'doctor_name'            => $activeToken->doctor ? 'Dr. ' . $activeToken->doctor->name : 'Attending Doctor',
+                'department'             => $activeToken->doctor?->specialization ?? 'General OPD',
+                'room_number'            => $activeToken->room_number ?? $activeToken->doctor?->room_number ?? 'Consultation Desk',
+                'call_count'             => (int) ($activeToken->call_count ?? 1),
+                'called_at'              => $activeToken->called_at?->format('h:i A'),
+                'called_at_timestamp'    => $activeToken->called_at?->timestamp,
+                'is_recall'              => ($latestLog && $latestLog->action === 'recall') || ((int) $activeToken->call_count > 1),
+                'latest_log_id'          => $latestLog?->id,
+            ];
+        }
+
+        // 2. Upcoming Waiting Tokens (Next 5)
+        $waitingTokens = PatientToken::with(['doctor'])
             ->where('token_date', $today)
             ->where('status', 'waiting')
             ->orderBy('token_number', 'asc')
-            ->take(6)
+            ->take(5)
             ->get()
             ->map(function ($token) {
                 return [
@@ -88,54 +112,93 @@ class TokenDisplayController extends Controller
                     'token_number'           => $token->token_number,
                     'queue_sequence'         => $token->queue_sequence ?? $token->token_number,
                     'formatted_token_number' => $token->formatted_token_number,
-                    'doctor_name'            => $token->doctor ? 'Dr. ' . $token->doctor->name : 'Attending Doctor',
+                    'doctor_name'            => $token->doctor ? 'Dr. ' . $token->doctor->name : 'OPD Doctor',
                     'department'             => $token->doctor?->specialization ?? 'General OPD',
                     'room_number'            => $token->room_number ?? $token->doctor?->room_number ?? 'OPD Room',
+                    'status'                 => 'waiting',
                     'issued_at'              => format_app_datetime($token->created_at, 'h:i A'),
                 ];
             });
 
-        // Latest announcement event if any
-        $latestAnnouncement = TokenCallLog::with('patientToken.doctor')
+        // 3. Previously Called Tokens (Latest 8, excluding active)
+        $previousQuery = PatientToken::with(['doctor'])
+            ->where('token_date', $today)
+            ->where(function ($q) {
+                $q->whereNotNull('called_at')
+                  ->orWhereIn('status', ['completed', 'skipped', 'hold']);
+            });
+
+        if ($activeToken) {
+            $previousQuery->where('id', '!=', $activeToken->id);
+        }
+
+        $previousTokens = $previousQuery
+            ->orderByRaw("COALESCE(completed_at, called_at, updated_at) DESC")
+            ->take(8)
+            ->get()
+            ->map(function ($token) {
+                $time = $token->completed_at ?? $token->called_at ?? $token->updated_at;
+                return [
+                    'id'                     => $token->id,
+                    'token_number'           => $token->token_number,
+                    'queue_sequence'         => $token->queue_sequence ?? $token->token_number,
+                    'formatted_token_number' => $token->formatted_token_number,
+                    'doctor_name'            => $token->doctor ? 'Dr. ' . $token->doctor->name : 'OPD Doctor',
+                    'department'             => $token->doctor?->specialization ?? 'General OPD',
+                    'room_number'            => $token->room_number ?? $token->doctor?->room_number ?? 'OPD Room',
+                    'status'                 => $token->status,
+                    'time_formatted'         => $time ? format_app_datetime($time, 'h:i A') : '—',
+                    'call_count'             => (int) ($token->call_count ?? 1),
+                ];
+            });
+
+        // 4. Latest Call/Recall Event for Voice Announcement Trigger
+        $latestCallLog = TokenCallLog::with('patientToken.doctor')
             ->whereIn('action', ['call', 'recall'])
             ->whereDate('called_at', $today)
             ->latest('id')
             ->first();
 
-        $announcementPayload = null;
-        if ($latestAnnouncement && $latestAnnouncement->patientToken) {
-            $t = $latestAnnouncement->patientToken;
-            $announcementPayload = [
-                'log_id'                 => $latestAnnouncement->id,
-                'token_id'               => $t->id,
-                'token_number'           => $t->token_number,
-                'queue_sequence'         => $t->queue_sequence ?? $t->token_number,
-                'formatted_token_number' => $t->formatted_token_number,
-                'doctor_name'            => $t->doctor ? 'Dr. ' . $t->doctor->name : 'Attending Doctor',
-                'room_number'            => $latestAnnouncement->room_number ?? $t->room_number ?? $t->doctor?->room_number ?? 'Consultation Room',
-                'action'                 => $latestAnnouncement->action,
-                'timestamp'              => $latestAnnouncement->called_at?->timestamp,
-            ];
+        $announcementEvent = null;
+        if ($latestCallLog && $latestCallLog->patientToken) {
+            $pt = $latestCallLog->patientToken;
+            if ($pt->status !== 'cancelled') {
+                $announcementEvent = [
+                    'log_id'                 => $latestCallLog->id,
+                    'token_id'               => $pt->id,
+                    'token_number'           => $pt->token_number,
+                    'queue_sequence'         => $pt->queue_sequence ?? $pt->token_number,
+                    'formatted_token_number' => $pt->formatted_token_number,
+                    'prefix'                 => $pt->token_prefix,
+                    'doctor_name'            => $pt->doctor ? 'Dr. ' . $pt->doctor->name : 'Doctor',
+                    'room_number'            => $latestCallLog->room_number ?? $pt->room_number ?? $pt->doctor?->room_number ?? 'Consultation Room',
+                    'action'                 => $latestCallLog->action,
+                    'is_recall'              => ($latestCallLog->action === 'recall') || ((int) ($pt->call_count ?? 1) > 1),
+                    'call_count'             => (int) ($pt->call_count ?? 1),
+                    'timestamp'              => $latestCallLog->called_at?->timestamp,
+                ];
+            }
         }
 
         return response()->json([
             'status'              => 'success',
             'server_time'         => now()->format('h:i:s A'),
             'server_date'         => now()->format('l, d M Y'),
-            'active_tokens'       => $activeTokens,
+            'active_token'        => $activeTokenData,
+            'active_tokens'       => $activeTokenData ? [$activeTokenData] : [],
             'waiting_tokens'      => $waitingTokens,
-            'latest_announcement' => $announcementPayload,
+            'previous_tokens'     => $previousTokens,
+            'latest_announcement' => $announcementEvent,
             'total_waiting'       => PatientToken::where('token_date', $today)->where('status', 'waiting')->count(),
             'total_completed'     => PatientToken::where('token_date', $today)->where('status', 'completed')->count(),
             'settings'            => [
                 'voice_announcement_enabled' => (bool) ($profile->voice_announcement_enabled ?? true),
-                'voice_announcement_language'=> $profile->voice_announcement_language ?? 'both', // 'en', 'ur', 'both'
+                'voice_announcement_language'=> $profile->voice_announcement_language ?? 'both',
                 'voice_repeat_count'         => (int) ($profile->voice_repeat_count ?? 1),
                 'voice_volume'               => (int) ($profile->voice_volume ?? 100),
                 'lcd_refresh_interval_sec'   => (int) ($profile->lcd_refresh_interval_sec ?? 3),
-                'ticker_message'             => $profile->lcd_message_ticker ?: 'Welcome to Healthcare OPD Clinic • Please observe queue discipline and wait for your token number announcement.',
+                'ticker_message'             => $profile->lcd_message_ticker ?: 'Please wait for your token and proceed to your designated doctor room when announced. • مہربانی فرما کر اپنے ٹوکن کا انتظار کریں اور اعلان پر متعلقہ ڈاکٹر کے کمرے میں تشریف لے جائیں۔',
             ],
         ]);
     }
 }
-
