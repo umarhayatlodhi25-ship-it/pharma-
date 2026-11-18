@@ -4,40 +4,47 @@
 <div class="space-y-6">
 
     <!-- PAGE HEADER -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-gray-200">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-gray-200">
         <div>
             <div class="flex items-center space-x-2 text-xs text-teal-600 font-semibold mb-1">
                 <span>Doctor Portal</span>
                 <span>/</span>
-                <span>OPD Queue</span>
+                <span>OPD Queue Management</span>
             </div>
             <h1 class="text-2xl font-bold text-gray-900 flex items-center space-x-2">
-                <i class="fa-solid fa-stethoscope text-teal-600"></i>
-                <span>OPD Consultation Queue</span>
+                <i class="fa-solid fa-user-doctor text-teal-600"></i>
+                <span>Dr. {{ $doctor->name }}</span>
             </h1>
-            <p class="text-xs text-gray-500 mt-1">
-                @if($targetDate === 'all')
-                    Showing all historical patient consultations assigned to Dr. {{ $doctor->name }} (Total: {{ $totalLifetimeTokens }})
-                @elseif($targetDate === $todayDate)
-                    Managing today's patient queue for Dr. {{ $doctor->name }} (Today: {{ $todayTokensCount }} • Lifetime: {{ $totalLifetimeTokens }})
-                @else
-                    Showing consultations for {{ format_app_datetime($targetDate, 'd M, Y') }} (Total: {{ $counts['total'] }})
-                @endif
+            <p class="text-xs text-gray-500 mt-1 flex items-center gap-3">
+                <span class="inline-flex items-center font-medium text-slate-700">
+                    <i class="fa-solid fa-door-open text-teal-500 mr-1.5"></i> Room: <strong class="ml-1 text-slate-900">{{ $doctor->room_number ?? 'Consultation Room' }}</strong>
+                </span>
+                <span>•</span>
+                <span class="inline-flex items-center font-medium text-slate-700">
+                    <i class="fa-solid fa-hospital-user text-teal-500 mr-1.5"></i> Dept: <strong class="ml-1 text-slate-900">{{ $doctor->specialization ?? 'General OPD' }}</strong>
+                </span>
+                <span>•</span>
+                <span>{{ $targetDate === $todayDate ? 'Today: ' . format_app_datetime($todayDate, 'd M, Y') : 'Date: ' . format_app_datetime($targetDate, 'd M, Y') }}</span>
             </p>
         </div>
 
-        <!-- Period Toggle & Date Selector -->
+        <!-- Period Toggle & Call Next Primary Button -->
         <div class="flex flex-wrap items-center gap-2">
-            <!-- Today Quick Button -->
-            <a href="{{ route('doctor.queue.index', ['date' => $todayDate, 'status' => $statusFilter]) }}"
-               class="px-3 py-2 rounded-xl text-xs font-bold transition {{ $targetDate === $todayDate ? 'bg-teal-600 text-white shadow-xs' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50' }}">
-                <i class="fa-solid fa-calendar-day mr-1"></i> Today ({{ $todayTokensCount }})
-            </a>
+            <!-- Call Next Patient Form -->
+            <form action="{{ route('doctor.queue.call-next') }}" method="POST" class="inline">
+                @csrf
+                <button type="submit" 
+                        {{ $counts['waiting'] == 0 ? 'disabled' : '' }}
+                        class="px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition flex items-center gap-2 {{ $counts['waiting'] > 0 ? 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white shadow-teal-700/20 active:scale-95' : 'bg-gray-200 text-gray-400 cursor-not-allowed' }}">
+                    <i class="fa-solid fa-bullhorn text-amber-300"></i>
+                    <span>CALL NEXT ({{ $counts['waiting'] }})</span>
+                </button>
+            </form>
 
-            <!-- All Lifetime Quick Button -->
-            <a href="{{ route('doctor.queue.index', ['date' => 'all', 'status' => $statusFilter]) }}"
-               class="px-3 py-2 rounded-xl text-xs font-bold transition {{ $targetDate === 'all' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50' }}">
-                <i class="fa-solid fa-list-check mr-1"></i> All Lifetime ({{ $totalLifetimeTokens }})
+            <!-- Quick Date Toggles -->
+            <a href="{{ route('doctor.queue.index', ['date' => $todayDate, 'status' => $statusFilter]) }}"
+               class="px-3 py-2 rounded-xl text-xs font-bold transition {{ $targetDate === $todayDate ? 'bg-slate-800 text-white shadow-xs' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50' }}">
+                <i class="fa-solid fa-calendar-day mr-1"></i> Today
             </a>
 
             <!-- Specific Date Selector -->
@@ -53,43 +60,217 @@
         </div>
     </div>
 
-    <!-- QUEUE SUMMARY FILTER CHIPS -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <a href="{{ route('doctor.queue.index', ['date' => $targetDate, 'status' => 'all', 'search' => $search]) }}" 
-           class="p-3.5 rounded-xl border text-xs transition {{ $statusFilter === 'all' ? 'bg-teal-600 border-teal-600 text-white font-bold shadow-md shadow-teal-900/20' : 'bg-white border-gray-200 text-gray-700 hover:border-teal-400' }}">
-            <div class="flex items-center justify-between">
-                <span>All Tokens</span>
-                <span class="font-mono text-base font-black {{ $statusFilter === 'all' ? 'text-white' : 'text-gray-900' }}">{{ $counts['total'] }}</span>
+    <!-- ACTIVE CONSULTATION & NEXT WAITING TOKENS DUAL PANEL -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- LEFT: CURRENT ACTIVE TOKEN (2 COLS) -->
+        <div class="lg:col-span-2 bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 text-white rounded-2xl p-6 shadow-xl relative overflow-hidden">
+            <div class="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
+                <i class="fa-solid fa-stethoscope text-[180px]"></i>
             </div>
+
+            <div class="flex items-center justify-between pb-4 border-b border-white/10">
+                <div class="flex items-center space-x-2">
+                    <span class="w-2.5 h-2.5 rounded-full {{ $nowServing ? 'bg-emerald-400 animate-ping' : 'bg-gray-400' }}"></span>
+                    <span class="text-xs uppercase font-bold tracking-wider text-teal-300">Current Consultation Desk</span>
+                </div>
+                @if($nowServing)
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold {{ $nowServing->status === 'in_consultation' ? 'bg-indigo-500/30 text-indigo-200 border border-indigo-400/30' : 'bg-amber-500/30 text-amber-200 border border-amber-400/30' }}">
+                        {{ $nowServing->status === 'in_consultation' ? 'Consultation In Progress' : 'Called (Waiting Entry)' }}
+                    </span>
+                @else
+                    <span class="text-xs text-slate-400">Desk Available</span>
+                @endif
+            </div>
+
+            @if($nowServing)
+                <div class="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                    <!-- Token Badge -->
+                    <div class="text-center sm:text-left bg-white/5 backdrop-blur-xs p-4 rounded-xl border border-white/10">
+                        <span class="text-[10px] text-teal-200 uppercase font-bold block">Token Number</span>
+                        <div class="text-4xl font-mono font-black text-amber-300 mt-1">
+                            #{{ $nowServing->formatted_token_number }}
+                        </div>
+                        <span class="text-[11px] text-slate-300 block mt-1">
+                            Call Count: <strong class="text-white">{{ $nowServing->call_count }}</strong>
+                        </span>
+                    </div>
+
+                    <!-- Patient Details -->
+                    <div class="sm:col-span-2 space-y-1.5 pl-2">
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-xl font-bold text-white">{{ $nowServing->patient->name }}</h2>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-white/10 text-teal-200">{{ $nowServing->patient->patient_number }}</span>
+                        </div>
+                        <p class="text-xs text-slate-300 flex items-center gap-3">
+                            <span><i class="fa-solid fa-venus-mars mr-1 text-teal-400"></i>{{ $nowServing->patient->gender ?: 'N/A' }}</span>
+                            <span>•</span>
+                            <span><i class="fa-solid fa-cake-candles mr-1 text-teal-400"></i>{{ $nowServing->patient->age ? $nowServing->patient->age . ' Years' : 'Age N/A' }}</span>
+                            @if($nowServing->patient->phone)
+                                <span>•</span>
+                                <span><i class="fa-solid fa-phone mr-1 text-teal-400"></i>{{ $nowServing->patient->phone }}</span>
+                            @endif
+                        </p>
+                        <p class="text-xs text-slate-400">
+                            Issued: {{ format_app_datetime($nowServing->created_at, 'h:i A') }} 
+                            @if($nowServing->called_at)
+                                • Called: {{ format_app_datetime($nowServing->called_at, 'h:i A') }}
+                            @endif
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Action Controls for Active Token -->
+                <div class="mt-6 pt-4 border-t border-white/10 flex flex-wrap items-center gap-2.5">
+                    <!-- Workspace / Examination -->
+                    <a href="{{ route('doctor.consultations.show', $nowServing->id) }}" class="px-4 py-2 bg-teal-500 hover:bg-teal-600 text-slate-900 font-bold text-xs rounded-xl shadow-md transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-stethoscope"></i>
+                        <span>Start / Open Workspace</span>
+                    </a>
+
+                    <!-- Recall Patient -->
+                    <form action="{{ route('doctor.queue.recall', $nowServing->id) }}" method="POST" class="inline">
+                        @csrf
+                        <button type="submit" class="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/20 transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-volume-high text-amber-300"></i>
+                            <span>Recall</span>
+                        </button>
+                    </form>
+
+                    <!-- Complete Consultation -->
+                    <form action="{{ route('doctor.queue.complete', $nowServing->id) }}" method="POST" class="inline" onsubmit="return confirm('Complete consultation for Token #{{ $nowServing->formatted_token_number }}?');">
+                        @csrf
+                        <button type="submit" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check"></i>
+                            <span>Complete</span>
+                        </button>
+                    </form>
+
+                    <!-- Put on Hold -->
+                    <button type="button" onclick="openActionModal('hold', '{{ $nowServing->id }}', '{{ $nowServing->formatted_token_number }}')" class="px-3.5 py-2 bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 font-bold text-xs rounded-xl border border-amber-500/30 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-pause"></i>
+                        <span>Hold</span>
+                    </button>
+
+                    <!-- Skip Patient -->
+                    <button type="button" onclick="openActionModal('skip', '{{ $nowServing->id }}', '{{ $nowServing->formatted_token_number }}')" class="px-3.5 py-2 bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 font-bold text-xs rounded-xl border border-rose-500/30 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-forward-step"></i>
+                        <span>Skip</span>
+                    </button>
+                </div>
+            @else
+                <div class="py-10 text-center">
+                    <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-white/10 text-teal-300 text-2xl mb-3">
+                        <i class="fa-solid fa-stethoscope"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-white">No Patient Currently Active</h3>
+                    <p class="text-xs text-slate-300 max-w-sm mx-auto mt-1">
+                        There is no patient currently inside the consultation room. Click "CALL NEXT" above or pick a specific waiting patient below to begin.
+                    </p>
+                </div>
+            @endif
+        </div>
+
+        <!-- RIGHT: NEXT 5 TOKENS IN QUEUE -->
+        <div class="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between pb-3 border-b border-gray-100">
+                    <h3 class="text-xs uppercase font-bold text-gray-700 tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-list-ol text-teal-600"></i>
+                        <span>Up Next in Lobby ({{ $counts['waiting'] }})</span>
+                    </h3>
+                    <span class="text-[11px] font-semibold text-teal-600">Next in sequence</span>
+                </div>
+
+                <div class="divide-y divide-gray-100 mt-2">
+                    @forelse($nextTokens as $nxt)
+                        <div class="py-2.5 flex items-center justify-between hover:bg-gray-50 rounded-lg px-2 transition">
+                            <div class="flex items-center space-x-3">
+                                <span class="font-mono text-xs font-black bg-slate-900 text-white w-8 h-8 rounded-lg flex items-center justify-center">
+                                    #{{ $nxt->queue_sequence ?? $nxt->token_number }}
+                                </span>
+                                <div>
+                                    <div class="text-xs font-bold text-gray-900 truncate max-w-[130px]">{{ $nxt->patient->name }}</div>
+                                    <div class="text-[10px] text-gray-400">Waiting since {{ format_app_datetime($nxt->created_at, 'h:i A') }}</div>
+                                </div>
+                            </div>
+                            <form action="{{ route('doctor.queue.call', $nxt->id) }}" method="POST">
+                                @csrf
+                                <button type="submit" class="px-2.5 py-1 bg-teal-50 hover:bg-teal-600 text-teal-700 hover:text-white rounded-lg text-xs font-bold transition border border-teal-200 flex items-center gap-1">
+                                    <i class="fa-solid fa-phone text-[10px]"></i>
+                                    <span>Call</span>
+                                </button>
+                            </form>
+                        </div>
+                    @empty
+                        <div class="py-8 text-center text-gray-400 text-xs">
+                            <i class="fa-solid fa-mug-hot text-2xl text-gray-300 mb-1.5 block"></i>
+                            <span>No waiting patients in queue.</span>
+                        </div>
+                    @endforelse
+                </div>
+            </div>
+
+            <div class="pt-3 border-t border-gray-100 text-[11px] text-gray-500 text-center">
+                Room: <strong class="text-gray-800">{{ $doctor->room_number ?? 'OPD Room' }}</strong> • Scope: <span class="capitalize font-semibold text-teal-700">{{ \App\Models\AccountProfile::current()->queue_scope ?? 'Doctor-wise' }}</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- QUEUE SUMMARY FILTER CHIPS -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+        <a href="{{ route('doctor.queue.index', ['date' => $targetDate, 'status' => 'all', 'search' => $search]) }}" 
+           class="p-2.5 rounded-xl border text-xs transition {{ $statusFilter === 'all' ? 'bg-teal-600 border-teal-600 text-white font-bold shadow-xs' : 'bg-white border-gray-200 text-gray-700 hover:border-teal-400' }}">
+            <div class="text-[10px] uppercase font-bold opacity-80">All</div>
+            <div class="font-mono text-base font-black mt-0.5">{{ $counts['total'] }}</div>
         </a>
 
         <a href="{{ route('doctor.queue.index', ['date' => $targetDate, 'status' => 'waiting', 'search' => $search]) }}" 
-           class="p-3.5 rounded-xl border text-xs transition {{ $statusFilter === 'waiting' ? 'bg-amber-500 border-amber-500 text-white font-bold shadow-md shadow-amber-900/20' : 'bg-white border-amber-200 text-amber-800 hover:border-amber-400' }}">
-            <div class="flex items-center justify-between">
-                <span>Waiting in Lobby</span>
-                <span class="font-mono text-base font-black {{ $statusFilter === 'waiting' ? 'text-white' : 'text-amber-700' }}">{{ $counts['waiting'] }}</span>
-            </div>
+           class="p-2.5 rounded-xl border text-xs transition {{ $statusFilter === 'waiting' ? 'bg-amber-500 border-amber-500 text-white font-bold shadow-xs' : 'bg-white border-amber-200 text-amber-800 hover:border-amber-400' }}">
+            <div class="text-[10px] uppercase font-bold opacity-80">Waiting</div>
+            <div class="font-mono text-base font-black mt-0.5">{{ $counts['waiting'] }}</div>
+        </a>
+
+        <a href="{{ route('doctor.queue.index', ['date' => $targetDate, 'status' => 'called', 'search' => $search]) }}" 
+           class="p-2.5 rounded-xl border text-xs transition {{ $statusFilter === 'called' ? 'bg-blue-600 border-blue-600 text-white font-bold shadow-xs' : 'bg-white border-blue-200 text-blue-800 hover:border-blue-400' }}">
+            <div class="text-[10px] uppercase font-bold opacity-80">Called</div>
+            <div class="font-mono text-base font-black mt-0.5">{{ $counts['called'] }}</div>
         </a>
 
         <a href="{{ route('doctor.queue.index', ['date' => $targetDate, 'status' => 'in_consultation', 'search' => $search]) }}" 
-           class="p-3.5 rounded-xl border text-xs transition {{ $statusFilter === 'in_consultation' ? 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-md shadow-indigo-900/20' : 'bg-white border-indigo-200 text-indigo-800 hover:border-indigo-400' }}">
-            <div class="flex items-center justify-between">
-                <span>In Consultation</span>
-                <span class="font-mono text-base font-black {{ $statusFilter === 'in_consultation' ? 'text-white' : 'text-indigo-700' }}">{{ $counts['in_consultation'] }}</span>
-            </div>
+           class="p-2.5 rounded-xl border text-xs transition {{ $statusFilter === 'in_consultation' ? 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-xs' : 'bg-white border-indigo-200 text-indigo-800 hover:border-indigo-400' }}">
+            <div class="text-[10px] uppercase font-bold opacity-80">Consulting</div>
+            <div class="font-mono text-base font-black mt-0.5">{{ $counts['in_consultation'] }}</div>
+        </a>
+
+        <a href="{{ route('doctor.queue.index', ['date' => $targetDate, 'status' => 'hold', 'search' => $search]) }}" 
+           class="p-2.5 rounded-xl border text-xs transition {{ $statusFilter === 'hold' ? 'bg-orange-500 border-orange-500 text-white font-bold shadow-xs' : 'bg-white border-orange-200 text-orange-800 hover:border-orange-400' }}">
+            <div class="text-[10px] uppercase font-bold opacity-80">On Hold</div>
+            <div class="font-mono text-base font-black mt-0.5">{{ $counts['hold'] }}</div>
+        </a>
+
+        <a href="{{ route('doctor.queue.index', ['date' => $targetDate, 'status' => 'skipped', 'search' => $search]) }}" 
+           class="p-2.5 rounded-xl border text-xs transition {{ $statusFilter === 'skipped' ? 'bg-purple-600 border-purple-600 text-white font-bold shadow-xs' : 'bg-white border-purple-200 text-purple-800 hover:border-purple-400' }}">
+            <div class="text-[10px] uppercase font-bold opacity-80">Skipped</div>
+            <div class="font-mono text-base font-black mt-0.5">{{ $counts['skipped'] }}</div>
         </a>
 
         <a href="{{ route('doctor.queue.index', ['date' => $targetDate, 'status' => 'completed', 'search' => $search]) }}" 
-           class="p-3.5 rounded-xl border text-xs transition {{ $statusFilter === 'completed' ? 'bg-emerald-600 border-emerald-600 text-white font-bold shadow-md shadow-emerald-900/20' : 'bg-white border-emerald-200 text-emerald-800 hover:border-emerald-400' }}">
-            <div class="flex items-center justify-between">
-                <span>Completed</span>
-                <span class="font-mono text-base font-black {{ $statusFilter === 'completed' ? 'text-white' : 'text-emerald-700' }}">{{ $counts['completed'] }}</span>
-            </div>
+           class="p-2.5 rounded-xl border text-xs transition {{ $statusFilter === 'completed' ? 'bg-emerald-600 border-emerald-600 text-white font-bold shadow-xs' : 'bg-white border-emerald-200 text-emerald-800 hover:border-emerald-400' }}">
+            <div class="text-[10px] uppercase font-bold opacity-80">Completed</div>
+            <div class="font-mono text-base font-black mt-0.5">{{ $counts['completed'] }}</div>
+        </a>
+
+        <a href="{{ route('doctor.queue.index', ['date' => $targetDate, 'status' => 'cancelled', 'search' => $search]) }}" 
+           class="p-2.5 rounded-xl border text-xs transition {{ $statusFilter === 'cancelled' ? 'bg-rose-600 border-rose-600 text-white font-bold shadow-xs' : 'bg-white border-rose-200 text-rose-800 hover:border-rose-400' }}">
+            <div class="text-[10px] uppercase font-bold opacity-80">Cancelled</div>
+            <div class="font-mono text-base font-black mt-0.5">{{ $counts['cancelled'] }}</div>
         </a>
     </div>
 
     <!-- SEARCH & TABLE CONTAINER -->
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden space-y-4">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden space-y-4">
         
         <!-- Search bar -->
         <div class="p-4 border-b border-gray-100 bg-gray-50/50">
@@ -120,18 +301,18 @@
                         <th class="py-3 px-4">Time Issued</th>
                         <th class="py-3 px-4">Patient Details</th>
                         <th class="py-3 px-4">Payment</th>
-                        <th class="py-3 px-4">Consultation Status</th>
+                        <th class="py-3 px-4">Status</th>
                         <th class="py-3 px-4">Prescription</th>
                         <th class="py-3 px-4 text-right">Workflow Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     @forelse($tokens as $token)
-                    <tr class="hover:bg-slate-50/60 transition {{ $token->status === 'in_consultation' ? 'bg-indigo-50/30' : '' }}">
+                    <tr class="hover:bg-slate-50/60 transition {{ in_array($token->status, ['called', 'in_consultation']) ? 'bg-indigo-50/30' : '' }}">
                         <!-- Token # -->
                         <td class="py-3.5 px-4">
-                            <span class="inline-flex items-center justify-center w-9 h-9 rounded-xl font-mono text-sm font-black {{ $token->status === 'in_consultation' ? 'bg-indigo-600 text-white' : ($token->status === 'completed' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-900 text-white') }} shadow-xs">
-                                #{{ $token->token_number }}
+                            <span class="inline-flex items-center justify-center px-2.5 py-1.5 rounded-xl font-mono text-xs font-black {{ in_array($token->status, ['called', 'in_consultation']) ? 'bg-indigo-600 text-white' : ($token->status === 'completed' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-900 text-white') }} shadow-xs">
+                                #{{ $token->formatted_token_number }}
                             </span>
                         </td>
 
@@ -163,6 +344,10 @@
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                     <i class="fa-solid fa-check text-[8px] mr-1"></i> Paid (PKR {{ number_format($token->charged_amount, 0) }})
                                 </span>
+                            @elseif($token->payment_type === 'partial')
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                    Partial (PKR {{ number_format($token->charged_amount, 0) }})
+                                </span>
                             @else
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
                                     Free Visit
@@ -170,7 +355,7 @@
                             @endif
                         </td>
 
-                        <!-- Consultation Status -->
+                        <!-- Status -->
                         <td class="py-3.5 px-4">
                             @if($token->status === 'in_consultation')
                                 <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 animate-pulse">
@@ -182,7 +367,15 @@
                                 </span>
                             @elseif($token->status === 'called')
                                 <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                                    <i class="fa-solid fa-bullhorn mr-1.5 text-[10px]"></i> Called
+                                    <i class="fa-solid fa-bullhorn mr-1.5 text-[10px]"></i> Called ({{ $token->call_count }})
+                                </span>
+                            @elseif($token->status === 'hold')
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                                    <i class="fa-solid fa-pause mr-1.5 text-[10px]"></i> On Hold
+                                </span>
+                            @elseif($token->status === 'skipped')
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                    <i class="fa-solid fa-forward-step mr-1.5 text-[10px]"></i> Skipped
                                 </span>
                             @elseif($token->status === 'completed')
                                 <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
@@ -215,27 +408,47 @@
                         </td>
 
                         <!-- Workflow Actions -->
-                        <td class="py-3.5 px-4 text-right space-x-1">
-                            @if($token->status === 'waiting' || $token->status === 'called')
+                        <td class="py-3.5 px-4 text-right space-x-1 whitespace-nowrap">
+                            @if($token->status === 'waiting')
                                 <form action="{{ route('doctor.queue.call', $token->id) }}" method="POST" class="inline">
                                     @csrf
-                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-2xs transition">
-                                        <i class="fa-solid fa-stethoscope mr-1.5"></i> Call Patient
+                                    <button type="submit" class="inline-flex items-center px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-2xs transition">
+                                        <i class="fa-solid fa-phone mr-1"></i> Call
+                                    </button>
+                                </form>
+                            @elseif($token->status === 'called')
+                                <form action="{{ route('doctor.queue.recall', $token->id) }}" method="POST" class="inline">
+                                    @csrf
+                                    <button type="submit" class="inline-flex items-center px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs transition" title="Re-announce">
+                                        <i class="fa-solid fa-volume-high"></i>
+                                    </button>
+                                </form>
+                                <a href="{{ route('doctor.consultations.show', $token->id) }}" class="inline-flex items-center px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-xs transition">
+                                    <i class="fa-solid fa-stethoscope mr-1"></i> Start
+                                </a>
+                            @elseif($token->status === 'in_consultation')
+                                <a href="{{ route('doctor.consultations.show', $token->id) }}" class="inline-flex items-center px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-xs transition">
+                                    <i class="fa-solid fa-pen-to-square mr-1"></i> Workspace
+                                </a>
+                                <form action="{{ route('doctor.queue.complete', $token->id) }}" method="POST" class="inline" onsubmit="return confirm('Complete consultation for Token #{{ $token->formatted_token_number }}?');">
+                                    @csrf
+                                    <button type="submit" class="inline-flex items-center px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs transition">
+                                        <i class="fa-solid fa-check mr-1"></i> Finish
+                                    </button>
+                                </form>
+                            @elseif(in_array($token->status, ['hold', 'skipped']))
+                                <form action="{{ route('doctor.queue.resume', $token->id) }}" method="POST" class="inline">
+                                    @csrf
+                                    <button type="submit" class="inline-flex items-center px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs transition">
+                                        <i class="fa-solid fa-rotate-left mr-1"></i> Resume
                                     </button>
                                 </form>
                             @endif
 
-                            <a href="{{ route('doctor.consultations.show', $token->id) }}" class="inline-flex items-center px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-xs shadow-2xs transition">
-                                <i class="fa-solid fa-pen-to-square mr-1.5"></i> Workspace
-                            </a>
-
-                            @if($token->status === 'in_consultation')
-                                <form action="{{ route('doctor.queue.complete', $token->id) }}" method="POST" class="inline" onsubmit="return confirm('Complete consultation for Token #{{ $token->token_number }}?');">
-                                    @csrf
-                                    <button type="submit" class="inline-flex items-center px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-2xs transition">
-                                        <i class="fa-solid fa-check mr-1"></i> Finish
-                                    </button>
-                                </form>
+                            @if(!in_array($token->status, ['completed', 'cancelled']))
+                                <button type="button" onclick="openActionModal('cancel', '{{ $token->id }}', '{{ $token->formatted_token_number }}')" class="p-1.5 text-gray-400 hover:text-rose-600 transition" title="Cancel Token">
+                                    <i class="fa-solid fa-ban"></i>
+                                </button>
                             @endif
                         </td>
                     </tr>
@@ -260,4 +473,79 @@
     </div>
 
 </div>
+
+<!-- REASON MODAL (FOR HOLD / SKIP / CANCEL) -->
+<div id="actionModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center hidden">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl mx-4">
+        <div class="flex items-center justify-between pb-3 border-b border-gray-100">
+            <h3 id="modalTitle" class="text-sm font-bold text-gray-900">Manage Token</h3>
+            <button type="button" onclick="closeActionModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+        <form id="modalForm" method="POST" class="mt-4 space-y-4">
+            @csrf
+            <div>
+                <label id="modalReasonLabel" class="block text-xs font-semibold text-gray-700 mb-1">Reason / Notes</label>
+                <textarea id="modalReasonInput" name="reason" rows="3" required class="w-full text-xs rounded-xl border-gray-300 focus:ring-teal-500 focus:border-teal-500" placeholder="Enter reason..."></textarea>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeActionModal()" class="px-3.5 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition">
+                    Cancel
+                </button>
+                <button type="submit" id="modalSubmitBtn" class="px-4 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-xs transition">
+                    Confirm
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openActionModal(action, tokenId, tokenNumber) {
+    const modal = document.getElementById('actionModal');
+    const form = document.getElementById('modalForm');
+    const title = document.getElementById('modalTitle');
+    const label = document.getElementById('modalReasonLabel');
+    const input = document.getElementById('modalReasonInput');
+    const btn = document.getElementById('modalSubmitBtn');
+
+    input.value = '';
+
+    if (action === 'hold') {
+        form.action = `/doctor-portal/opd-queue/${tokenId}/hold`;
+        input.name = 'reason';
+        input.placeholder = 'e.g. Waiting for laboratory reports or vital checks...';
+        title.innerText = `Put Token #${tokenNumber} On Hold`;
+        label.innerText = 'Hold Reason (Optional)';
+        input.required = false;
+        btn.innerText = 'Put On Hold';
+        btn.className = 'px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition';
+    } else if (action === 'skip') {
+        form.action = `/doctor-portal/opd-queue/${tokenId}/skip`;
+        input.name = 'reason';
+        input.placeholder = 'e.g. Patient not present when token was announced...';
+        title.innerText = `Skip Token #${tokenNumber}`;
+        label.innerText = 'Skip Reason (Optional)';
+        input.required = false;
+        btn.innerText = 'Skip Token';
+        btn.className = 'px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-xs transition';
+    } else if (action === 'cancel') {
+        form.action = `/doctor-portal/opd-queue/${tokenId}/cancel`;
+        input.name = 'cancel_reason';
+        input.placeholder = 'Provide reason for token cancellation...';
+        title.innerText = `Cancel Token #${tokenNumber}`;
+        label.innerText = 'Cancellation Reason (Required)';
+        input.required = true;
+        btn.innerText = 'Cancel Token';
+        btn.className = 'px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition';
+    }
+
+    modal.classList.remove('hidden');
+}
+
+function closeActionModal() {
+    document.getElementById('actionModal').classList.add('hidden');
+}
+</script>
 @endsection

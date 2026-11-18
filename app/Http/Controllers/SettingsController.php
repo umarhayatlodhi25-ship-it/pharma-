@@ -192,6 +192,13 @@ class SettingsController extends Controller
             'show_time'              => 'nullable|boolean',
             'show_consultation_fee'  => 'nullable|boolean',
             'show_token_status'      => 'nullable|boolean',
+            'queue_scope'            => 'required|in:doctor_wise,department_wise,hospital_wide',
+            'voice_announcement_enabled' => 'nullable|boolean',
+            'voice_announcement_language' => 'required|in:en,ur,both',
+            'voice_repeat_count'     => 'required|integer|min:1|max:3',
+            'voice_volume'           => 'required|integer|min:0|max:100',
+            'lcd_refresh_interval_sec' => 'required|integer|min:1|max:60',
+            'lcd_message_ticker'     => 'nullable|string|max:500',
             'footer_text'            => 'nullable|string|max:500',
         ]);
 
@@ -199,7 +206,7 @@ class SettingsController extends Controller
         $booleans = [
             'daily_token_reset', 'auto_print_token', 'show_logo', 'show_organization_name',
             'show_patient_id', 'show_doctor_name', 'show_date', 'show_time', 
-            'show_consultation_fee', 'show_token_status'
+            'show_consultation_fee', 'show_token_status', 'voice_announcement_enabled'
         ];
 
         foreach ($booleans as $field) {

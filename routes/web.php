@@ -33,6 +33,10 @@ Route::get('/', function () {
     return redirect('/dashboard');
 });
 
+// Central LCD Token Display & LAN Polling API
+Route::get('/token-display', [\App\Http\Controllers\TokenDisplayController::class, 'index'])->name('token.display');
+Route::get('/api/token-display/live', [\App\Http\Controllers\TokenDisplayController::class, 'liveData'])->name('token.display.live');
+
 // ============================================================
 // Secure Admin Migration Routes (Token Protected)
 // ============================================================
@@ -523,7 +527,9 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/hospital-service-outstanding', [ReportController::class, 'hospitalServiceOutstanding'])->name('hospital-service-outstanding');
             Route::get('/hospital-payment-methods', [ReportController::class, 'hospitalPaymentMethods'])->name('hospital-payment-methods');
             Route::get('/patient-service-history', [ReportController::class, 'patientServiceHistory'])->name('patient-service-history');
+            Route::get('/tokens', [\App\Http\Controllers\TokenReportController::class, 'index'])->name('tokens');
         });
+        Route::post('/token-sync/trigger', [\App\Http\Controllers\TokenReportController::class, 'triggerSync'])->name('admin.token-sync.trigger');
     });
 
     // 3. ADMIN, PHARMACIST, CASHIER & ASSISTANT ADMIN ROUTES (POS, Sales, Returns, Expiry Alerts)
@@ -622,8 +628,14 @@ Route::middleware(['auth'])->group(function () {
 
             // OPD Queue
             Route::get('/opd-queue', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'index'])->name('queue.index');
+            Route::post('/opd-queue/call-next', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'callNext'])->name('queue.call-next');
             Route::post('/opd-queue/{token}/call', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'call'])->name('queue.call');
+            Route::post('/opd-queue/{token}/recall', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'recall'])->name('queue.recall');
+            Route::post('/opd-queue/{token}/start-consultation', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'startConsultation'])->name('queue.start-consultation');
             Route::post('/opd-queue/{token}/complete', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'complete'])->name('queue.complete');
+            Route::post('/opd-queue/{token}/skip', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'skip'])->name('queue.skip');
+            Route::post('/opd-queue/{token}/hold', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'hold'])->name('queue.hold');
+            Route::post('/opd-queue/{token}/resume', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'resume'])->name('queue.resume');
             Route::post('/opd-queue/{token}/cancel', [\App\Http\Controllers\DoctorPortal\QueueController::class, 'cancel'])->name('queue.cancel');
 
             // Consultations

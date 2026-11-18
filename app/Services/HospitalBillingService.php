@@ -538,8 +538,12 @@ class HospitalBillingService
                 $tokenPaymentType = 'partial';
             }
 
-            // 6. Generate sequential token number for today
-            $nextTokenNumber = PatientToken::generateNextTokenNumber($today, true);
+            // 6. Generate sequential token number & queue sequence for today
+            $queueService = app(\App\Services\TokenQueueService::class);
+            $tokenNumbers = $queueService->allocateTokenNumbers($today, $doctor->id);
+            $nextTokenNumber = $tokenNumbers['token_number'];
+            $queueSequence = $tokenNumbers['queue_sequence'];
+            $tokenPrefix = $tokenNumbers['prefix'];
 
             $defaultStatus = 'waiting';
             $profile = \App\Models\AccountProfile::current();
@@ -556,6 +560,11 @@ class HospitalBillingService
                 'doctor_id'                 => $doctor->id,
                 'hospital_service_id'       => $service ? $service->id : null,
                 'token_number'              => $nextTokenNumber,
+                'queue_sequence'            => $queueSequence,
+                'token_prefix'              => $tokenPrefix,
+                'room_number'               => $doctor->room_number,
+                'call_count'                => 0,
+                'generated_by'              => $userId,
                 'token_date'                => $today,
                 'payment_type'              => $tokenPaymentType,
                 'consultation_fee'          => $totalGrossFee,
@@ -573,6 +582,46 @@ class HospitalBillingService
                 'paid_today'                => $amountReceivedToday,
                 'balance_due'               => $totalBalanceRemaining,
             ]);
+
+            // Audit Call Log for token generation
+            try {
+                \App\Models\TokenCallLog::create([
+                    'patient_token_id' => $token->id,
+                    'action'           => 'generate',
+                    'from_status'      => null,
+                    'to_status'        => $defaultStatus,
+                    'doctor_id'        => $doctor->id,
+                    'room_number'      => $doctor->room_number,
+                    'user_id'          => $userId,
+                    'notes'            => 'Token generated via OPD Registration',
+                    'called_at'        => now(),
+                ]);
+
+                \App\Models\SyncOutbox::create([
+                    'uuid'           => (string) \Illuminate\Support\Str::uuid(),
+                    'event_type'     => 'token_created',
+                    'aggregate_type' => 'PatientToken',
+                    'aggregate_id'   => (string) ($token->uuid ?? $token->id),
+                    'payload'        => [
+                        'token_id'         => $token->id,
+                        'uuid'             => $token->uuid,
+                        'token_number'     => $token->token_number,
+                        'queue_sequence'   => $token->queue_sequence,
+                        'token_prefix'     => $token->token_prefix,
+                        'formatted_number' => $token->formatted_token_number,
+                        'status'           => $defaultStatus,
+                        'patient_id'       => $patientId,
+                        'doctor_id'        => $doctor->id,
+                        'room_number'      => $doctor->room_number,
+                        'token_date'       => $today,
+                        'timestamp'        => now()->toIso8601String(),
+                    ],
+                    'status'         => 'pending',
+                    'attempts'       => 0,
+                ]);
+            } catch (\Throwable $e) {
+                // Outbox failure should never halt transaction
+            }
 
             // 8. Create Hospital Bill
             $bill = HospitalBill::create([

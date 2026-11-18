@@ -39,6 +39,30 @@ class AccountProfile extends Model
         'show_time',
         'show_consultation_fee',
         'show_token_status',
+        'queue_scope',
+        'voice_announcement_enabled',
+        'voice_announcement_language',
+        'voice_repeat_count',
+        'voice_volume',
+        'lcd_refresh_interval_sec',
+        'lcd_message_ticker',
+    ];
+
+    protected $casts = [
+        'daily_token_reset'          => 'boolean',
+        'auto_print_token'           => 'boolean',
+        'show_logo'                  => 'boolean',
+        'show_organization_name'     => 'boolean',
+        'show_patient_id'            => 'boolean',
+        'show_doctor_name'           => 'boolean',
+        'show_date'                  => 'boolean',
+        'show_time'                  => 'boolean',
+        'show_consultation_fee'      => 'boolean',
+        'show_token_status'          => 'boolean',
+        'voice_announcement_enabled' => 'boolean',
+        'voice_repeat_count'         => 'integer',
+        'voice_volume'               => 'integer',
+        'lcd_refresh_interval_sec'   => 'integer',
     ];
 
     /**

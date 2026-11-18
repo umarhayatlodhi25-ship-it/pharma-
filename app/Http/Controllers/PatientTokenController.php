@@ -300,10 +300,8 @@ class PatientTokenController extends Controller
                 ->with('info', 'No waiting patients in today\'s queue.');
         }
 
-        $token->update([
-            'status'    => 'called',
-            'called_at' => now(),
-        ]);
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->callToken($token, $token->doctor?->room_number, auth()->id());
 
         $patientName = $token->patient ? $token->patient->name : 'Patient';
 
@@ -316,10 +314,8 @@ class PatientTokenController extends Controller
      */
     public function call(PatientToken $token)
     {
-        $token->update([
-            'status'    => 'called',
-            'called_at' => now(),
-        ]);
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->callToken($token, $token->doctor?->room_number, auth()->id());
 
         $patientName = $token->patient ? $token->patient->name : 'Patient';
 
@@ -332,10 +328,8 @@ class PatientTokenController extends Controller
      */
     public function complete(PatientToken $token)
     {
-        $token->update([
-            'status'       => 'completed',
-            'completed_at' => now(),
-        ]);
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->completeConsultation($token, auth()->id());
 
         return redirect()->back()
             ->with('success', "Token #{$token->formatted_token_number} has been marked as Completed.");
@@ -344,11 +338,11 @@ class PatientTokenController extends Controller
     /**
      * Mark a token as cancelled.
      */
-    public function cancel(PatientToken $token)
+    public function cancel(Request $request, PatientToken $token)
     {
-        $token->update([
-            'status' => 'cancelled',
-        ]);
+        $reason = $request->input('reason', 'Cancelled by Administration');
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->cancelToken($token, $reason, auth()->id());
 
         return redirect()->back()
             ->with('success', "Token #{$token->formatted_token_number} has been cancelled.");

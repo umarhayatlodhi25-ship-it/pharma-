@@ -345,6 +345,18 @@
                 <td class="label-col">Doctor:</td>
                 <td class="val-col">{{ $token->doctor->name ?? '—' }}</td>
             </tr>
+            @if($token->doctor?->specialization)
+            <tr>
+                <td class="label-col">Department:</td>
+                <td class="val-col">{{ $token->doctor->specialization }}</td>
+            </tr>
+            @endif
+            @if($token->room_number ?? $token->doctor?->room_number)
+            <tr>
+                <td class="label-col">Room No:</td>
+                <td class="val-col">{{ $token->room_number ?? $token->doctor->room_number }}</td>
+            </tr>
+            @endif
             @endif
             @if($profile->show_date ?? true)
             <tr>

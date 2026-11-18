@@ -46,6 +46,18 @@ class PatientToken extends Model
         'previous_due',
         'paid_today',
         'balance_due',
+        'uuid',
+        'department_id',
+        'room_number',
+        'token_prefix',
+        'queue_sequence',
+        'call_count',
+        'started_at',
+        'held_at',
+        'skipped_at',
+        'cancelled_at',
+        'cancellation_reason',
+        'generated_by',
         // Aliases for Phase 3.2 schema
         'visit_date',
         'doctor_fee',
@@ -83,8 +95,23 @@ class PatientToken extends Model
         'balance_due'               => 'decimal:2',
         'called_at'                 => 'datetime',
         'completed_at'              => 'datetime',
+        'started_at'                => 'datetime',
+        'held_at'                   => 'datetime',
+        'skipped_at'                => 'datetime',
+        'cancelled_at'              => 'datetime',
+        'call_count'                => 'integer',
+        'queue_sequence'            => 'integer',
         'follow_up_date'            => 'date:Y-m-d',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (PatientToken $token) {
+            if (empty($token->uuid)) {
+                $token->uuid = (string) \Illuminate\Support\Str::uuid();
+            }
+        });
+    }
 
     /**
      * Relationship: The prescription created from this consultation token.
@@ -135,14 +162,38 @@ class PatientToken extends Model
     }
 
     /**
-     * Accessor: Format token number as 3-digit zero-padded string (e.g. 001, 002, 015).
+     * Relationship: Audit logs of calls and status transitions.
+     */
+    public function callLogs(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(TokenCallLog::class, 'patient_token_id');
+    }
+
+    /**
+     * Relationship: User who generated the token.
+     */
+    public function generatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'generated_by');
+    }
+
+    /**
+     * Accessor: Format token number as zero-padded string with prefix (e.g. MED-001, OPD-015).
      */
     public function getFormattedTokenNumberAttribute(): string
     {
-        $profile = \App\Models\AccountProfile::current();
-        $prefix = $profile->token_prefix ?? '';
-        $padded = str_pad((string) $this->token_number, 3, '0', STR_PAD_LEFT);
-        return $prefix . $padded;
+        $prefix = $this->token_prefix;
+        if ($prefix === null || $prefix === '') {
+            $profile = \App\Models\AccountProfile::current();
+            $prefix = $profile->token_prefix ?? '';
+        }
+        $number = $this->queue_sequence ?? $this->token_number;
+        $padded = str_pad((string) $number, 3, '0', STR_PAD_LEFT);
+        if (empty($prefix)) {
+            return $padded;
+        }
+        $cleanPrefix = rtrim($prefix, '-');
+        return $cleanPrefix . '-' . $padded;
     }
 
     /**

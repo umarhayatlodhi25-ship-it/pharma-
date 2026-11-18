@@ -408,14 +408,21 @@ class TokenManagement extends Component
         $this->dispatch('trigger-print');
     }
 
+    // Queue Action: Call Token (Re-announce / Announce)
+    public function callToken($tokenId)
+    {
+        $token = PatientToken::findOrFail($tokenId);
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->callToken($token, $token->doctor?->room_number, auth()->id());
+        session()->flash('queue_success', "Token #{$token->formatted_token_number} called.");
+    }
+
     // Queue Action: Start Consultation
     public function startConsultation($tokenId)
     {
         $token = PatientToken::findOrFail($tokenId);
-        $token->update([
-            'status'    => 'called',
-            'called_at' => now(),
-        ]);
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->startConsultation($token, auth()->id());
         session()->flash('queue_success', "Token #{$token->formatted_token_number} is now In Consultation.");
     }
 
@@ -423,20 +430,44 @@ class TokenManagement extends Component
     public function completeConsultation($tokenId)
     {
         $token = PatientToken::findOrFail($tokenId);
-        $token->update([
-            'status'       => 'completed',
-            'completed_at' => now(),
-        ]);
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->completeConsultation($token, auth()->id());
         session()->flash('queue_success', "Token #{$token->formatted_token_number} marked as Completed.");
     }
 
-    // Queue Action: Cancel Token
-    public function cancelToken($tokenId)
+    // Queue Action: Put on Hold
+    public function holdToken($tokenId, $reason = null)
     {
         $token = PatientToken::findOrFail($tokenId);
-        $token->update([
-            'status' => 'cancelled',
-        ]);
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->holdToken($token, $reason, auth()->id());
+        session()->flash('queue_success', "Token #{$token->formatted_token_number} placed on Hold.");
+    }
+
+    // Queue Action: Skip Token
+    public function skipToken($tokenId, $reason = null)
+    {
+        $token = PatientToken::findOrFail($tokenId);
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->skipToken($token, $reason, auth()->id());
+        session()->flash('queue_success', "Token #{$token->formatted_token_number} marked as Skipped.");
+    }
+
+    // Queue Action: Resume Token
+    public function resumeToken($tokenId)
+    {
+        $token = PatientToken::findOrFail($tokenId);
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->resumeToken($token, auth()->id());
+        session()->flash('queue_success', "Token #{$token->formatted_token_number} resumed to Waiting.");
+    }
+
+    // Queue Action: Cancel Token
+    public function cancelToken($tokenId, $reason = 'Cancelled at Reception')
+    {
+        $token = PatientToken::findOrFail($tokenId);
+        $queueService = app(\App\Services\TokenQueueService::class);
+        $queueService->cancelToken($token, $reason, auth()->id());
         session()->flash('queue_success', "Token #{$token->formatted_token_number} has been Cancelled.");
     }
 
