@@ -150,33 +150,59 @@
                         </a>
                         @endif
 
-                        @if(!$user || $user->hasPermission('manage_opd_tokens'))
-                        <a href="/opd/tokens" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ (request()->is('opd/tokens*') || request()->is('patient-tokens*')) ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
-                            <i class="fa-solid fa-ticket-simple w-5"></i>
-                            <span>OPD Tokens</span>
+                        @if(!$user || $user->hasPermission('manage_doctors') || $user->isAdmin())
+                        <a href="/doctor-requests" @click="mobileMenuOpen = false" class="flex items-center justify-between px-3 py-2.5 rounded-lg {{ request()->is('doctor-requests*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <div class="flex items-center space-x-3">
+                                <i class="fa-solid fa-user-check w-5"></i>
+                                <span>Doctor Requests</span>
+                            </div>
                             @php
-                                $todayWaiting = \App\Models\PatientToken::where('token_date', now()->toDateString())->where('status', 'waiting')->count();
+                                $pendingRequestsCount = \Illuminate\Support\Facades\Schema::hasTable('doctor_registration_requests')
+                                    ? \App\Models\DoctorRegistrationRequest::where('status', 'pending')->count()
+                                    : 0;
                             @endphp
-                            @if($todayWaiting > 0)
-                                <span class="ml-auto bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{{ $todayWaiting }}</span>
+                            @if($pendingRequestsCount > 0)
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
+                                    {{ $pendingRequestsCount }}
+                                </span>
                             @endif
                         </a>
                         @endif
 
+                        @if(!$user || $user->hasPermission('manage_opd_tokens'))
+                        <a href="/opd/tokens" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ (request()->is('opd/tokens*') || request()->is('patient-tokens*')) ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <i class="fa-solid fa-ticket-simple w-5"></i>
+                            <span>OPD Tokens</span>
+                        </a>
+                        @endif
+
+                        @if(!$user || $user->hasPermission('manage_hospital_billing'))
                         <a href="/hospital-billing" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('hospital-billing*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-file-invoice-dollar w-5"></i>
                             <span>Hospital Billing</span>
                         </a>
+                        @endif
 
+                        @if(!$user || $user->hasPermission('manage_doctor_ledgers'))
                         <a href="/doctor-ledgers" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ (request()->is('doctor-ledgers*') || request()->is('doctors/*/ledger*') || request()->is('doctor-settlements*')) ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-scale-balanced w-5"></i>
                             <span>Doctor Ledgers</span>
                         </a>
+                        @endif
 
+                        @if(!$user || $user->hasPermission('manage_hospital_services'))
                         <a href="/hospital-services" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('hospital-services*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-hand-holding-medical w-5"></i>
                             <span>Hospital Services</span>
                         </a>
+                        @endif
+
+                        @if(!$user || $user->hasPermission('manage_opd_tokens'))
+                        <a href="/token-display" target="_blank" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('token-display*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <i class="fa-solid fa-tv w-5"></i>
+                            <span>Central LCD Display</span>
+                        </a>
+                        @endif
                     </div>
                 </div>
 

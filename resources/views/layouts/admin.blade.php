@@ -173,14 +173,6 @@
                             <i class="fa-solid fa-ticket-simple w-5"></i>
                             <span>OPD Tokens</span>
                         </a>
-                        <a href="/token-display" target="_blank" class="flex items-center space-x-3 px-3 py-2 rounded-lg text-xs text-teal-400 hover:bg-slate-800 hover:text-teal-300 transition pl-8">
-                            <i class="fa-solid fa-tv w-4"></i>
-                            <span>Central LCD Display</span>
-                        </a>
-                        <a href="/reports/tokens" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2 rounded-lg text-xs {{ request()->is('reports/tokens*') ? 'bg-teal-600 text-white font-semibold' : 'text-slate-300 hover:bg-slate-800 hover:text-white transition' }} pl-8">
-                            <i class="fa-solid fa-chart-line w-4"></i>
-                            <span>Queue Reports</span>
-                        </a>
                         @endif
 
                         @if(!$user || $user->hasPermission('manage_hospital_billing'))
@@ -201,6 +193,13 @@
                         <a href="/hospital-services" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('hospital-services*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
                             <i class="fa-solid fa-hand-holding-medical w-5"></i>
                             <span>Hospital Services</span>
+                        </a>
+                        @endif
+
+                        @if(!$user || $user->hasPermission('manage_opd_tokens'))
+                        <a href="/token-display" target="_blank" @click="mobileMenuOpen = false" class="flex items-center space-x-3 px-3 py-2.5 rounded-lg {{ request()->is('token-display*') ? 'bg-blue-600 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white transition' }}">
+                            <i class="fa-solid fa-tv w-5"></i>
+                            <span>Central LCD Display</span>
                         </a>
                         @endif
                     </div>

@@ -27,6 +27,10 @@ class OpdTokenManagementTest extends TestCase
             'role' => 'admin',
         ]);
 
+        \App\Models\AccountProfile::clearCache();
+        \App\Models\AccountProfile::query()->update(['token_prefix' => null]);
+        \App\Models\AccountProfile::clearCache();
+
         $this->doctor = Doctor::create([
             'name'             => 'Dr. Ahmed',
             'specialization'   => 'General Physician',
