@@ -692,11 +692,26 @@
             return /^dr\.?\s+/i.test(trimmed) ? trimmed : 'Dr. ' + trimmed;
         }
 
-        // Live Real-Time Polling Engine
+        // Live Real-Time Polling Engine (Sequential non-blocking poller)
+        let isPollingQueue = false;
+
         async function fetchLiveQueueData() {
+            if (isPollingQueue) return;
+            isPollingQueue = true;
+
             try {
-                const response = await fetch('/token-display/live', { cache: 'no-store' });
-                if (!response.ok) throw new Error('HTTP ' + response.status);
+                let response = null;
+                try {
+                    response = await fetch('/token-display/live', { cache: 'no-store' });
+                } catch (e1) {
+                    // Fallback to /api/token-display/live if route differs
+                    response = await fetch('/api/token-display/live', { cache: 'no-store' });
+                }
+
+                if (!response || !response.ok) {
+                    throw new Error('HTTP ' + (response ? response.status : 'no response'));
+                }
+
                 const data = await response.json();
 
                 // 1. Server Status: Online
@@ -760,99 +775,105 @@
 
                 // 4. Update Upcoming Waiting Tokens List
                 const waiting = data.waiting_tokens || [];
-                document.getElementById('waitingCountBadge').innerText = `${data.total_waiting || waiting.length} Waiting`;
+                const waitBadge = document.getElementById('waitingCountBadge');
+                if (waitBadge) waitBadge.innerText = `${data.total_waiting || waiting.length} Waiting`;
                 const waitList = document.getElementById('upcomingTokensList');
 
-                if (waiting.length > 0) {
-                    let waitHtml = '';
-                    waiting.forEach(w => {
-                        const docName = formatDoctorName(w.doctor_name);
-                        waitHtml += `
-                            <div class="bg-slate-950/60 border border-slate-800 hover:border-teal-500/40 rounded-xl p-3 flex items-center justify-between transition gap-3">
-                                <div class="flex items-center space-x-3 min-w-0 flex-1">
-                                    <span class="font-num text-xl font-black text-amber-300 bg-slate-900 border border-slate-700 w-12 h-12 rounded-xl flex items-center justify-center shadow-xs shrink-0">
-                                        ${w.formatted_token_number}
-                                    </span>
-                                    <div class="min-w-0 flex-1">
-                                        <div class="text-sm font-bold text-white truncate">${docName}</div>
-                                        <div class="text-xs text-slate-400 truncate">${w.department || 'General'}</div>
+                if (waitList) {
+                    if (waiting.length > 0) {
+                        let waitHtml = '';
+                        waiting.forEach(w => {
+                            const docName = formatDoctorName(w.doctor_name);
+                            waitHtml += `
+                                <div class="bg-slate-950/60 border border-slate-800 hover:border-teal-500/40 rounded-xl p-3 flex items-center justify-between transition gap-3">
+                                    <div class="flex items-center space-x-3 min-w-0 flex-1">
+                                        <span class="font-num text-xl font-black text-amber-300 bg-slate-900 border border-slate-700 w-12 h-12 rounded-xl flex items-center justify-center shadow-xs shrink-0">
+                                            ${w.formatted_token_number}
+                                        </span>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="text-sm font-bold text-white truncate">${docName}</div>
+                                            <div class="text-xs text-slate-400 truncate">${w.department || 'General'}</div>
+                                        </div>
+                                    </div>
+                                    <div class="text-right shrink-0">
+                                        <span class="px-2.5 py-1 rounded-md bg-teal-500/10 text-teal-300 text-xs font-bold border border-teal-500/20 block">
+                                            ${w.room_number || 'Room 1'}
+                                        </span>
+                                        <span class="text-[10px] text-amber-400/80 font-semibold block mt-0.5">Waiting</span>
                                     </div>
                                 </div>
-                                <div class="text-right shrink-0">
-                                    <span class="px-2.5 py-1 rounded-md bg-teal-500/10 text-teal-300 text-xs font-bold border border-teal-500/20 block">
-                                        ${w.room_number || 'Room 1'}
-                                    </span>
-                                    <span class="text-[10px] text-amber-400/80 font-semibold block mt-0.5">Waiting</span>
-                                </div>
+                            `;
+                        });
+                        waitList.innerHTML = waitHtml;
+                    } else {
+                        waitList.innerHTML = `
+                            <div class="py-12 text-center text-slate-500 text-xs">
+                                <i class="fa-solid fa-mug-hot text-3xl mb-2 text-slate-600 block"></i>
+                                <span>No waiting patients in queue.</span>
+                                <div class="font-urdu text-[11px] text-slate-500 mt-1">انتظار گاہ میں کوئی مریض باقی نہیں ہے۔</div>
                             </div>
                         `;
-                    });
-                    waitList.innerHTML = waitHtml;
-                } else {
-                    waitList.innerHTML = `
-                        <div class="py-12 text-center text-slate-500 text-xs">
-                            <i class="fa-solid fa-mug-hot text-3xl mb-2 text-slate-600 block"></i>
-                            <span>No waiting patients in queue.</span>
-                            <div class="font-urdu text-[11px] text-slate-500 mt-1">انتظار گاہ میں کوئی مریض باقی نہیں ہے۔</div>
-                        </div>
-                    `;
+                    }
                 }
 
                 // 5. Update Previously Called Tokens List
                 const previous = data.previous_tokens || [];
-                document.getElementById('previousCountBadge').innerText = previous.length;
+                const prevBadge = document.getElementById('previousCountBadge');
+                if (prevBadge) prevBadge.innerText = previous.length;
                 const prevList = document.getElementById('previousTokensList');
 
-                if (previous.length > 0) {
-                    let prevHtml = '';
-                    previous.forEach(p => {
-                        const st = (p.status || '').toLowerCase();
-                        let badgeClass = 'bg-blue-500/10 text-blue-400 border-blue-500/30';
-                        let label = 'Called';
-                        if (st === 'completed') {
-                            badgeClass = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-                            label = 'Done';
-                        } else if (st === 'skipped') {
-                            badgeClass = 'bg-purple-500/10 text-purple-400 border-purple-500/30';
-                            label = 'Skipped';
-                        } else if (st === 'hold') {
-                            badgeClass = 'bg-orange-500/10 text-orange-400 border-orange-500/30';
-                            label = 'Hold';
-                        }
+                if (prevList) {
+                    if (previous.length > 0) {
+                        let prevHtml = '';
+                        previous.forEach(p => {
+                            const st = (p.status || '').toLowerCase();
+                            let badgeClass = 'bg-blue-500/10 text-blue-400 border-blue-500/30';
+                            let label = 'Called';
+                            if (st === 'completed') {
+                                badgeClass = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+                                label = 'Done';
+                            } else if (st === 'skipped') {
+                                badgeClass = 'bg-purple-500/10 text-purple-400 border-purple-500/30';
+                                label = 'Skipped';
+                            } else if (st === 'hold') {
+                                badgeClass = 'bg-orange-500/10 text-orange-400 border-orange-500/30';
+                                label = 'Hold';
+                            }
 
-                        const docName = formatDoctorName(p.doctor_name);
+                            const docName = formatDoctorName(p.doctor_name);
 
-                        prevHtml += `
-                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 flex items-center justify-between gap-2.5">
-                                <div class="flex items-center space-x-2.5 min-w-0 flex-1">
-                                    <span class="font-num text-sm font-black text-slate-300 bg-slate-900 border border-slate-700 w-10 h-10 rounded-lg flex items-center justify-center shrink-0">
-                                        ${p.formatted_token_number}
-                                    </span>
-                                    <div class="min-w-0 flex-1">
-                                        <div class="text-xs font-bold text-slate-200 truncate">${docName}</div>
-                                        <div class="text-[10px] text-slate-400 truncate">${p.room_number || 'Room'}</div>
+                            prevHtml += `
+                                <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 flex items-center justify-between gap-2.5">
+                                    <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                                        <span class="font-num text-sm font-black text-slate-300 bg-slate-900 border border-slate-700 w-10 h-10 rounded-lg flex items-center justify-center shrink-0">
+                                            ${p.formatted_token_number}
+                                        </span>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="text-xs font-bold text-slate-200 truncate">${docName}</div>
+                                            <div class="text-[10px] text-slate-400 truncate">${p.room_number || 'Room'}</div>
+                                        </div>
+                                    </div>
+                                    <div class="text-right shrink-0">
+                                        <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}">
+                                            ${label}
+                                        </span>
+                                        <span class="text-[10px] text-slate-500 block font-mono mt-0.5">
+                                            ${p.time_formatted || '—'}
+                                        </span>
                                     </div>
                                 </div>
-                                <div class="text-right shrink-0">
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}">
-                                        ${label}
-                                    </span>
-                                    <span class="text-[10px] text-slate-500 block font-mono mt-0.5">
-                                        ${p.time_formatted || '—'}
-                                    </span>
-                                </div>
+                            `;
+                        });
+                        prevList.innerHTML = prevHtml;
+                    } else {
+                        prevList.innerHTML = `
+                            <div class="py-12 text-center text-slate-500 text-xs">
+                                <i class="fa-solid fa-clipboard-list text-3xl mb-2 text-slate-600 block"></i>
+                                <span>No previous token calls.</span>
+                                <div class="font-urdu text-[11px] text-slate-500 mt-1">کوئی پچھلا ٹوکن ریکارڈ موجود نہیں ہے۔</div>
                             </div>
                         `;
-                    });
-                    prevList.innerHTML = prevHtml;
-                } else {
-                    prevList.innerHTML = `
-                        <div class="py-12 text-center text-slate-500 text-xs">
-                            <i class="fa-solid fa-clipboard-list text-3xl mb-2 text-slate-600 block"></i>
-                            <span>No previous token calls.</span>
-                            <div class="font-urdu text-[11px] text-slate-500 mt-1">کوئی پچھلا ٹوکن ریکارڈ موجود نہیں ہے۔</div>
-                        </div>
-                    `;
+                    }
                 }
 
                 // 6. Check for Voice Announcement Event
@@ -861,12 +882,15 @@
                 }
 
             } catch (err) {
-                // Connection fail: show server reconnecting
+                console.warn('Queue poller error:', err);
                 const lanBadge = document.getElementById('lanStatusBadge');
                 if (lanBadge) {
                     lanBadge.className = 'px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/30 flex items-center gap-1.5';
                     lanBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span><span>SERVER: RECONNECTING</span>';
                 }
+            } finally {
+                isPollingQueue = false;
+                setTimeout(fetchLiveQueueData, pollIntervalMs);
             }
         }
 
@@ -897,8 +921,7 @@
             document.getElementById('liveClockDisplay').innerText = timeStr;
         }, 1000);
 
-        // Start Live Queue Poller
-        setInterval(fetchLiveQueueData, pollIntervalMs);
+        // Start Live Queue Poller (Recursive non-blocking loop)
         fetchLiveQueueData();
     </script>
 </body>
