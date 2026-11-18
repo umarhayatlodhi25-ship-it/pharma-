@@ -1,9 +1,15 @@
+@php
+    $hospitalDisplayName = trim($profile->account_name ?? '');
+    if (empty($hospitalDisplayName) || strtolower($hospitalDisplayName) === 'laravel') {
+        $hospitalDisplayName = 'PHARMA SYSTEM';
+    }
+@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $profile->account_name ?? 'Hospital' }} — Token Display</title>
+    <title>{{ $hospitalDisplayName }} — Token Display</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome 6 -->
@@ -122,7 +128,7 @@
             @endif
             <div>
                 <h1 class="text-lg md:text-xl font-black tracking-tight text-white uppercase truncate max-w-sm lg:max-w-md">
-                    {{ $profile->account_name ?? 'HOSPITAL CLINIC' }}
+                    {{ $hospitalDisplayName }}
                 </h1>
                 <div class="flex items-center space-x-2 text-[11px] font-bold tracking-wider text-teal-400">
                     <span>OPD TOKEN CALLING SYSTEM</span>
@@ -134,10 +140,10 @@
 
         <!-- Live Status Indicators (LAN + Internet + Audio Status) -->
         <div class="hidden sm:flex items-center space-x-3 text-xs font-bold">
-            <!-- Real LAN Server Status -->
+            <!-- Real Server Status -->
             <div id="lanStatusBadge" class="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
                 <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>LAN: ONLINE</span>
+                <span>SERVER: ONLINE</span>
             </div>
 
             <!-- Real Internet Status -->
@@ -689,15 +695,15 @@
         // Live Real-Time Polling Engine
         async function fetchLiveQueueData() {
             try {
-                const response = await fetch('/api/token-display/live', { cache: 'no-store' });
+                const response = await fetch('/token-display/live', { cache: 'no-store' });
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 const data = await response.json();
 
-                // 1. LAN Status: Online
+                // 1. Server Status: Online
                 const lanBadge = document.getElementById('lanStatusBadge');
                 if (lanBadge) {
                     lanBadge.className = 'px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5';
-                    lanBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>LAN: ONLINE</span>';
+                    lanBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>SERVER: ONLINE</span>';
                 }
 
                 // 2. Server Clock
@@ -855,11 +861,11 @@
                 }
 
             } catch (err) {
-                // Connection fail: show LAN reconnecting
+                // Connection fail: show server reconnecting
                 const lanBadge = document.getElementById('lanStatusBadge');
                 if (lanBadge) {
                     lanBadge.className = 'px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/30 flex items-center gap-1.5';
-                    lanBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span><span>LAN: RECONNECTING</span>';
+                    lanBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span><span>SERVER: RECONNECTING</span>';
                 }
             }
         }

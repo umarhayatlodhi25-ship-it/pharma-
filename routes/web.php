@@ -35,7 +35,8 @@ Route::get('/', function () {
 
 // Central LCD Token Display & LAN Polling API
 Route::get('/token-display', [\App\Http\Controllers\TokenDisplayController::class, 'index'])->name('token.display');
-Route::get('/api/token-display/live', [\App\Http\Controllers\TokenDisplayController::class, 'liveData'])->name('token.display.live');
+Route::get('/token-display/live', [\App\Http\Controllers\TokenDisplayController::class, 'liveData'])->name('token.display.live');
+Route::get('/api/token-display/live', [\App\Http\Controllers\TokenDisplayController::class, 'liveData']);
 
 // ============================================================
 // Secure Admin Migration Routes (Token Protected)
