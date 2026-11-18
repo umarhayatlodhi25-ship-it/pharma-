@@ -163,7 +163,7 @@ class TokenDisplayController extends Controller
 
         // 4. Latest Call/Recall Event for Voice Announcement Trigger
         $latestCallLog = TokenCallLog::with('patientToken.doctor')
-            ->whereIn('action', ['call', 'recall'])
+            ->whereIn('action', ['call', 'recall', 'start_consultation'])
             ->whereDate('called_at', $today)
             ->latest('id')
             ->first();
@@ -173,7 +173,7 @@ class TokenDisplayController extends Controller
             $pt = $latestCallLog->patientToken;
             if ($pt->status !== 'cancelled') {
                 $announcementEvent = [
-                    'log_id'                 => $latestCallLog->id,
+                    'log_id'                 => 'call_log_' . $latestCallLog->id . '_' . ($pt->call_count ?? 1),
                     'token_id'               => $pt->id,
                     'token_number'           => $pt->token_number,
                     'queue_sequence'         => $pt->queue_sequence ?? $pt->token_number,
@@ -187,6 +187,21 @@ class TokenDisplayController extends Controller
                     'timestamp'              => $latestCallLog->called_at?->timestamp,
                 ];
             }
+        } elseif ($activeToken && $activeToken->status !== 'cancelled') {
+            $announcementEvent = [
+                'log_id'                 => 'active_token_' . $activeToken->id . '_' . ($activeToken->call_count ?? 1),
+                'token_id'               => $activeToken->id,
+                'token_number'           => $activeToken->token_number,
+                'queue_sequence'         => $activeToken->queue_sequence ?? $activeToken->token_number,
+                'formatted_token_number' => $activeToken->formatted_token_number,
+                'prefix'                 => $activeToken->token_prefix,
+                'doctor_name'            => $formatDoctorName($activeToken->doctor, 'Doctor'),
+                'room_number'            => $activeToken->room_number ?? $activeToken->doctor?->room_number ?? 'Consultation Room',
+                'action'                 => $activeToken->status === 'in_consultation' ? 'start_consultation' : 'call',
+                'is_recall'              => ((int) ($activeToken->call_count ?? 1) > 1),
+                'call_count'             => (int) ($activeToken->call_count ?? 1),
+                'timestamp'              => $activeToken->called_at?->timestamp ?? now()->timestamp,
+            ];
         }
 
         return response()->json([

@@ -203,6 +203,14 @@ class QueueController extends Controller
 
         $this->tokenQueueService->completeConsultation($token, auth()->id());
 
+        // Automatically call next waiting patient in queue for this doctor
+        $nextToken = $this->tokenQueueService->callNext($doctor->id, $doctor->room_number, auth()->id());
+
+        if ($nextToken) {
+            return redirect()->route('doctor.queue.index')
+                ->with('success', "Token #{$token->formatted_token_number} ({$token->patient->name}) marked as completed. Next Token #{$nextToken->formatted_token_number} ({$nextToken->patient->name}) called automatically to Room {$nextToken->room_number}.");
+        }
+
         return redirect()->route('doctor.queue.index')
             ->with('success', "Token #{$token->formatted_token_number} ({$token->patient->name}) marked as completed.");
     }

@@ -71,7 +71,8 @@ class ConsultationController extends Controller
             'action'                 => 'nullable|in:save,save_and_complete',
         ]);
 
-        DB::transaction(function () use ($token, $validated) {
+        $nextToken = null;
+        DB::transaction(function () use ($token, $validated, $doctor, &$nextToken) {
             $token->fill([
                 'symptoms'               => $validated['symptoms'] ?? null,
                 'diagnosis'              => $validated['diagnosis'] ?? null,
@@ -86,23 +87,28 @@ class ConsultationController extends Controller
 
             // If requested to complete consultation
             if (($validated['action'] ?? '') === 'save_and_complete') {
-                $token->status = 'completed';
-                if (!$token->completed_at) {
-                    $token->completed_at = now();
-                }
+                $token->save();
+                app(\App\Services\TokenQueueService::class)->completeConsultation($token, auth()->id());
+                // Auto-call next waiting token for this doctor
+                $nextToken = app(\App\Services\TokenQueueService::class)->callNext($doctor->id, $doctor->room_number, auth()->id());
             } elseif ($token->status === 'waiting' || $token->status === 'called') {
                 $token->status = 'in_consultation';
                 if (!$token->called_at) {
                     $token->called_at = now();
                 }
+                $token->save();
+            } else {
+                $token->save();
             }
-
-            $token->save();
         });
 
         if (($validated['action'] ?? '') === 'save_and_complete') {
+            $msg = "Consultation for Token #{$token->formatted_token_number} saved and completed.";
+            if ($nextToken) {
+                $msg .= " Next Token #{$nextToken->formatted_token_number} ({$nextToken->patient->name}) called automatically to Room {$nextToken->room_number}.";
+            }
             return redirect()->route('doctor.queue.index')
-                ->with('success', "Consultation for Token #{$token->token_number} saved and completed.");
+                ->with('success', $msg);
         }
 
         return redirect()->back()

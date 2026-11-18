@@ -507,6 +507,11 @@
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.resume();
             }
+
+            // Immediately process any pending queued announcements
+            if (announcementQueue.length > 0 && !isSpeaking) {
+                processNextAnnouncement();
+            }
         }
         document.getElementById('audioUnlockOverlay').addEventListener('click', activateAudio);
         window.addEventListener('click', () => {
@@ -558,6 +563,32 @@
             return null;
         }
 
+        // Helper to convert token digits into spoken words in English or Urdu
+        function spokenNumberWords(num, isUrdu = false) {
+            const urduWords = {
+                '0': 'zero', '1': 'aik', '2': 'do', '3': 'teen', '4': 'chaar',
+                '5': 'paanch', '6': 'chheh', '7': 'saat', '8': 'aath', '9': 'nau',
+                '10': 'das', '11': 'gyarah', '12': 'barah', '13': 'terah', '14': 'chaudah',
+                '15': 'pandrah', '16': 'solah', '17': 'satrah', '18': 'atharah', '19': 'unnees', '20': 'bees'
+            };
+            const enWords = {
+                '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
+                '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine'
+            };
+
+            const str = String(num || '').trim();
+            const digits = str.replace(/\D/g, '');
+            if (!digits) return str;
+
+            if (isUrdu) {
+                const n = parseInt(digits, 10);
+                if (urduWords[n]) return urduWords[n];
+                return digits.split('').map(d => urduWords[d] || d).join(' ');
+            } else {
+                return digits.split('').map(d => enWords[d] || d).join(' ');
+            }
+        }
+
         // Test Voice function
         function testVoice(lang) {
             activateAudio();
@@ -565,10 +596,10 @@
 
             const testItem = {
                 log_id: 'test_' + Date.now(),
-                formatted_token_number: 'OPD-002',
-                token_number: 2,
-                doctor_name: 'Dr. Ahmed',
-                room_number: 'Room 1',
+                formatted_token_number: 'OPD-004',
+                token_number: 4,
+                doctor_name: 'Dr. Muhammad Faizan Lodhi',
+                room_number: 'OPD Room 1',
                 action: 'call',
                 testMode: lang
             };
@@ -578,16 +609,19 @@
 
         // Queue Announcement Engine
         function queueAnnouncement(item, force = false) {
-            if (!isVoiceEnabled) return;
-            if (!force && announcedLogIds.has(item.log_id)) return;
+            if (!isVoiceEnabled || !item) return;
+            const logKey = String(item.log_id || ('token_' + item.token_id + '_' + (item.call_count || 1)));
+            if (!force && announcedLogIds.has(logKey)) return;
 
-            announcedLogIds.add(item.log_id);
+            announcedLogIds.add(logKey);
             try {
                 sessionStorage.setItem('hospital_announced_token_ids', JSON.stringify(Array.from(announcedLogIds).slice(-100)));
             } catch (e) {}
 
             announcementQueue.push(item);
-            processNextAnnouncement();
+            if (audioActivated) {
+                processNextAnnouncement();
+            }
         }
 
         function processNextAnnouncement() {
@@ -609,33 +643,51 @@
 
                 const isRecall = item.action === 'recall';
                 const tokenStr = item.formatted_token_number || ('Token ' + item.token_number);
+                const enNumberSpoken = spokenNumberWords(item.token_number || tokenStr, false);
+                const urNumberSpoken = spokenNumberWords(item.token_number || tokenStr, true);
                 const roomStr = item.room_number || 'Consultation Room';
-                const docStr = item.doctor_name || 'the doctor';
+                const docStr = formatDoctorName(item.doctor_name || 'the doctor');
 
                 // English Phrasing
                 const enIntro = isRecall ? "Recall announcement." : "Attention please.";
-                const enText = `${enIntro} Token ${tokenStr}. Please proceed to ${roomStr}, ${docStr}.`;
+                const enText = `${enIntro} Token ${enNumberSpoken}. Please proceed to ${roomStr}, ${docStr}.`;
 
-                // Urdu Phrasing
-                const urIntro = isRecall ? "دوبارہ اعلان۔" : "توجہ فرمائیں۔";
-                const urText = `${urIntro} ٹوکن نمبر ${tokenStr}۔ ${docStr} کے ${roomStr} میں تشریف لے جائیں۔`;
+                // Check Urdu/Hindi Voice availability
+                const urVoice = findVoice('ur') || findVoice('hi');
+                const enVoice = findVoice('en-US') || findVoice('en') || (availableVoices && availableVoices[0]);
+
+                let urText = '';
+                if (urVoice) {
+                    // Native Urdu/Hindi voice pronunciation in native script
+                    const urIntro = isRecall ? "دوبارہ اعلان۔" : "توجہ فرمائیں۔";
+                    urText = `${urIntro} ٹوکن نمبر ${urNumberSpoken}۔ ${docStr} کے ${roomStr} میں تشریف لے جائیں۔`;
+                } else {
+                    // Phonetic Roman Urdu spoken clearly by any English voice
+                    const urIntro = isRecall ? "Dobara ailaan." : "Tawajjah farmaiyein.";
+                    urText = `${urIntro} Token number ${urNumberSpoken}. ${docStr} kay ${roomStr} mein tashreef lay jayein.`;
+                }
 
                 const testMode = item.testMode; // 'en', 'ur', or null (both)
 
-                // Build utterances
+                // Build English utterance
                 let enUtterance = new SpeechSynthesisUtterance(enText);
                 enUtterance.rate = 0.88;
                 enUtterance.pitch = 1.0;
                 enUtterance.lang = 'en-US';
-                const enVoice = findVoice('en-US') || findVoice('en');
                 if (enVoice) enUtterance.voice = enVoice;
 
+                // Build Urdu utterance
                 let urUtterance = new SpeechSynthesisUtterance(urText);
                 urUtterance.rate = 0.82;
                 urUtterance.pitch = 1.0;
-                urUtterance.lang = 'ur-PK';
-                const urVoice = findVoice('ur') || findVoice('hi');
-                if (urVoice) urUtterance.voice = urVoice;
+                if (urVoice) {
+                    urUtterance.voice = urVoice;
+                    urUtterance.lang = urVoice.lang || 'ur-PK';
+                } else {
+                    // Fallback to English voice for phonetic Roman Urdu
+                    if (enVoice) urUtterance.voice = enVoice;
+                    urUtterance.lang = 'en-US';
+                }
 
                 // Watchdog to prevent permanent speech hang in Chrome
                 const speechTimeout = setTimeout(() => {
@@ -644,7 +696,7 @@
                         isSpeaking = false;
                         processNextAnnouncement();
                     }
-                }, 10000);
+                }, 14000);
 
                 if (testMode === 'en') {
                     enUtterance.onend = enUtterance.onerror = () => {
@@ -659,7 +711,7 @@
                     };
                     synth.speak(urUtterance);
                 } else {
-                    // Bilingual announcement: English followed by Urdu
+                    // Dual-language bilingual announcement: English first, then Urdu
                     enUtterance.onend = () => {
                         setTimeout(() => {
                             if (!isVoiceEnabled) {
@@ -673,7 +725,7 @@
                                 processNextAnnouncement();
                             };
                             synth.speak(urUtterance);
-                        }, 400);
+                        }, 500);
                     };
                     enUtterance.onerror = () => {
                         clearTimeout(speechTimeout);
@@ -682,7 +734,7 @@
                     };
                     synth.speak(enUtterance);
                 }
-            }, 650);
+            }, 600);
         }
 
         // Clean doctor name helper for Javascript
@@ -877,7 +929,7 @@
                 }
 
                 // 6. Check for Voice Announcement Event
-                if (data.latest_announcement && audioActivated && isVoiceEnabled) {
+                if (data.latest_announcement && isVoiceEnabled) {
                     queueAnnouncement(data.latest_announcement);
                 }
 
