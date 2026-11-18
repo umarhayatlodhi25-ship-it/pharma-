@@ -74,6 +74,15 @@ class TokenDisplayController extends Controller
             ->orderByDesc('called_at')
             ->first();
 
+        // Helper to format doctor name cleanly without duplicate "Dr. Dr."
+        $formatDoctorName = function ($doctor, $fallback = 'OPD Doctor') {
+            if (!$doctor || empty($doctor->name)) {
+                return $fallback;
+            }
+            $name = trim($doctor->name);
+            return preg_match('/^dr\.?\s+/i', $name) ? $name : 'Dr. ' . $name;
+        };
+
         $activeTokenData = null;
         if ($activeToken) {
             $latestLog = TokenCallLog::where('patient_token_id', $activeToken->id)
@@ -88,7 +97,7 @@ class TokenDisplayController extends Controller
                 'formatted_token_number' => $activeToken->formatted_token_number,
                 'prefix'                 => $activeToken->token_prefix,
                 'status'                 => $activeToken->status,
-                'doctor_name'            => $activeToken->doctor ? 'Dr. ' . $activeToken->doctor->name : 'Attending Doctor',
+                'doctor_name'            => $formatDoctorName($activeToken->doctor, 'Attending Doctor'),
                 'department'             => $activeToken->doctor?->specialization ?? 'General OPD',
                 'room_number'            => $activeToken->room_number ?? $activeToken->doctor?->room_number ?? 'Consultation Desk',
                 'call_count'             => (int) ($activeToken->call_count ?? 1),
@@ -106,13 +115,13 @@ class TokenDisplayController extends Controller
             ->orderBy('token_number', 'asc')
             ->take(5)
             ->get()
-            ->map(function ($token) {
+            ->map(function ($token) use ($formatDoctorName) {
                 return [
                     'id'                     => $token->id,
                     'token_number'           => $token->token_number,
                     'queue_sequence'         => $token->queue_sequence ?? $token->token_number,
                     'formatted_token_number' => $token->formatted_token_number,
-                    'doctor_name'            => $token->doctor ? 'Dr. ' . $token->doctor->name : 'OPD Doctor',
+                    'doctor_name'            => $formatDoctorName($token->doctor, 'OPD Doctor'),
                     'department'             => $token->doctor?->specialization ?? 'General OPD',
                     'room_number'            => $token->room_number ?? $token->doctor?->room_number ?? 'OPD Room',
                     'status'                 => 'waiting',
@@ -136,14 +145,14 @@ class TokenDisplayController extends Controller
             ->orderByRaw("COALESCE(completed_at, called_at, updated_at) DESC")
             ->take(8)
             ->get()
-            ->map(function ($token) {
+            ->map(function ($token) use ($formatDoctorName) {
                 $time = $token->completed_at ?? $token->called_at ?? $token->updated_at;
                 return [
                     'id'                     => $token->id,
                     'token_number'           => $token->token_number,
                     'queue_sequence'         => $token->queue_sequence ?? $token->token_number,
                     'formatted_token_number' => $token->formatted_token_number,
-                    'doctor_name'            => $token->doctor ? 'Dr. ' . $token->doctor->name : 'OPD Doctor',
+                    'doctor_name'            => $formatDoctorName($token->doctor, 'OPD Doctor'),
                     'department'             => $token->doctor?->specialization ?? 'General OPD',
                     'room_number'            => $token->room_number ?? $token->doctor?->room_number ?? 'OPD Room',
                     'status'                 => $token->status,
@@ -170,7 +179,7 @@ class TokenDisplayController extends Controller
                     'queue_sequence'         => $pt->queue_sequence ?? $pt->token_number,
                     'formatted_token_number' => $pt->formatted_token_number,
                     'prefix'                 => $pt->token_prefix,
-                    'doctor_name'            => $pt->doctor ? 'Dr. ' . $pt->doctor->name : 'Doctor',
+                    'doctor_name'            => $formatDoctorName($pt->doctor, 'Doctor'),
                     'room_number'            => $latestCallLog->room_number ?? $pt->room_number ?? $pt->doctor?->room_number ?? 'Consultation Room',
                     'action'                 => $latestCallLog->action,
                     'is_recall'              => ($latestCallLog->action === 'recall') || ((int) ($pt->call_count ?? 1) > 1),

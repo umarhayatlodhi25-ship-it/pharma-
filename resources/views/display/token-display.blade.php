@@ -178,10 +178,10 @@
     </header>
 
     <!-- 2. MAIN QUEUE AREA (~78% HEIGHT, 3-COLUMN LAYOUT) -->
-    <main class="h-[78vh] px-5 py-4 grid grid-cols-1 lg:grid-cols-12 gap-5 overflow-hidden">
+    <main class="flex-1 px-5 py-4 grid grid-cols-1 lg:grid-cols-12 gap-5 overflow-hidden min-h-0">
         
         <!-- COLUMN 1: NOW SERVING (HERO AREA, 5 COLS) -->
-        <section class="lg:col-span-5 flex flex-col justify-between h-full">
+        <section class="lg:col-span-5 flex flex-col justify-between h-full min-h-0">
             <div id="heroCard" class="h-full bg-gradient-to-b from-slate-900 via-slate-900 to-teal-950/70 border-2 border-teal-500/60 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden hero-pulse transition-all duration-300">
                 
                 <!-- Watermark Icon -->
@@ -193,9 +193,14 @@
                 <div class="flex items-center justify-between z-10">
                     <div class="flex items-center space-x-2.5">
                         <span id="heroPingDot" class="w-3.5 h-3.5 rounded-full {{ $activeToken ? 'bg-emerald-400 animate-ping' : 'bg-gray-500' }}"></span>
-                        <span id="heroServingTitle" class="text-xs md:text-sm font-black tracking-widest uppercase {{ $activeToken ? 'text-emerald-400' : 'text-slate-400' }}">
-                            {{ $activeToken ? 'NOW SERVING / زیر معائنہ' : 'DESK AVAILABLE / فارغ ہے' }}
-                        </span>
+                        <div>
+                            <span id="heroServingTitle" class="text-xs md:text-sm font-black tracking-widest uppercase {{ $activeToken ? 'text-emerald-400' : 'text-slate-400' }}">
+                                {{ $activeToken ? 'NOW SERVING' : 'DESK AVAILABLE' }}
+                            </span>
+                            <span class="text-[10px] text-emerald-400/80 font-urdu block -mt-0.5">
+                                {{ $activeToken ? 'زیر معائنہ مریض' : 'فارغ ہے' }}
+                            </span>
+                        </div>
                     </div>
 
                     <!-- RECALL BADGE (Prominent Alert when Recalled) -->
@@ -243,7 +248,7 @@
                             <span>DOCTOR / معالج</span>
                         </div>
                         <div id="heroDoctorName" class="text-base md:text-xl font-bold text-teal-200 mt-1 truncate">
-                            {{ $activeToken && $activeToken->doctor ? 'Dr. ' . $activeToken->doctor->name : 'Please Wait' }}
+                            {{ $activeToken && $activeToken->doctor ? $activeToken->doctor->formatted_name : 'Please Wait' }}
                         </div>
                         <div id="heroDepartment" class="text-[11px] text-slate-400 truncate">
                             {{ $activeToken?->doctor?->specialization ?? 'General OPD' }}
@@ -254,17 +259,22 @@
             </div>
         </section>
 
-        <!-- COLUMN 2: UPCOMING TOKENS (NEXT 5 WAITING, 3.5 COLS) -->
-        <section class="lg:col-span-3.5 flex flex-col justify-between h-full bg-slate-900/70 border border-slate-800 rounded-3xl p-5 shadow-xl">
+        <!-- COLUMN 2: UPCOMING TOKENS (NEXT 5 WAITING, 4 COLS) -->
+        <section class="lg:col-span-4 flex flex-col justify-between h-full min-h-0 bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-2xl">
             <!-- Header -->
             <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-clock-rotate-left text-teal-400"></i>
-                    <h2 class="text-xs md:text-sm font-black uppercase text-white tracking-wider">
-                        UPCOMING / آنے والے مریض
-                    </h2>
+                <div class="flex items-center space-x-2.5 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shrink-0">
+                        <i class="fa-solid fa-user-clock text-sm"></i>
+                    </div>
+                    <div class="truncate">
+                        <h2 class="text-xs md:text-sm font-black uppercase text-white tracking-wider">
+                            UPCOMING QUEUE
+                        </h2>
+                        <div class="text-[10px] text-teal-400 font-urdu -mt-0.5">آنے والے مریض</div>
+                    </div>
                 </div>
-                <span id="waitingCountBadge" class="px-2 py-0.5 rounded-lg bg-teal-500/10 text-teal-300 font-mono text-xs font-bold border border-teal-500/20">
+                <span id="waitingCountBadge" class="px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-300 font-mono text-xs font-bold border border-teal-500/20 shrink-0">
                     {{ $waitingTokens->count() }} Waiting
                 </span>
             </div>
@@ -272,25 +282,25 @@
             <!-- List Container -->
             <div id="upcomingTokensList" class="my-auto space-y-2.5 py-2 overflow-y-auto custom-scroll pr-1">
                 @forelse($waitingTokens as $wait)
-                    <div class="bg-slate-950/60 border border-slate-800 hover:border-teal-500/40 rounded-xl p-2.5 flex items-center justify-between transition">
-                        <div class="flex items-center space-x-3">
-                            <span class="font-num text-lg font-black text-amber-300 bg-slate-900 border border-slate-700 w-11 h-11 rounded-xl flex items-center justify-center shadow-xs">
+                    <div class="bg-slate-950/60 border border-slate-800 hover:border-teal-500/40 rounded-xl p-3 flex items-center justify-between transition gap-3">
+                        <div class="flex items-center space-x-3 min-w-0 flex-1">
+                            <span class="font-num text-xl font-black text-amber-300 bg-slate-900 border border-slate-700 w-12 h-12 rounded-xl flex items-center justify-center shadow-xs shrink-0">
                                 {{ $wait->formatted_token_number }}
                             </span>
-                            <div class="truncate max-w-[130px]">
-                                <div class="text-xs font-bold text-white truncate">
-                                    {{ $wait->doctor ? 'Dr. ' . $wait->doctor->name : 'OPD Doctor' }}
+                            <div class="min-w-0 flex-1">
+                                <div class="text-sm font-bold text-white truncate">
+                                    {{ $wait->doctor ? $wait->doctor->formatted_name : 'OPD Doctor' }}
                                 </div>
-                                <div class="text-[10px] text-slate-400 truncate">
+                                <div class="text-xs text-slate-400 truncate">
                                     {{ $wait->doctor?->specialization ?? 'General' }}
                                 </div>
                             </div>
                         </div>
                         <div class="text-right shrink-0">
-                            <span class="px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-300 text-[10px] font-bold border border-teal-500/20 block">
+                            <span class="px-2.5 py-1 rounded-md bg-teal-500/10 text-teal-300 text-xs font-bold border border-teal-500/20 block">
                                 {{ $wait->room_number ?? $wait->doctor?->room_number ?? 'Room 1' }}
                             </span>
-                            <span class="text-[9px] text-amber-400/80 font-semibold block mt-0.5">Waiting</span>
+                            <span class="text-[10px] text-amber-400/80 font-semibold block mt-0.5">Waiting</span>
                         </div>
                     </div>
                 @empty
@@ -308,17 +318,22 @@
             </div>
         </section>
 
-        <!-- COLUMN 3: PREVIOUSLY CALLED TOKENS (NEW SECTION, 3.5 COLS) -->
-        <section class="lg:col-span-3.5 flex flex-col justify-between h-full bg-slate-900/70 border border-slate-800 rounded-3xl p-5 shadow-xl">
+        <!-- COLUMN 3: PREVIOUSLY CALLED TOKENS (3 COLS) -->
+        <section class="lg:col-span-3 flex flex-col justify-between h-full min-h-0 bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-2xl">
             <!-- Header -->
             <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-list-check text-emerald-400"></i>
-                    <h2 class="text-xs md:text-sm font-black uppercase text-white tracking-wider">
-                        PREVIOUS CALLS / پچھلے ٹوکن
-                    </h2>
+                <div class="flex items-center space-x-2.5 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
+                        <i class="fa-solid fa-clock-rotate-left text-sm"></i>
+                    </div>
+                    <div class="truncate">
+                        <h2 class="text-xs md:text-sm font-black uppercase text-white tracking-wider">
+                            RECENT CALLS
+                        </h2>
+                        <div class="text-[10px] text-indigo-300 font-urdu -mt-0.5">پچھلے کال شدہ ٹوکن</div>
+                    </div>
                 </div>
-                <span id="previousCountBadge" class="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 font-mono text-xs font-bold border border-slate-700">
+                <span id="previousCountBadge" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-mono text-xs font-bold border border-slate-700 shrink-0">
                     {{ $previousTokens->count() }}
                 </span>
             </div>
@@ -341,25 +356,25 @@
                             default => 'Called',
                         };
                     @endphp
-                    <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2 flex items-center justify-between">
-                        <div class="flex items-center space-x-2.5">
-                            <span class="font-num text-sm font-black text-slate-300 bg-slate-900 border border-slate-700 w-9 h-9 rounded-lg flex items-center justify-center">
+                    <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 flex items-center justify-between gap-2.5">
+                        <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                            <span class="font-num text-sm font-black text-slate-300 bg-slate-900 border border-slate-700 w-10 h-10 rounded-lg flex items-center justify-center shrink-0">
                                 {{ $prev->formatted_token_number }}
                             </span>
-                            <div class="truncate max-w-[120px]">
-                                <div class="text-[11px] font-bold text-slate-200 truncate">
-                                    {{ $prev->doctor ? 'Dr. ' . $prev->doctor->name : 'OPD Doctor' }}
+                            <div class="min-w-0 flex-1">
+                                <div class="text-xs font-bold text-slate-200 truncate">
+                                    {{ $prev->doctor ? $prev->doctor->formatted_name : 'OPD Doctor' }}
                                 </div>
-                                <div class="text-[9px] text-slate-400 truncate">
+                                <div class="text-[10px] text-slate-400 truncate">
                                     {{ $prev->room_number ?? $prev->doctor?->room_number ?? 'Room' }}
                                 </div>
                             </div>
                         </div>
                         <div class="text-right shrink-0">
-                            <span class="px-2 py-0.5 rounded text-[9px] font-bold border {{ $badgeClass }}">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold border {{ $badgeClass }}">
                                 {{ $statusLabel }}
                             </span>
-                            <span class="text-[9px] text-slate-500 block font-mono mt-0.5">
+                            <span class="text-[10px] text-slate-500 block font-mono mt-0.5">
                                 {{ format_app_datetime($prev->completed_at ?? $prev->called_at ?? $prev->updated_at, 'h:i A') }}
                             </span>
                         </div>
@@ -664,6 +679,13 @@
             }, 650);
         }
 
+        // Clean doctor name helper for Javascript
+        function formatDoctorName(name) {
+            if (!name) return 'Attending Doctor';
+            const trimmed = name.trim();
+            return /^dr\.?\s+/i.test(trimmed) ? trimmed : 'Dr. ' + trimmed;
+        }
+
         // Live Real-Time Polling Engine
         async function fetchLiveQueueData() {
             try {
@@ -702,10 +724,10 @@
                 if (active) {
                     heroToken.innerText = active.formatted_token_number;
                     heroEmpty.classList.add('hidden');
-                    heroTitle.innerText = active.status === 'in_consultation' ? 'NOW SERVING / زیر معائنہ' : 'NOW CALLING / تشریف لائیں';
+                    heroTitle.innerText = active.status === 'in_consultation' ? 'NOW SERVING' : 'NOW CALLING';
                     heroTitle.className = 'text-xs md:text-sm font-black tracking-widest uppercase text-emerald-400';
                     heroRoom.innerText = active.room_number || 'Consultation Desk';
-                    heroDoc.innerText = active.doctor_name || 'Attending Doctor';
+                    heroDoc.innerText = formatDoctorName(active.doctor_name);
                     heroDept.innerText = active.department || 'General OPD';
                     heroCall.innerText = `Call #${active.call_count || 1}`;
                     heroPing.className = 'w-3.5 h-3.5 rounded-full bg-emerald-400 animate-ping';
@@ -719,7 +741,7 @@
                 } else {
                     heroToken.innerText = '---';
                     heroEmpty.classList.remove('hidden');
-                    heroTitle.innerText = 'DESK AVAILABLE / فارغ ہے';
+                    heroTitle.innerText = 'DESK AVAILABLE';
                     heroTitle.className = 'text-xs md:text-sm font-black tracking-widest uppercase text-slate-400';
                     heroRoom.innerText = '—';
                     heroDoc.innerText = 'Please Wait';
@@ -738,22 +760,23 @@
                 if (waiting.length > 0) {
                     let waitHtml = '';
                     waiting.forEach(w => {
+                        const docName = formatDoctorName(w.doctor_name);
                         waitHtml += `
-                            <div class="bg-slate-950/60 border border-slate-800 hover:border-teal-500/40 rounded-xl p-2.5 flex items-center justify-between transition">
-                                <div class="flex items-center space-x-3">
-                                    <span class="font-num text-lg font-black text-amber-300 bg-slate-900 border border-slate-700 w-11 h-11 rounded-xl flex items-center justify-center shadow-xs">
+                            <div class="bg-slate-950/60 border border-slate-800 hover:border-teal-500/40 rounded-xl p-3 flex items-center justify-between transition gap-3">
+                                <div class="flex items-center space-x-3 min-w-0 flex-1">
+                                    <span class="font-num text-xl font-black text-amber-300 bg-slate-900 border border-slate-700 w-12 h-12 rounded-xl flex items-center justify-center shadow-xs shrink-0">
                                         ${w.formatted_token_number}
                                     </span>
-                                    <div class="truncate max-w-[130px]">
-                                        <div class="text-xs font-bold text-white truncate">${w.doctor_name}</div>
-                                        <div class="text-[10px] text-slate-400 truncate">${w.department}</div>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="text-sm font-bold text-white truncate">${docName}</div>
+                                        <div class="text-xs text-slate-400 truncate">${w.department || 'General'}</div>
                                     </div>
                                 </div>
                                 <div class="text-right shrink-0">
-                                    <span class="px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-300 text-[10px] font-bold border border-teal-500/20 block">
+                                    <span class="px-2.5 py-1 rounded-md bg-teal-500/10 text-teal-300 text-xs font-bold border border-teal-500/20 block">
                                         ${w.room_number || 'Room 1'}
                                     </span>
-                                    <span class="text-[9px] text-amber-400/80 font-semibold block mt-0.5">Waiting</span>
+                                    <span class="text-[10px] text-amber-400/80 font-semibold block mt-0.5">Waiting</span>
                                 </div>
                             </div>
                         `;
@@ -791,22 +814,24 @@
                             label = 'Hold';
                         }
 
+                        const docName = formatDoctorName(p.doctor_name);
+
                         prevHtml += `
-                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2 flex items-center justify-between">
-                                <div class="flex items-center space-x-2.5">
-                                    <span class="font-num text-sm font-black text-slate-300 bg-slate-900 border border-slate-700 w-9 h-9 rounded-lg flex items-center justify-center">
+                            <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 flex items-center justify-between gap-2.5">
+                                <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                                    <span class="font-num text-sm font-black text-slate-300 bg-slate-900 border border-slate-700 w-10 h-10 rounded-lg flex items-center justify-center shrink-0">
                                         ${p.formatted_token_number}
                                     </span>
-                                    <div class="truncate max-w-[120px]">
-                                        <div class="text-[11px] font-bold text-slate-200 truncate">${p.doctor_name}</div>
-                                        <div class="text-[9px] text-slate-400 truncate">${p.room_number || 'Room'}</div>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="text-xs font-bold text-slate-200 truncate">${docName}</div>
+                                        <div class="text-[10px] text-slate-400 truncate">${p.room_number || 'Room'}</div>
                                     </div>
                                 </div>
                                 <div class="text-right shrink-0">
-                                    <span class="px-2 py-0.5 rounded text-[9px] font-bold border ${badgeClass}">
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}">
                                         ${label}
                                     </span>
-                                    <span class="text-[9px] text-slate-500 block font-mono mt-0.5">
+                                    <span class="text-[10px] text-slate-500 block font-mono mt-0.5">
                                         ${p.time_formatted || '—'}
                                     </span>
                                 </div>

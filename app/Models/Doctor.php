@@ -67,6 +67,18 @@ class Doctor extends Model
     }
 
     /**
+     * Get clean formatted name ensuring no duplicate "Dr." prefix.
+     */
+    public function getFormattedNameAttribute(): string
+    {
+        $name = trim($this->name ?? '');
+        if ($name === '') {
+            return 'Doctor';
+        }
+        return preg_match('/^dr\.?\s+/i', $name) ? $name : 'Dr. ' . $name;
+    }
+
+    /**
      * Calculate Doctor and Hospital share safely using decimal arithmetic.
      * 
      * Formula:
