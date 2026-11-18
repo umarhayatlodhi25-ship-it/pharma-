@@ -225,7 +225,10 @@ class PosCounter extends Component
                         ->where(function($q) use ($searchTerm, $like) {
                             $q->where('medicine_name', $like, "%{$searchTerm}%")
                               ->orWhere('brand_name', $like, "%{$searchTerm}%")
-                              ->orWhere('generic_name', $like, "%{$searchTerm}%");
+                              ->orWhere('generic_name', $like, "%{$searchTerm}%")
+                              ->orWhere('manufacturer', $like, "%{$searchTerm}%")
+                              ->orWhere('strength', $like, "%{$searchTerm}%")
+                              ->orWhere('dosage_form', $like, "%{$searchTerm}%");
                         })
                         ->orderByRaw(
                             "CASE 

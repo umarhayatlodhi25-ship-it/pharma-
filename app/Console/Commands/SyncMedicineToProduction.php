@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 
 class SyncMedicineToProduction extends Command
 {
-    protected $signature = 'medicine:sync-to-prod
+    protected $signature = 'medicine:sync-from-json
                             {--source=database/medicine_export : Directory with exported chunk files}
                             {--connection=pgsql : Target DB connection (pgsql, mysql, sqlite)}
                             {--chunk=500 : Insert batch size per upsert call}

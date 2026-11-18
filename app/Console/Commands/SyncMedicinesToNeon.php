@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Log;
  */
 class SyncMedicinesToNeon extends Command
 {
-    protected $signature = 'medicine:sync-to-neon
+    protected $signature = 'medicine:sync-to-prod
                             {--chunk=500         : Records per batch (default 500)}
                             {--dry-run           : Validate schema and estimate counts — NO writes}
                             {--resume            : Skip already-processed IDs from progress file}
@@ -27,7 +27,9 @@ class SyncMedicinesToNeon extends Command
                             {--connection=pgsql_prod : Target DB connection name}
                             {--force             : Skip safety confirmation prompts}';
 
-    protected $description = 'Migrate medicine_master records from local SQLite to Neon PostgreSQL';
+    protected $aliases = ['medicine:sync-to-neon'];
+
+    protected $description = 'Migrate medicine_master records from local SQLite to Neon PostgreSQL using keyset streaming';
 
     private const SOURCE_TABLE      = 'medicine_master';
     private const DEST_TABLE        = 'medicine_master';
