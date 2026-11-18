@@ -238,88 +238,86 @@ class TokenManagement extends Component
         }
         $this->isSubmitting = true;
 
-        if (!empty($this->payment_type) && $this->fee_type !== $this->payment_type) {
-            $this->fee_type = $this->payment_type;
-        }
-
-        // Validation rules
-        $rules = [
-            'doctor_id'           => 'required|exists:doctors,id',
-            'hospital_service_id' => 'nullable|exists:hospital_services,id',
-            'fee_type'            => 'required|in:paid,free,partial',
-            'payment_method'      => 'required|in:cash,card,bank_transfer,other',
-            'notes'               => 'nullable|string|max:500',
-        ];
-
-        if ($this->patient_mode === 'existing') {
-            $rules['selected_patient_id'] = 'required|exists:patients,id';
-        } else {
-            $rules['new_name']                = 'required|string|min:2|max:255';
-            $rules['new_father_husband_name'] = 'nullable|string|max:255';
-            $rules['new_age']                 = 'required|integer|min:0|max:150';
-            $rules['new_gender']              = 'required|in:Male,Female,Other';
-            $rules['new_phone']               = 'nullable|string|max:30';
-            $rules['new_address']             = 'nullable|string|max:500';
-            $rules['new_cnic']                = 'nullable|string|max:30';
-        }
-
-        if ($this->fee_type === 'free') {
-            $rules['free_reason']  = 'required|string|max:100';
-            if ($this->free_reason === 'Other') {
-                $rules['other_reason'] = 'required|string|max:255';
+        try {
+            if (!empty($this->payment_type) && $this->fee_type !== $this->payment_type) {
+                $this->fee_type = $this->payment_type;
             }
-        } elseif ($this->fee_type === 'partial') {
-            $rules['paid_amount'] = 'required|numeric|min:0';
-        }
 
-        $messages = [
-            'doctor_id.required'           => 'Please select a doctor.',
-            'selected_patient_id.required' => 'Please search and select an existing patient.',
-            'new_name.required'            => 'Patient Name is required.',
-            'new_age.required'             => 'Age is required.',
-            'new_gender.required'          => 'Gender is required.',
-            'free_reason.required'         => 'Reason for Free Visit is required.',
-            'other_reason.required'        => 'Please specify the free visit reason.',
-            'paid_amount.required'         => 'Please enter the collected payment amount.',
-        ];
+            // Validation rules
+            $rules = [
+                'doctor_id'           => 'required|exists:doctors,id',
+                'hospital_service_id' => 'nullable|exists:hospital_services,id',
+                'fee_type'            => 'required|in:paid,free,partial',
+                'payment_method'      => 'required|in:cash,card,bank_transfer,other',
+                'notes'               => 'nullable|string|max:500',
+            ];
 
-        $this->validate($rules, $messages);
+            if ($this->patient_mode === 'existing') {
+                $rules['selected_patient_id'] = 'required|exists:patients,id';
+            } else {
+                $rules['new_name']                = 'required|string|min:2|max:255';
+                $rules['new_father_husband_name'] = 'nullable|string|max:255';
+                $rules['new_age']                 = 'required|integer|min:0|max:150';
+                $rules['new_gender']              = 'required|in:Male,Female,Other';
+                $rules['new_phone']               = 'nullable|string|max:30';
+                $rules['new_address']             = 'nullable|string|max:500';
+                $rules['new_cnic']                = 'nullable|string|max:30';
+            }
 
-        $doctor = Doctor::findOrFail($this->doctor_id);
+            if ($this->fee_type === 'free') {
+                $rules['free_reason']  = 'required|string|max:100';
+                if ($this->free_reason === 'Other') {
+                    $rules['other_reason'] = 'required|string|max:255';
+                }
+            } elseif ($this->fee_type === 'partial') {
+                $rules['paid_amount'] = 'required|numeric|min:0';
+            }
 
-        // Safely validate that doctor has a configured consultation fee
-        if ($doctor->consultation_fee === null || !is_numeric($doctor->consultation_fee) || (float) $doctor->consultation_fee < 0) {
-            $this->addError('doctor_id', 'The selected doctor does not have a configured consultation fee. Please update the doctor profile first.');
-            $this->isSubmitting = false;
-            return;
-        }
+            $messages = [
+                'doctor_id.required'           => 'Please select a doctor.',
+                'selected_patient_id.required' => 'Please search and select an existing patient.',
+                'new_name.required'            => 'Patient Name is required.',
+                'new_age.required'             => 'Age is required.',
+                'new_gender.required'          => 'Gender is required.',
+                'free_reason.required'         => 'Reason for Free Visit is required.',
+                'other_reason.required'        => 'Please specify the free visit reason.',
+                'paid_amount.required'         => 'Please enter the collected payment amount.',
+            ];
 
-        $service = !empty($this->hospital_service_id) ? \App\Models\HospitalService::find($this->hospital_service_id) : null;
-        $isAdditionalService = ($service && $service->service_type !== 'consultation' && !in_array($service->code, ['SRV-CONSULT', 'DOC_CONSULT']));
+            $this->validate($rules, $messages);
 
-        $doctorConsultationFee = (float) $doctor->consultation_fee;
-        if ($isAdditionalService) {
-            $serviceFee = (float) $service->default_fee;
-        } else {
-            $serviceFee = 0.00;
-        }
+            $doctor = Doctor::findOrFail($this->doctor_id);
 
-        $totalGrossFee = round($doctorConsultationFee + $serviceFee, 2);
-        $previousDue = $this->patient_mode === 'existing' ? (Patient::find($this->selected_patient_id)?->pendingBalance() ?? 0.0) : 0.0;
-        $totalDue = round($totalGrossFee + $previousDue, 2);
-
-        if ($this->fee_type === 'partial') {
-            $paidAmtInput = floatval($this->paid_amount);
-            if ($paidAmtInput > $totalDue) {
-                $this->addError('paid_amount', "Payment amount (PKR {$paidAmtInput}) cannot exceed total outstanding amount (PKR {$totalDue}).");
-                $this->isSubmitting = false;
+            // Safely validate that doctor has a configured consultation fee
+            if ($doctor->consultation_fee === null || !is_numeric($doctor->consultation_fee) || (float) $doctor->consultation_fee < 0) {
+                $this->addError('doctor_id', 'The selected doctor does not have a configured consultation fee. Please update the doctor profile first.');
                 return;
             }
-        }
 
-        $today = app_datetime()->toDateString();
+            $service = !empty($this->hospital_service_id) ? \App\Models\HospitalService::find($this->hospital_service_id) : null;
+            $isAdditionalService = ($service && $service->service_type !== 'consultation' && !in_array($service->code, ['SRV-CONSULT', 'DOC_CONSULT']));
 
-        try {
+            $doctorConsultationFee = (float) $doctor->consultation_fee;
+            if ($isAdditionalService) {
+                $serviceFee = (float) $service->default_fee;
+            } else {
+                $serviceFee = 0.00;
+            }
+
+            $totalGrossFee = round($doctorConsultationFee + $serviceFee, 2);
+            $previousDue = $this->patient_mode === 'existing' ? (Patient::find($this->selected_patient_id)?->pendingBalance() ?? 0.0) : 0.0;
+            $totalDue = round($totalGrossFee + $previousDue, 2);
+
+            if ($this->fee_type === 'partial') {
+                $paidAmtInput = floatval($this->paid_amount);
+                if ($paidAmtInput > $totalDue) {
+                    $this->addError('paid_amount', "Payment amount (PKR {$paidAmtInput}) cannot exceed total outstanding amount (PKR {$totalDue}).");
+                    return;
+                }
+            }
+
+            $today = app_datetime()->toDateString();
+
             $token = DB::transaction(function () use ($doctor, $service, $today) {
                 // 1. Create Patient if New Patient mode
                 if ($this->patient_mode === 'new') {
@@ -355,7 +353,6 @@ class TokenManagement extends Component
                 ]);
             });
 
-
             // Set generated token for preview card and print
             $this->generatedTokenId = $token->id;
             $this->printTokenId = $token->id;
@@ -365,6 +362,8 @@ class TokenManagement extends Component
 
             session()->flash('success', "Token generated successfully! (Token #{$token->formatted_token_number})");
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             session()->flash('error', 'Error generating token: ' . $e->getMessage());
         } finally {
@@ -374,6 +373,7 @@ class TokenManagement extends Component
 
     public function resetPatientFields()
     {
+        $this->isSubmitting = false;
         $this->selected_patient_id = '';
         $this->patient_search = '';
         $this->has_active_token_warning = false;
@@ -394,6 +394,7 @@ class TokenManagement extends Component
 
     public function startNewToken()
     {
+        $this->isSubmitting = false;
         $this->generatedTokenId = null;
         $this->resetPatientFields();
     }
